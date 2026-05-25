@@ -387,16 +387,32 @@ export async function renderProject(req: Request, res: Response) {
   const { id } = req.params;
   try {
     const project = await loadProject(id);
-    if (project.status === 'cancelled' || project.status === 'failed') {
+    if (['cancelled', 'failed', 'completed'].includes(project.status)) {
       project.status = 'draft';
       project.is_cancelled = false;
       project.error_log = null;
+      project.output_path = undefined;
       await saveProjectState(project);
     }
     runPipeline(id, { preview: false }).catch(console.error);
     res.json({ message: 'Full render pipeline started' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to start render' });
+  }
+}
+
+export async function resetProject(req: Request, res: Response) {
+  const { id } = req.params;
+  try {
+    const project = await loadProject(id);
+    project.status = 'draft';
+    project.output_path = undefined;
+    project.error_log = null;
+    project.is_cancelled = false;
+    await saveProjectState(project);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to reset project' });
   }
 }
 

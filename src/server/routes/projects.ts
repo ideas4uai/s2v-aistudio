@@ -20,7 +20,8 @@ import {
   updateProjectSettings,
   cancelProject,
   abortProjectProcesses,
-  analyzeImageAndCreateScript
+  analyzeImageAndCreateScript,
+  resetProject
 } from '../../controllers/projectController.js';
 import { v4 as uuidv4 } from 'uuid';
 import { toUrl } from '../../utils/path.js';
@@ -215,6 +216,7 @@ projectsRouter.post('/:id/scenes/:sceneId/update-narration', updateSceneNarratio
 projectsRouter.post('/:id/preview', previewProject);
 projectsRouter.post('/:id/pipeline/run', renderProject);
 projectsRouter.post('/:id/cancel', cancelProject);
+projectsRouter.post('/:id/reset', resetProject);
 projectsRouter.post('/:id/analyze-image', analyzeImageAndCreateScript);
 projectsRouter.get('/:id/status', getProjectStatus);
 projectsRouter.get('/:id/timeline', getProjectTimeline);

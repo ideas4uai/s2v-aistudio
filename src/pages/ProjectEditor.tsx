@@ -448,6 +448,16 @@ export function ProjectEditor() {
     }
   };
 
+  const handleUnlockForEdit = async () => {
+    if (!confirm('This will clear the completed video and allow you to edit and re-render. Continue?')) return;
+    try {
+      await authenticatedFetch(`/api/projects/${id}/reset`, { method: 'POST' });
+      await fetchProject();
+    } catch (e) {
+      alert('Failed to reset project');
+    }
+  };
+
   const handleUpdateCharacter = async (propagate: boolean = false) => {
     setIsUpdatingCharacter(true);
     try {
@@ -655,12 +665,20 @@ export function ProjectEditor() {
             Preview
           </button>
           {(project.output_path || project.status === 'completed') && (
-            <button
-              onClick={handleDownload}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
-            >
-              <Download className="w-4 h-4" /> Download
-            </button>
+            <>
+              <button
+                onClick={handleDownload}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
+              >
+                <Download className="w-4 h-4" /> Download
+              </button>
+              <button
+                onClick={handleUnlockForEdit}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-indigo-600 border border-indigo-300 bg-white hover:bg-indigo-50 rounded-lg transition-colors"
+              >
+                Edit & Re-render
+              </button>
+            </>
           )}
           <button
             onClick={handleRender}
@@ -668,7 +686,7 @@ export function ProjectEditor() {
             className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 disabled:opacity-50"
           >
             {isRendering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            Render
+            {project.status === 'completed' ? 'Re-render' : 'Render'}
           </button>
         </div>
       </header>
@@ -1440,7 +1458,7 @@ export function ProjectEditor() {
                   className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {isRendering ? <Loader2 className="w-6 h-6 animate-spin" /> : <Play className="w-6 h-6" />}
-                  Render Video
+                  {isRendering ? `Rendering... ${Math.round(progressPercent)}%` : project.status === 'completed' ? 'Re-render Video' : 'Render Video'}
                 </button>
               </div>
 
