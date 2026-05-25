@@ -284,7 +284,13 @@ export function ProjectEditor() {
     const fileName = project.title ? `${project.title.replace(/[^a-z0-9]/gi, '_')}.mp4` : 'video.mp4';
     try {
       const res = await authenticatedFetch(`/api/projects/${id}/download`);
-      if (!res.ok) throw new Error('Download failed');
+      if (!res.ok) {
+        if (res.status === 404) {
+          alert('Video not found, please re-render.');
+          return;
+        }
+        throw new Error('Download failed');
+      }
 
       const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
@@ -1270,7 +1276,7 @@ export function ProjectEditor() {
                   )}
                 </div>
 
-                {project.output_path && !isRendering && (
+                {(project.output_path || project.status === 'completed') && (
                   <div className="mb-8">
                     <button
                       onClick={handleDownload}
@@ -1278,11 +1284,6 @@ export function ProjectEditor() {
                     >
                       <Download className="w-5 h-5" /> Download Video
                     </button>
-                  </div>
-                )}
-                {!project.output_path && project.status === 'completed' && !isRendering && (
-                  <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
-                    Video was rendered but the download link is unavailable. Re-render to generate a new link.
                   </div>
                 )}
 

@@ -223,7 +223,7 @@ projectsRouter.get('/:id/download', async (req, res) => {
   try {
     const project: any = await FirestoreService.getProject(req.params.id);
     if (!project || !project.output_path) {
-      return res.status(404).send('Video not found or not yet rendered.');
+      return res.status(404).json({ error: 'Video not found, please re-render' });
     }
 
     if (project.output_path.startsWith('http')) {
