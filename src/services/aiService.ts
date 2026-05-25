@@ -138,28 +138,7 @@ export const AIService = {
     const ai = getAI(apiKey);
     console.log('[ImageGen] key prefix:', apiKey?.substring(0, 10), 'aspectRatio:', aspectRatio);
 
-    // 1. Imagen 3.0 — primary (separate quota from Gemini)
-    try {
-      console.log('[ImageGen] Trying Imagen 3 (imagen-3.0-generate-002)...');
-      const response = await ai.models.generateImages({
-        model: 'imagen-3.0-generate-002',
-        prompt,
-        config: {
-          numberOfImages: 1,
-          aspectRatio,
-        }
-      });
-      const imageBytes = response.generatedImages?.[0]?.image?.imageBytes;
-      if (imageBytes) {
-        console.log('[ImageGen] Imagen 3 success! Size:', Math.round(imageBytes.length * 0.75 / 1024), 'KB');
-        return imageBytes;
-      }
-      throw new Error('No image bytes in Imagen 3 response');
-    } catch (imagenErr: any) {
-      console.warn('[ImageGen] Imagen 3 failed:', imagenErr?.message);
-    }
-
-    // 2. gemini-3.1-flash-image-preview — secondary (own quota)
+    // gemini-3.1-flash-image-preview
     const geminiModel = options?.model || 'gemini-3.1-flash-image-preview';
     try {
       console.log(`[ImageGen] Trying ${geminiModel}...`);
@@ -185,29 +164,7 @@ export const AIService = {
       console.error('[ImageGen] full error:', JSON.stringify(geminiErr, null, 2));
     }
 
-    // 3. Pollinations — last resort
-    console.log(`[ImageGen] Falling back to Pollinations for: ${prompt.substring(0, 50)}...`);
-    try {
-      const response = await fetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1280&height=720&nologo=true`);
-      if (response.ok) {
-        const buffer = await response.arrayBuffer();
-        const base64Result = typeof Buffer !== 'undefined'
-          ? Buffer.from(buffer).toString('base64')
-          : (() => {
-              const bytes = new Uint8Array(buffer);
-              let binary = '';
-              for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-              return window.btoa(binary);
-            })();
-        console.log('[ImageGen] Pollinations success! Size:', Math.round(base64Result.length * 0.75 / 1024), 'KB');
-        return base64Result;
-      }
-      console.error(`[ImageGen] Pollinations returned HTTP ${response.status}`);
-    } catch (pollErr: any) {
-      console.error('[ImageGen] Pollinations failed:', pollErr?.message || pollErr);
-    }
-
-    throw new Error('All image generation methods failed (Imagen 3, Gemini, Pollinations)');
+    throw new Error('Gemini image generation failed');
   },
   clearQuotaFlags: () => {}
 };

@@ -3,8 +3,6 @@ import * as path from 'path';
 import { Visual } from '../models/scene.js';
 import { getFromCache, saveToCache } from './cacheService.js';
 import { AIService } from './aiService.js';
-import ffmpegStatic from 'ffmpeg-static';
-import { getSafeGeminiKey } from '../utils/geminiAuth.js';
 
 async function generateImageFromGemini(prompt: string, outputPath: string): Promise<string> {
   const base64Data = await AIService.generateImageBase64(prompt, { task: 'image' });
@@ -19,6 +17,15 @@ async function generateImageFromGemini(prompt: string, outputPath: string): Prom
   return outputPath;
 }
 
+function hashCode(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash;
+}
+
 async function simulateAssetCreation(filePath: string, assetType: string, visual: Visual) {
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) {
@@ -26,74 +33,23 @@ async function simulateAssetCreation(filePath: string, assetType: string, visual
   }
 
   if (assetType === 'ai_image' || assetType === 'stock') {
-    const encodedPrompt = encodeURIComponent(visual.prompt.substring(0, 500));
-    const keywords = visual.prompt.split(' ').slice(0, 3).join(',');
-
-    // 1. Pollinations primary
+    const cleanPrompt = visual.prompt.replace(/\[.*?\]/g, '').trim();
+    const seed = Math.abs(hashCode(cleanPrompt)) % 1000;
+    const url = `https://picsum.photos/seed/${seed}/1080/1920`;
     try {
-      console.log(`[Asset Engine] Trying Pollinations (primary) for: ${visual.visual_id}`);
-      const res = await fetch(
-        `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1920`,
-        { signal: AbortSignal.timeout(60000) }
-      );
+      const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(10000) });
       if (res.ok) {
         await fs.promises.writeFile(filePath, Buffer.from(await res.arrayBuffer()));
-        console.log(`[Asset Engine] Pollinations primary succeeded for: ${visual.visual_id}`);
-        return;
-      }
-      console.warn(`[Asset Engine] Pollinations primary returned HTTP ${res.status} for: ${visual.visual_id}`);
-    } catch (e) {
-      console.warn(`[Asset Engine] Pollinations primary failed: ${e instanceof Error ? e.message : e}`);
-    }
-
-    // 2. Pollinations retry with random seed after 2s delay
-    await new Promise(r => setTimeout(r, 2000));
-    try {
-      const seed = Math.floor(Math.random() * 1_000_000);
-      console.log(`[Asset Engine] Trying Pollinations (seed=${seed}) for: ${visual.visual_id}`);
-      const res = await fetch(
-        `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1920&seed=${seed}`,
-        { signal: AbortSignal.timeout(60000) }
-      );
-      if (res.ok) {
-        await fs.promises.writeFile(filePath, Buffer.from(await res.arrayBuffer()));
-        console.log(`[Asset Engine] Pollinations retry succeeded for: ${visual.visual_id}`);
-        return;
-      }
-      console.warn(`[Asset Engine] Pollinations retry returned HTTP ${res.status} for: ${visual.visual_id}`);
-    } catch (e) {
-      console.warn(`[Asset Engine] Pollinations retry failed: ${e instanceof Error ? e.message : e}`);
-    }
-
-    // 3. Unsplash keyword fallback
-    try {
-      console.log(`[Asset Engine] Trying Unsplash fallback (keywords: ${keywords}) for: ${visual.visual_id}`);
-      const res = await fetch(
-        `https://source.unsplash.com/1080x1920/?${encodeURIComponent(keywords)}`,
-        { signal: AbortSignal.timeout(15000) }
-      );
-      if (res.ok) {
-        await fs.promises.writeFile(filePath, Buffer.from(await res.arrayBuffer()));
-        console.log(`[Asset Engine] Unsplash fallback succeeded for: ${visual.visual_id}`);
+        console.log(`[Asset Engine] Picsum fallback succeeded for: ${visual.visual_id}`);
         return;
       }
     } catch (e) {
-      console.warn(`[Asset Engine] Unsplash fallback failed: ${e instanceof Error ? e.message : e}`);
+      console.warn(`[Asset Engine] Picsum fallback failed: ${e instanceof Error ? e.message : e}`);
     }
   }
 
-  // Last resort: ffmpeg solid color (avoids blank placeholder screens)
-  try {
-    const { execSync } = await import('child_process');
-    const ffmpegPath = ffmpegStatic || 'ffmpeg';
-    const colors = ['darkblue', 'darkgreen', 'maroon', 'indigo', 'darkslategrey', 'navy', 'purple'];
-    const colorIndex = Math.abs(filePath.split('').reduce((a: number, b: string) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a; }, 0)) % colors.length;
-    execSync(`"${ffmpegPath}" -f lavfi -i color=c=${colors[colorIndex]}:s=1080x1920:d=1 -vframes 1 "${filePath}" -y`);
-    console.log(`[Asset Engine] Solid color placeholder used for: ${visual.visual_id}`);
-  } catch (error) {
-    console.error('[Asset Engine] All image fallbacks exhausted:', error);
-    await fs.promises.writeFile(filePath, 'simulated'.padEnd(101, '.'));
-  }
+  console.error('[Asset Engine] All image fallbacks exhausted for:', visual.visual_id);
+  await fs.promises.writeFile(filePath, 'simulated'.padEnd(101, '.'));
 }
 
 export async function generateAsset(visual: Visual, assetHash: string, mode: string): Promise<string> {
