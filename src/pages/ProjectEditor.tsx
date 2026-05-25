@@ -281,15 +281,30 @@ export function ProjectEditor() {
 
   const handleDownload = async () => {
     if (!project) return;
+    const fileName = project.title ? `${project.title.replace(/[^a-z0-9]/gi, '_')}.mp4` : 'video.mp4';
     try {
       const res = await authenticatedFetch(`/api/projects/${id}/download`);
       if (!res.ok) throw new Error('Download failed');
-      
+
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.downloadUrl) {
+          const a = document.createElement('a');
+          a.href = data.downloadUrl;
+          a.target = '_blank';
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          return;
+        }
+      }
+
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const fileName = project.title ? `${project.title.replace(/[^a-z0-9]/gi, '_')}.mp4` : 'video.mp4';
       a.download = fileName;
       document.body.appendChild(a);
       a.click();
@@ -1255,14 +1270,19 @@ export function ProjectEditor() {
                   )}
                 </div>
 
-                {renderStatus === 'completed' && project.output_path && (
+                {project.output_path && !isRendering && (
                   <div className="mb-8">
-                    <button 
+                    <button
                       onClick={handleDownload}
                       className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors"
                     >
                       <Download className="w-5 h-5" /> Download Video
                     </button>
+                  </div>
+                )}
+                {!project.output_path && project.status === 'completed' && !isRendering && (
+                  <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+                    Video was rendered but the download link is unavailable. Re-render to generate a new link.
                   </div>
                 )}
 

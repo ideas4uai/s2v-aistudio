@@ -227,7 +227,7 @@ projectsRouter.get('/:id/download', async (req, res) => {
     }
 
     if (project.output_path.startsWith('http')) {
-        return res.redirect(project.output_path);
+      return res.json({ downloadUrl: project.output_path });
     }
 
     const filePath = path.isAbsolute(project.output_path) 
