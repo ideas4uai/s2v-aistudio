@@ -219,6 +219,20 @@ projectsRouter.post('/:id/analyze-image', analyzeImageAndCreateScript);
 projectsRouter.get('/:id/status', getProjectStatus);
 projectsRouter.get('/:id/timeline', getProjectTimeline);
 
+projectsRouter.patch('/:id/music', async (req, res) => {
+  try {
+    const project: any = await FirestoreService.getProject(req.params.id);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const { music_track, music_volume } = req.body;
+    if (music_track !== undefined) project.music_track = music_track || null;
+    if (music_volume !== undefined) project.music_volume = Number(music_volume);
+    await FirestoreService.saveProject(project);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update music' });
+  }
+});
+
 projectsRouter.get('/:id/download', async (req, res) => {
   try {
     const project: any = await FirestoreService.getProject(req.params.id);

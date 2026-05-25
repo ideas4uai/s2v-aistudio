@@ -240,11 +240,32 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
   
   try {
      await guardedExec(`"${ffmpeg}" -f concat -safe 0 -i "${listFile}" -c copy -y "${outputPath}"`, signal);
-     
+
+     if (project?.music_track) {
+       const musicDir = process.env.MUSIC_DIR || path.join(process.cwd(), 'music');
+       const musicPath = path.join(musicDir, project.music_track);
+       if (fs.existsSync(musicPath)) {
+         const volume = Number(project.music_volume ?? 0.08).toFixed(2);
+         const outputWithMusic = path.join(tmpDir, `final_music_${Date.now()}.mp4`);
+         try {
+           await guardedExec(
+             `"${ffmpeg}" -i "${outputPath}" -stream_loop -1 -i "${musicPath}" -filter_complex "[1:a]volume=${volume}[bg];[0:a][bg]amix=inputs=2:duration=first[aout]" -map 0:v -map "[aout]" -c:v copy -c:a aac -ar 44100 -ac 2 -b:a 192k -y "${outputWithMusic}"`,
+             signal
+           );
+           fs.promises.unlink(outputPath).catch(() => {});
+           return outputWithMusic;
+         } catch (musicErr: any) {
+           console.warn('[Stitch] Music mix failed, using unmixed video:', musicErr?.message);
+         }
+       } else {
+         console.warn(`[Stitch] Music file not found: ${musicPath}`);
+       }
+     }
+
      if (project) {
         project.output_path = `/api/assets/download?path=${encodeURIComponent(outputPath)}`;
      }
-     
+
      return outputPath;
   } catch (e: any) {
      if (e.message === 'PIPELINE_CANCELLED') throw e;

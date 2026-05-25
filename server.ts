@@ -172,6 +172,29 @@ async function startServer() {
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
   app.use('/outputs', express.static(path.join(process.cwd(), 'outputs')));
   app.use('/cache', express.static(path.join(process.cwd(), 'cache')));
+  app.use('/music', express.static(process.env.MUSIC_DIR || path.join(process.cwd(), 'music')));
+
+  app.get('/api/music', (req, res) => {
+    const musicDir = process.env.MUSIC_DIR || path.join(process.cwd(), 'music');
+    try {
+      if (!fs.existsSync(musicDir)) return res.json([]);
+      const files = fs.readdirSync(musicDir).filter(f => /\.(mp3|wav|ogg|m4a)$/i.test(f));
+      const tracks = files.map(filename => {
+        const nameWithoutExt = filename.replace(/\.[^.]+$/, '');
+        const name = nameWithoutExt
+          .replace(/^\d+[-_]?/, '')
+          .replace(/[-_]/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase())
+          .trim() || nameWithoutExt;
+        const genreMatch = nameWithoutExt.match(/^(\d+)/);
+        const genre = genreMatch ? `Track ${genreMatch[1]}` : 'Music';
+        return { id: nameWithoutExt, name, filename, genre, url: `/music/${filename}` };
+      });
+      res.json(tracks);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to read music directory' });
+    }
+  });
 
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', version: '1.0.0' });

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  ArrowLeft, Play, Loader2, FileText, Film, Image as ImageIcon, 
+import {
+  ArrowLeft, Play, Pause, Loader2, FileText, Film, Image as ImageIcon,
   Settings, Clock, Plus, Wand2, Download, AlertCircle, Music, Volume2,
   Edit2, Check, X, User, MapPin, Box, RefreshCw, XCircle, Mic
 } from 'lucide-react';
@@ -34,6 +34,14 @@ interface ProjectSettings {
   [key: string]: any;
 }
 
+interface MusicTrack {
+  id: string;
+  name: string;
+  filename: string;
+  genre: string;
+  url: string;
+}
+
 interface SeoMetadata {
   title: string;
   description: string;
@@ -60,6 +68,8 @@ interface Project {
   settings: ProjectSettings;
   scenes: Scene[];
   seo_metadata?: SeoMetadata;
+  music_track?: string;
+  music_volume?: number;
 }
 
 export function ProjectEditor() {
@@ -98,6 +108,13 @@ export function ProjectEditor() {
   const [seoMetadata, setSeoMetadata] = useState<SeoMetadata | null>(null);
   const pollInterval = useRef<NodeJS.Timeout | null>(null);
 
+  const [musicTracks, setMusicTracks] = useState<MusicTrack[]>([]);
+  const [selectedMusic, setSelectedMusic] = useState<string | null>(null);
+  const [previewingTrack, setPreviewingTrack] = useState<string | null>(null);
+  const [musicVolume, setMusicVolume] = useState<number>(0.08);
+  const [musicSaved, setMusicSaved] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const isBusyStatus = (status: string) => 
     ['processing', 'scripting', 'scene_parsing', 'generating_assets', 'stitching_video'].includes(status);
 
@@ -112,6 +129,65 @@ export function ProjectEditor() {
     } catch (e) {
       console.error('Failed to save settings', e);
     }
+  };
+
+  useEffect(() => {
+    authenticatedFetch('/api/music')
+      .then(r => r.json())
+      .then((tracks: MusicTrack[]) => setMusicTracks(Array.isArray(tracks) ? tracks : []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (project) {
+      setSelectedMusic(project.music_track || null);
+      setMusicVolume(project.music_volume ?? 0.08);
+    }
+  }, [project?.music_track, project?.music_volume]);
+
+  const handleMusicSelect = async (filename: string | null) => {
+    setSelectedMusic(filename);
+    setMusicSaved(false);
+    try {
+      await authenticatedFetch(`/api/projects/${id}/music`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ music_track: filename ?? '', music_volume: musicVolume }),
+      });
+      setMusicSaved(true);
+      setTimeout(() => setMusicSaved(false), 2000);
+    } catch {
+      console.error('Failed to save music selection');
+    }
+  };
+
+  const handleMusicVolumeChange = async (volume: number) => {
+    setMusicVolume(volume);
+    if (audioRef.current) audioRef.current.volume = volume;
+    try {
+      await authenticatedFetch(`/api/projects/${id}/music`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ music_track: selectedMusic ?? '', music_volume: volume }),
+      });
+    } catch {
+      console.error('Failed to save music volume');
+    }
+  };
+
+  const handleMusicPreview = (filename: string, url: string) => {
+    if (previewingTrack === filename) {
+      audioRef.current?.pause();
+      setPreviewingTrack(null);
+      return;
+    }
+    if (audioRef.current) audioRef.current.pause();
+    const audio = new Audio(url);
+    audio.volume = musicVolume;
+    audio.play().catch(() => {});
+    audioRef.current = audio;
+    setPreviewingTrack(filename);
+    audio.addEventListener('ended', () => setPreviewingTrack(null));
   };
 
   const fetchProject = useCallback(async () => {
@@ -1123,6 +1199,63 @@ export function ProjectEditor() {
           {/* TAB 4: MEDIA */}
           {activeTab === 4 && (
             <div className="space-y-6">
+
+              {/* Music Picker */}
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
+                      <Music className="w-5 h-5 text-indigo-600" /> Background Music
+                    </h3>
+                    <p className="text-sm text-neutral-500">Choose a track for your video</p>
+                  </div>
+                  {musicSaved && (
+                    <span className="flex items-center gap-1 text-sm text-green-600 font-medium">
+                      <Check className="w-4 h-4" /> Saved
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-1 mb-4 max-h-64 overflow-y-auto">
+                  <label className="flex items-center gap-3 p-3 rounded-xl hover:bg-neutral-50 cursor-pointer">
+                    <input type="radio" name="music" checked={selectedMusic === null} onChange={() => handleMusicSelect(null)} className="accent-indigo-600" />
+                    <span className="text-sm font-medium text-neutral-700">No Music</span>
+                  </label>
+                  {musicTracks.map(track => (
+                    <label key={track.id} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${selectedMusic === track.filename ? 'bg-indigo-50 border border-indigo-200' : 'hover:bg-neutral-50'}`}>
+                      <input type="radio" name="music" checked={selectedMusic === track.filename} onChange={() => handleMusicSelect(track.filename)} className="accent-indigo-600" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-neutral-900">{track.name}</p>
+                        <p className="text-xs text-neutral-500">{track.genre}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={e => { e.preventDefault(); handleMusicPreview(track.filename, track.url); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors shrink-0"
+                      >
+                        {previewingTrack === track.filename
+                          ? <><Pause className="w-3 h-3" /> Pause</>
+                          : <><Play className="w-3 h-3" /> Preview</>}
+                      </button>
+                    </label>
+                  ))}
+                  {musicTracks.length === 0 && (
+                    <p className="text-sm text-neutral-400 text-center py-4">No music files found — add .mp3/.wav files to the ./music/ folder</p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-4 pt-4 border-t border-neutral-100">
+                  <span className="text-sm font-medium text-neutral-600 whitespace-nowrap">Volume</span>
+                  <input
+                    type="range" min={5} max={15} step={1}
+                    value={Math.round(musicVolume * 100)}
+                    onChange={e => handleMusicVolumeChange(Number(e.target.value) / 100)}
+                    className="flex-1 accent-indigo-600"
+                  />
+                  <span className="text-sm font-bold text-neutral-700 w-8 text-right">{Math.round(musicVolume * 100)}%</span>
+                </div>
+              </div>
+
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold text-neutral-900">Media Assets</h2>
                 <button 
