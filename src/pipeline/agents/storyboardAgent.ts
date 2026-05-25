@@ -26,6 +26,7 @@ ${project.world_entities?.locations?.map(l => `- ${l.name}: ${l.prompt}`).join('
     const expandedResults = await Promise.all(drafts.map(async (draft, idx) => {
       const prompt = `You are a Visual Storyboard Artist. Expand this scene description into a high-quality, descriptive visual prompt for AI image generation.
 
+      Topic: "${project.topic}"
       Scene Narration: "${draft.narration}"
       Draft Visual: "${draft.visual}"
       Scene position: ${idx + 1} of ${drafts.length}
@@ -40,7 +41,8 @@ ${project.world_entities?.locations?.map(l => `- ${l.name}: ${l.prompt}`).join('
       4. Avoid words like "photorealistic" or "ultra-detailed". Use specific descriptors.
       5. Output ONLY the expanded prompt, max 60 words.
       6. This is scene ${idx + 1} of ${drafts.length} — choose a DIFFERENT camera angle and shot type than adjacent scenes. Cycle through: wide establishing shot, medium shot, close-up, over-the-shoulder, aerial/bird's eye, low-angle hero shot.
-      7. The visual MUST directly reflect this specific narration action — do not reuse the same composition from other scenes.`;
+      7. The visual MUST directly reflect this specific narration action — do not reuse the same composition from other scenes.
+      8. CRITICAL: Generate an image that DIRECTLY shows what the narration is talking about. If narration mentions Instagram → show phones, social media feeds, influencers. If learning → show students, books, classrooms. NEVER generate generic landscapes or unrelated imagery.`;
       
       try {
         console.log(`[StoryboardAgent] Expanding scene ${idx + 1}/${drafts.length}...`);
@@ -49,7 +51,7 @@ ${project.world_entities?.locations?.map(l => `- ${l.name}: ${l.prompt}`).join('
         
         const expandedPrompt = await AIService.generateText(prompt, { task: 'visual_expansion' });
         
-        let finalPrompt = expandedPrompt.trim();
+        let finalPrompt = `Topic: ${project.topic}. Narration: "${draft.narration}". ` + expandedPrompt.trim();
         if (plan.character_consistency && plan.character_consistency !== 'N/A') {
           const raw: any = plan.character_consistency;
           let charRef: string;

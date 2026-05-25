@@ -15,13 +15,13 @@ export const ScriptwriterAgent = {
       : '';
 
     const targetLength = project.settings?.targetLength || '60s';
-    const lengthGuide: Record<string, string> = {
-      '30s': '~75 words total, exactly 4-5 scenes of 15 words each minimum (each scene narration must be 15+ words so TTS produces 5-6 seconds of audio)',
-      '60s': '~150 words total, exactly 7-8 scenes of 20 words each minimum (each scene narration must be 20+ words so TTS produces 6-8 seconds of audio)',
-      '3m':  '~450 words total, 15-18 scenes of 25 words each minimum (each scene narration must be 25+ words so TTS produces 8-10 seconds of audio)',
-      '5m':  '~750 words total, 24-30 scenes of 25 words each minimum (each scene narration must be 25+ words so TTS produces 8-10 seconds of audio)',
-    };
-    const lengthInstruction = lengthGuide[targetLength] || lengthGuide['60s'];
+    const wordsPerSecond = 2.5;
+    const durationSeconds =
+      targetLength === '30s' ? 30 :
+      targetLength === '60s' ? 60 :
+      targetLength === '3m'  ? 180 :
+      targetLength === '5m'  ? 300 : 60;
+    const targetWords = Math.round(durationSeconds * wordsPerSecond);
 
     const prompt = `You are a professional Video Scriptwriter and Narrative Designer.
 Your goal is to write a script for a video about: "${project.topic}"
@@ -59,7 +59,7 @@ Provide the output in JSON format exactly like this:
   ]
 }
 
-- Target video length: ${lengthInstruction}
+- CRITICAL: Total narration across ALL scenes MUST be exactly ${targetWords} words. Count every word. At 2.5 words/second TTS speed = exactly ${targetLength}. Too few = short video. Too many = long video.
 - Narrative Depth: Avoid generic descriptions. Use emotional beats, tension, and a clear resolution.
 - Character Voice: If characters are described, use their specific persona and vocabulary in the narration.
 - Ensure the JSON is perfectly valid.`;
@@ -86,7 +86,14 @@ Provide the output in JSON format exactly like this:
         }
       }
 
-      return { rawScript: parsed.rawScript || "", scenes: parsed.scenes || [] };
+      const result = { rawScript: parsed.rawScript || "", scenes: parsed.scenes || [] };
+      const totalWords = result.scenes.reduce((sum: number, s: any) =>
+        sum + (s.narration || '').split(' ').length, 0);
+      console.log(`[Scriptwriter] Words: ${totalWords} / target: ${targetWords}`);
+      if (Math.abs(totalWords - targetWords) > targetWords * 0.2) {
+        console.warn('[Scriptwriter] Word count off >20%, consider retry');
+      }
+      return result;
     } catch (e) {
       console.error('[ScriptwriterAgent] Failed:', e);
       throw e;

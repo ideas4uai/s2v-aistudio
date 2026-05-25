@@ -142,9 +142,13 @@ export const AIService = {
     const geminiModel = options?.model || 'gemini-3.1-flash-image-preview';
     try {
       console.log(`[ImageGen] Trying ${geminiModel}...`);
+      const cleanedPrompt = prompt
+        .replace(/\[CHAR:[^\]]*\]/g, '')
+        .replace(/\[.*?\]/g, '')
+        .trim();
       const response = await ai.models.generateContent({
         model: geminiModel,
-        contents: prompt,
+        contents: cleanedPrompt,
         config: { responseModalities: ['IMAGE', 'TEXT'] }
       });
       const candidate = response.candidates?.[0];
