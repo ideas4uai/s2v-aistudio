@@ -178,43 +178,48 @@ export const renderCaptions = async (scene: any, signal?: AbortSignal) => {
 
   const inputPath = scene.segment_path;
   const outputPath = inputPath.replace('_segment.mp4', '_captioned.mp4');
-  
   if (fs.existsSync(outputPath)) return outputPath;
 
-  // Generate SRT content
-  let srtContent = '';
-  scene.caption_chunks.forEach((chunk: any, index: number) => {
-    const formatTime = (seconds: number) => {
-      const h = Math.floor(seconds / 3600);
-      const m = Math.floor((seconds % 3600) / 60);
-      const s = Math.floor(seconds % 60);
-      const ms = Math.floor((seconds % 1) * 1000);
-      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
-    };
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    const ms = Math.floor((seconds % 1) * 1000);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+  };
 
-    srtContent += `${index + 1}\n`;
-    srtContent += `${formatTime(chunk.start)} --> ${formatTime(chunk.end)}\n`;
-    srtContent += `${chunk.text}\n\n`;
+  // Split into odd blocks (1,3,5… → white) and even blocks (2,4,6… → yellow)
+  let oddSrt = '', evenSrt = '';
+  let oddIdx = 1, evenIdx = 1;
+  scene.caption_chunks.forEach((chunk: any, index: number) => {
+    const entry = `${formatTime(chunk.start)} --> ${formatTime(chunk.end)}\n${chunk.text}\n\n`;
+    if (index % 2 === 0) {
+      oddSrt += `${oddIdx++}\n${entry}`;
+    } else {
+      evenSrt += `${evenIdx++}\n${entry}`;
+    }
   });
 
-  const srtPath = inputPath.replace('_segment.mp4', '.srt');
-  fs.writeFileSync(srtPath, srtContent);
+  const oddSrtPath = inputPath.replace('_segment.mp4', '_odd.srt');
+  const evenSrtPath = inputPath.replace('_segment.mp4', '_even.srt');
+  fs.writeFileSync(oddSrtPath, oddSrt);
+  fs.writeFileSync(evenSrtPath, evenSrt || ' ');  // non-empty so FFmpeg doesn't error
+
+  const escSrt = (p: string) => p.replace(/\\/g, '/').replace(/:/g, '\\:');
+  const baseStyle = 'FontSize=18,FontName=Arial,Bold=1,OutlineColour=&H00000000,BorderStyle=1,Outline=4,Shadow=2,Alignment=2,MarginV=120';
+  const whiteFilter  = `subtitles='${escSrt(oddSrtPath)}':force_style='PrimaryColour=&H00FFFFFF,${baseStyle}'`;
+  const yellowFilter = `subtitles='${escSrt(evenSrtPath)}':force_style='PrimaryColour=&H0000FFFF,${baseStyle}'`;
+  const subtitleFilter = `${whiteFilter},${yellowFilter}`;
 
   try {
-     // Use absolute path; convert backslashes and escape colons for FFmpeg subtitles filter
-     const srtEscaped = srtPath.replace(/\\/g, '/').replace(/:/g, '\\:');
-     
-     // 3=Opaque Box background, Alignment=2, Outline=2, White color
-     const subtitleFilter = `subtitles='${srtEscaped}':force_style='FontSize=16,FontName=Arial,Bold=-1,PrimaryColour=&H00FFFFFF,BorderStyle=3,Outline=2,Shadow=0,BackColour=&H80000000,Alignment=2,MarginV=60'`;
-     
-     const isPreview = scene.quality === 'draft' || scene.preview_mode || false;
-     const preset = isPreview ? 'ultrafast' : 'fast';
-     await guardedExec(`"${ffmpeg}" -i "${inputPath}" -vf "${subtitleFilter}" -c:v libx264 -preset ${preset} -c:a copy -y "${outputPath}"`, signal);
-     return outputPath;
+    const isPreview = scene.quality === 'draft' || scene.preview_mode || false;
+    const preset = isPreview ? 'ultrafast' : 'fast';
+    await guardedExec(`"${ffmpeg}" -i "${inputPath}" -vf "${subtitleFilter}" -c:v libx264 -preset ${preset} -c:a copy -y "${outputPath}"`, signal);
+    return outputPath;
   } catch(e: any) {
-     if (e.message === 'PIPELINE_CANCELLED') throw e;
-     console.error('renderCaptions ffmpeg failed', e);
-     return inputPath; 
+    if (e.message === 'PIPELINE_CANCELLED') throw e;
+    console.error('renderCaptions ffmpeg failed', e);
+    return inputPath;
   }
 };
 

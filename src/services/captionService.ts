@@ -8,58 +8,66 @@ export const captionService = {
 
 export const generateCaptions = async (scene: any, audioPath: string, mode: string): Promise<{ words: WordTimestamp[], chunks: CaptionChunk[] }> => {
   const text = scene.narration_text || "";
-  const wordsStrings = text.split(/\s+/).filter((w: string) => w.length > 0);
   const duration = scene.duration_actual || scene.duration_target || 5;
-  const timePerWord = duration / Math.max(wordsStrings.length, 1);
 
-  const wordsWithTiming: WordTimestamp[] = wordsStrings.map((w: string, i: number) => ({
+  const WORDS_PER_BLOCK = 3;
+  const words = text.split(' ').filter((w: string) => w.trim());
+  if (words.length === 0) return { words: [], chunks: [] };
+
+  const blocks: string[] = [];
+  for (let i = 0; i < words.length; i += WORDS_PER_BLOCK) {
+    blocks.push(words.slice(i, i + WORDS_PER_BLOCK).join(' '));
+  }
+
+  const blockDuration = duration / blocks.length;
+
+  // WordTimestamp array for compatibility (per-word even distribution)
+  const timePerWord = duration / words.length;
+  const wordsWithTiming: WordTimestamp[] = words.map((w: string, i: number) => ({
     word: w,
     start: i * timePerWord,
     end: (i + 1) * timePerWord,
     confidence: 0.9
   }));
 
-  // Punchy Shorts-style chunking: max 3 words per block
-  const chunks: CaptionChunk[] = [];
-  for (let i = 0; i < wordsWithTiming.length; i += 3) {
-    const chunkWords = wordsWithTiming.slice(i, i + 3);
-    chunks.push({
-      words: chunkWords.map(cw => cw.word),
-      text: chunkWords.map(cw => cw.word).join(' '),
-      start: chunkWords[0].start,
-      end: chunkWords[chunkWords.length - 1].end
-    });
-  }
+  const chunks: CaptionChunk[] = blocks.map((blockText, i) => ({
+    words: blockText.split(' '),
+    text: blockText,
+    start: i * blockDuration,
+    end: (i + 1) * blockDuration,
+  }));
 
-  return { 
-    words: wordsWithTiming, 
-    chunks: chunks 
-  };
+  return { words: wordsWithTiming, chunks };
 };
 
 export const fallbackCaptions = (scene: any, mode: string): { words: WordTimestamp[], chunks: CaptionChunk[] } => {
   const text = scene.narration_text || "";
-  const wordsStrings = text.split(/\s+/).filter((w: string) => w.length > 0);
   const duration = scene.duration_target || 5;
-  const timePerWord = duration / Math.max(wordsStrings.length, 1);
 
-  const wordsWithTiming: WordTimestamp[] = wordsStrings.map((w: string, i: number) => ({
+  const WORDS_PER_BLOCK = 3;
+  const words = text.split(' ').filter((w: string) => w.trim());
+  if (words.length === 0) return { words: [], chunks: [] };
+
+  const blocks: string[] = [];
+  for (let i = 0; i < words.length; i += WORDS_PER_BLOCK) {
+    blocks.push(words.slice(i, i + WORDS_PER_BLOCK).join(' '));
+  }
+  const blockDuration = duration / blocks.length;
+
+  const timePerWord = duration / words.length;
+  const wordsWithTiming: WordTimestamp[] = words.map((w: string, i: number) => ({
     word: w,
     start: i * timePerWord,
     end: (i + 1) * timePerWord,
     confidence: 0.9
   }));
 
-  const chunks: CaptionChunk[] = [];
-  for (let i = 0; i < wordsWithTiming.length; i += 3) {
-    const chunkWords = wordsWithTiming.slice(i, i + 3);
-    chunks.push({
-      words: chunkWords.map((cw: any) => cw.word),
-      text: chunkWords.map((cw: any) => cw.word).join(' '),
-      start: chunkWords[0].start,
-      end: chunkWords[chunkWords.length - 1].end
-    });
-  }
+  const chunks: CaptionChunk[] = blocks.map((blockText, i) => ({
+    words: blockText.split(' '),
+    text: blockText,
+    start: i * blockDuration,
+    end: (i + 1) * blockDuration,
+  }));
 
   return { words: wordsWithTiming, chunks };
 };
