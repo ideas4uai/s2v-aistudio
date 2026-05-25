@@ -572,13 +572,21 @@ export function ProjectEditor() {
             </label>
           </div>
           
-          <button 
+          <button
             onClick={() => navigate(`/projects/${id}`)}
             className="px-4 py-2 text-sm font-bold text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
           >
             Preview
           </button>
-          <button 
+          {(project.output_path || project.status === 'completed') && (
+            <button
+              onClick={handleDownload}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
+            >
+              <Download className="w-4 h-4" /> Download
+            </button>
+          )}
+          <button
             onClick={handleRender}
             disabled={isRendering}
             className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 disabled:opacity-50"
