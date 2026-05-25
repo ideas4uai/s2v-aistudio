@@ -53,15 +53,14 @@ ${project.world_entities?.locations?.map(l => `- ${l.name}: ${l.prompt}`).join('
         if (plan.character_consistency && plan.character_consistency !== 'N/A') {
           const raw: any = plan.character_consistency;
           let charRef: string;
-          if (typeof raw === 'object' && raw !== null && raw.name) {
-            // name + up to 5 words of style only — skip the long appearance description
+          if (typeof raw === 'object' && raw !== null) {
+            const name = (raw.name || '').trim();
             const styleSnippet = raw.style ? raw.style.split(/\s+/).slice(0, 5).join(' ') : '';
-            charRef = styleSnippet ? `${raw.name}, ${styleSnippet}` : raw.name;
+            charRef = styleSnippet ? `${name}, ${styleSnippet}` : name;
           } else {
-            // string fallback — first 8 words max
             charRef = String(raw).split(/\s+/).slice(0, 8).join(' ');
           }
-          finalPrompt = `[CHAR: ${charRef}] ${finalPrompt}`;
+          if (charRef) finalPrompt = `[CHAR: ${charRef}] ${finalPrompt}`;
         }
         
         return {

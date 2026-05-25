@@ -3,6 +3,7 @@ import * as path from 'path';
 import { Visual } from '../models/scene.js';
 import { getFromCache, saveToCache } from './cacheService.js';
 import { AIService } from './aiService.js';
+import { hashCode } from '../utils/hash.js';
 
 async function generateImageFromGemini(prompt: string, outputPath: string): Promise<string> {
   const base64Data = await AIService.generateImageBase64(prompt, { task: 'image' });
@@ -15,15 +16,6 @@ async function generateImageFromGemini(prompt: string, outputPath: string): Prom
   await fs.promises.writeFile(outputPath, buffer);
   
   return outputPath;
-}
-
-function hashCode(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return hash;
 }
 
 async function simulateAssetCreation(filePath: string, assetType: string, visual: Visual) {

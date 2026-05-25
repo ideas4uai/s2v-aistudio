@@ -6,6 +6,7 @@ import { DirectorAgent } from '../pipeline/agents/directorAgent.js';
 import { ScriptwriterAgent } from '../pipeline/agents/scriptwriterAgent.js';
 import { StoryboardAgent } from '../pipeline/agents/storyboardAgent.js';
 import { AIService } from '../services/aiService.js';
+import { hashCode } from '../utils/hash.js';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
@@ -335,8 +336,21 @@ export async function generateSceneImage(req: Request, res: Response) {
     const prompt = scene.visuals?.[0]?.prompt || (scene as any).visual_prompt || 'Cinematic video scene';
     console.log(`[generateSceneImage] Generating image for scene ${sceneId}, prompt: ${prompt.substring(0, 60)}...`);
 
-    const base64Data = await AIService.generateImageBase64(prompt);
-    const buffer = Buffer.from(base64Data, 'base64');
+    let buffer: Buffer;
+    try {
+      const base64Data = await AIService.generateImageBase64(prompt);
+      buffer = Buffer.from(base64Data, 'base64');
+    } catch (geminiErr) {
+      console.warn('[generateSceneImage] Gemini failed, using Picsum fallback:', geminiErr instanceof Error ? geminiErr.message : geminiErr);
+      const cleanPrompt = prompt.replace(/\[.*?\]/g, '').trim();
+      const seed = Math.abs(hashCode(cleanPrompt)) % 1000;
+      const picsumRes = await fetch(`https://picsum.photos/seed/${seed}/1080/1920`, {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!picsumRes.ok) throw new Error('Picsum also failed');
+      buffer = Buffer.from(await picsumRes.arrayBuffer());
+    }
     const assetId = uuidv4();
     const fileName = `${sceneId}_${assetId}.jpg`;
 
