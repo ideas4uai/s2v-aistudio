@@ -132,44 +132,93 @@ export const AIService = {
     }
   },
   generateImageBase64: async (prompt: string, options?: any): Promise<string> => {
-    const aspectRatio = options?.aspectRatio || '9:16';
-    const apiKey = getGeminiKey('image') || getGeminiKey();
-    if (!apiKey) throw new Error('No API key available for image generation');
-    const ai = getAI(apiKey);
-    console.log('[ImageGen] key prefix:', apiKey?.substring(0, 10), 'aspectRatio:', aspectRatio);
+    const qualityPrompt = prompt.includes('photorealistic')
+      ? prompt
+      : `${prompt}, photorealistic, cinematic lighting, sharp focus`;
+    const finalPrompt = `${qualityPrompt}. Vertical 9:16 portrait orientation.`;
 
-    // gemini-2.5-flash-image
-    const geminiModel = options?.model || 'gemini-2.5-flash-image';
-    try {
-      console.log(`[ImageGen] Trying ${geminiModel}...`);
-      const qualitySuffix = 'photorealistic, high quality, 8K';
-      const basePrompt = prompt.includes('photorealistic') ? prompt : `${prompt}, ${qualitySuffix}`;
-      const promptWithAspect = `${basePrompt}. Vertical 9:16 portrait orientation.`;
-      const response = await ai.models.generateContent({
-        model: geminiModel,
-        contents: [{
-          role: 'user',
-          parts: [{ text: promptWithAspect }]
-        }],
-        config: {
-          responseModalities: ['TEXT', 'IMAGE'],
-        }
-      });
-      const parts = response.candidates?.[0]?.content?.parts;
-      const imagePart = parts?.find((p: any) => p.inlineData);
-      if (!imagePart?.inlineData?.data) {
-        throw new Error('No image in response');
+    // Provider 1: Fal.ai FLUX.1 schnell (primary - best quality)
+    if (process.env.FAL_API_KEY) {
+      try {
+        console.log('[ImageGen] Trying Fal.ai FLUX.1...');
+        const { fal } = await import('@fal-ai/client');
+        fal.config({ credentials: process.env.FAL_API_KEY });
+        const result = await fal.subscribe('fal-ai/flux/schnell', {
+          input: {
+            prompt: finalPrompt,
+            image_size: { width: 1080, height: 1920 },
+            num_images: 1,
+            num_inference_steps: 4,
+            enable_safety_checker: false
+          }
+        }) as any;
+        const imageUrl = result.data?.images?.[0]?.url
+          || result.images?.[0]?.url;
+        if (!imageUrl) throw new Error('No image URL');
+        const res = await fetch(imageUrl);
+        if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+        const base64 = Buffer.from(await res.arrayBuffer()).toString('base64');
+        console.log('[ImageGen] Fal.ai success! Size:', Math.round(base64.length * 0.75 / 1024), 'KB');
+        return base64;
+      } catch (e: any) {
+        console.warn('[ImageGen] Fal.ai failed:', e.message);
       }
-      const base64Result = imagePart.inlineData.data as string;
-      console.log('[ImageGen] Gemini success! Size:', Math.round(base64Result.length * 0.75 / 1024), 'KB');
-      return base64Result;
-    } catch (geminiErr: any) {
-      markKeyExhausted(apiKey, 'image');
-      console.error('[ImageGen] Gemini failed:', geminiErr?.message, 'status:', geminiErr?.status);
-      console.error('[ImageGen] full error:', JSON.stringify(geminiErr, null, 2));
     }
 
-    throw new Error('Gemini image generation failed');
+    // Provider 2: Together AI FLUX.1 schnell-Free
+    if (process.env.TOGETHER_API_KEY) {
+      try {
+        console.log('[ImageGen] Trying Together AI...');
+        const Together = (await import('together-ai')).default;
+        const together = new Together({ apiKey: process.env.TOGETHER_API_KEY });
+        const response = await (together.images as any).create({
+          model: 'black-forest-labs/FLUX.1-schnell-Free',
+          prompt: finalPrompt,
+          width: 1080,
+          height: 1920,
+          steps: 4,
+          n: 1,
+          response_format: 'base64'
+        } as any);
+        const base64 = (response.data[0] as any)?.b64_json;
+        if (!base64) throw new Error('No base64 data');
+        console.log('[ImageGen] Together AI success! Size:', Math.round(base64.length * 0.75 / 1024), 'KB');
+        return base64;
+      } catch (e: any) {
+        console.warn('[ImageGen] Together AI failed:', e.message);
+      }
+    }
+
+    // Provider 3: Gemini 2.5 flash image (when quota available)
+    const apiKey = getGeminiKey('image') || getGeminiKey();
+    if (apiKey) {
+      try {
+        console.log('[ImageGen] Trying Gemini 2.5 flash image...');
+        const ai = getAI(apiKey);
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: [{
+            role: 'user',
+            parts: [{ text: finalPrompt }]
+          }],
+          config: {
+            responseModalities: ['TEXT', 'IMAGE']
+          }
+        });
+        const parts = response.candidates?.[0]?.content?.parts;
+        const imagePart = parts?.find((p: any) => p.inlineData);
+        if (!imagePart?.inlineData?.data) throw new Error('No image in response');
+        markKeyExhausted(apiKey, 'image');
+        console.log('[ImageGen] Gemini success!');
+        return imagePart.inlineData.data as string;
+      } catch (e: any) {
+        if (apiKey) markKeyExhausted(apiKey, 'image');
+        console.warn('[ImageGen] Gemini failed:', e.message);
+      }
+    }
+
+    // Provider 4: Picsum (always works)
+    throw new Error('All AI providers failed - use Picsum fallback');
   },
   clearQuotaFlags: () => {}
 };
