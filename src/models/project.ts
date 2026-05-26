@@ -53,4 +53,5 @@ export interface Project {
   };
   music_track?: string;
   music_volume?: number;
+  thumbnail_path?: string;
 }

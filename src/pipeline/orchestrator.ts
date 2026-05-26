@@ -5,6 +5,12 @@ import { calculateQualityScore } from '../services/qualityService.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import os from 'os';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import ffmpegStatic from 'ffmpeg-static';
+
+const execAsync = promisify(exec);
+const ffmpegPath = ffmpegStatic as string;
 import { withRetry } from '../utils/retry.js';
 import { v4 as uuidv4 } from 'uuid';
 import { fallbackHook, fallbackScript, fallbackSceneGraph } from './fallbacks.js';
@@ -730,6 +736,24 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
          }
       } catch (err) {
          console.error('Failed to upload final output video', err);
+      }
+
+      // Extract thumbnail from final video (best frame at 1.5s hook moment)
+      if (!isPreview && stitchedVideoPath && fs.existsSync(stitchedVideoPath)) {
+        const thumbnailLocal = path.join(os.tmpdir(), 'ais-renderer', `${project_id}_thumbnail.jpg`);
+        try {
+          const thumbCmd = `"${ffmpegPath}" -i "${stitchedVideoPath}" -ss 1.5 -vframes 1 -q:v 2 -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" -y "${thumbnailLocal}"`;
+          await execAsync(thumbCmd, { timeout: 30000 });
+          if (fs.existsSync(thumbnailLocal)) {
+            const thumbBuffer = await fs.promises.readFile(thumbnailLocal);
+            const thumbUrl = await FirestoreService.uploadAsset(activeProject.project_id!, `${project_id}_thumbnail.jpg`, thumbBuffer, 'image/jpeg');
+            activeProject.thumbnail_path = thumbUrl;
+            console.log('[Orchestrator] Thumbnail saved:', thumbUrl);
+            fs.promises.unlink(thumbnailLocal).catch(() => {});
+          }
+        } catch (thumbErr) {
+          console.warn('[Orchestrator] Thumbnail extraction failed (non-fatal):', thumbErr);
+        }
       }
 
       // Cleanup temp files created during stitching

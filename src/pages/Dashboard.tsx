@@ -124,40 +124,49 @@ export function Dashboard() {
                   navigate(`/projects/${project.id}/edit`);
                 }
               }}
-              className="bg-white rounded-2xl border border-neutral-200 p-6 hover:shadow-lg hover:border-indigo-200 transition-all cursor-pointer group"
+              className="bg-white rounded-2xl border border-neutral-200 overflow-hidden hover:shadow-lg hover:border-indigo-200 transition-all cursor-pointer group"
             >
-              <div className="flex items-start justify-between mb-4">
-                <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center">
-                  <Video className="w-5 h-5 text-indigo-600" />
+              {project.thumbnail_path ? (
+                <img src={project.thumbnail_path} alt={project.title} className="w-full h-32 object-cover" />
+              ) : (
+                <div className="w-full h-32 bg-neutral-100 flex items-center justify-center">
+                  <Video className="w-8 h-8 text-neutral-300" />
                 </div>
-                <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                  project.status === 'completed' ? 'bg-green-50 text-green-600' :
-                  project.status === 'failed' ? 'bg-red-50 text-red-600' :
-                  'bg-amber-50 text-amber-600'
-                }`}>
-                  {project.status}
-                </span>
-              </div>
-              
-              <div className="flex justify-between items-start mb-2 mt-4">
-                <h3 className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors mr-2">{project.title}</h3>
-                <button
-                   onClick={(e) => handleDelete(project.id, e)}
-                   className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-200"
-                   aria-label="Delete project"
-                   title="Delete project"
-                >
-                   <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
+              )}
+              <div className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center">
+                    <Video className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                    project.status === 'completed' ? 'bg-green-50 text-green-600' :
+                    project.status === 'failed' ? 'bg-red-50 text-red-600' :
+                    'bg-amber-50 text-amber-600'
+                  }`}>
+                    {project.status}
+                  </span>
+                </div>
 
-              <p className="text-sm text-neutral-500 mb-6 line-clamp-2">{project.description || 'No description provided.'}</p>
-              <div className="flex items-center justify-between pt-4 border-t border-neutral-50">
-                <div className="flex items-center gap-1 text-xs text-neutral-400">
-                  <Clock className="w-3 h-3" />
-                  {new Date(project.createdAt).toLocaleDateString()}
+                <div className="flex justify-between items-start mb-2 mt-4">
+                  <h3 className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors mr-2">{project.title}</h3>
+                  <button
+                    onClick={(e) => handleDelete(project.id, e)}
+                    className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-200"
+                    aria-label="Delete project"
+                    title="Delete project"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-                <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-indigo-400 transition-colors" />
+
+                <p className="text-sm text-neutral-500 mb-6 line-clamp-2">{project.description || 'No description provided.'}</p>
+                <div className="flex items-center justify-between pt-4 border-t border-neutral-50">
+                  <div className="flex items-center gap-1 text-xs text-neutral-400">
+                    <Clock className="w-3 h-3" />
+                    {new Date(project.createdAt).toLocaleDateString()}
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-indigo-400 transition-colors" />
+                </div>
               </div>
             </div>
           ))}

@@ -70,6 +70,8 @@ interface Project {
   seo_metadata?: SeoMetadata;
   music_track?: string;
   music_volume?: number;
+  thumbnail_path?: string;
+  topic?: string;
 }
 
 export function ProjectEditor() {
@@ -1436,13 +1438,30 @@ export function ProjectEditor() {
                 </div>
 
                 {(project.output_path || project.status === 'completed') && (
-                  <div className="mb-8">
+                  <div className="mb-8 space-y-4">
                     <button
                       onClick={handleDownload}
                       className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors"
                     >
                       <Download className="w-5 h-5" /> Download Video
                     </button>
+                    {project.thumbnail_path && (
+                      <div>
+                        <h3 className="font-semibold text-neutral-900 mb-2">YouTube Thumbnail</h3>
+                        <img
+                          src={project.thumbnail_path}
+                          alt="Video thumbnail"
+                          className="w-48 rounded-lg border border-neutral-200"
+                        />
+                        <a
+                          href={project.thumbnail_path}
+                          download={`${project.topic || project.title}_thumbnail.jpg`}
+                          className="block mt-2 text-sm text-blue-600 hover:underline"
+                        >
+                          Download Thumbnail
+                        </a>
+                      </div>
+                    )}
                   </div>
                 )}
 
