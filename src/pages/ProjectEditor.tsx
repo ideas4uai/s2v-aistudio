@@ -86,6 +86,7 @@ export function ProjectEditor() {
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
   const [editNarrationText, setEditNarrationText] = useState("");
   const [isUpdatingNarration, setIsUpdatingNarration] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [scriptText, setScriptText] = useState('');
   const [characterText, setCharacterText] = useState('');
   const [worldEntities, setWorldEntities] = useState<any>({ characters: [], locations: [], objects: [] });
@@ -412,9 +413,10 @@ export function ProjectEditor() {
       });
       
       if (!res.ok) throw new Error('Failed to update narration');
-      
+
       await fetchProject();
       setEditingSceneId(null);
+      setHasUnsavedChanges(true);
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -715,6 +717,18 @@ export function ProjectEditor() {
 
       {/* MAIN CONTENT AREA */}
       <main className="flex-1 overflow-y-auto p-6 md:p-8">
+        {hasUnsavedChanges && (
+          <div className="max-w-5xl mx-auto mb-4 flex items-center justify-between gap-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            <p className="text-sm font-medium text-amber-800">Changes saved. Click Re-render to generate an updated video.</p>
+            <button
+              onClick={handleRender}
+              disabled={isRendering}
+              className="shrink-0 px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
+            >
+              Re-render
+            </button>
+          </div>
+        )}
         <div className="max-w-5xl mx-auto">
           
           {/* TAB 1: SCRIPT */}
@@ -870,6 +884,59 @@ export function ProjectEditor() {
                   Generate Scenes
                 </button>
               </div>
+
+              {/* Scene narration editor */}
+              {project.scenes && project.scenes.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="font-bold text-neutral-900">Scene Narrations</h3>
+                  {[...project.scenes].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((scene, idx) => {
+                    const sceneId = scene.id || scene.scene_id || String(idx);
+                    const isEditing = editingSceneId === sceneId;
+                    return (
+                      <div key={sceneId} className="bg-white rounded-xl border border-neutral-200 p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Scene {idx + 1}</span>
+                          {isEditing ? (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleUpdateNarration(sceneId)}
+                                disabled={isUpdatingNarration}
+                                className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1 rounded-lg disabled:opacity-50"
+                              >
+                                {isUpdatingNarration ? 'Saving...' : 'Save'}
+                              </button>
+                              <button
+                                onClick={() => setEditingSceneId(null)}
+                                className="text-xs font-bold text-neutral-500 bg-neutral-100 hover:bg-neutral-200 px-3 py-1 rounded-lg"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setEditingSceneId(sceneId); setEditNarrationText(scene.narration_text || ''); }}
+                              className="text-xs font-bold text-indigo-600 hover:text-indigo-700"
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </div>
+                        {isEditing ? (
+                          <textarea
+                            value={editNarrationText}
+                            onChange={e => setEditNarrationText(e.target.value)}
+                            rows={4}
+                            className="w-full p-3 rounded-lg border-2 border-indigo-500 text-sm outline-none resize-none"
+                            autoFocus
+                          />
+                        ) : (
+                          <p className="text-sm text-neutral-700 leading-relaxed">{scene.narration_text}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 

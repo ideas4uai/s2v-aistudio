@@ -21,7 +21,8 @@ import {
   cancelProject,
   abortProjectProcesses,
   analyzeImageAndCreateScript,
-  resetProject
+  resetProject,
+  updateSceneFields
 } from '../../controllers/projectController.js';
 import { v4 as uuidv4 } from 'uuid';
 import { toUrl } from '../../utils/path.js';
@@ -213,6 +214,7 @@ projectsRouter.post('/:id/update-character', updateProjectCharacter);
 projectsRouter.post('/:id/update-world-entities', updateProjectWorldEntities);
 projectsRouter.post('/:id/analyze-world', analyzeProjectWorld);
 projectsRouter.post('/:id/scenes/:sceneId/update-narration', updateSceneNarration);
+projectsRouter.patch('/:id/scenes/:sceneId', updateSceneFields);
 projectsRouter.post('/:id/preview', previewProject);
 projectsRouter.post('/:id/pipeline/run', renderProject);
 projectsRouter.post('/:id/cancel', cancelProject);

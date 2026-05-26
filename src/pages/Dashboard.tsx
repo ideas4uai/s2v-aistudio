@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Video, Clock, ChevronRight, Trash2 } from 'lucide-react';
+import { Plus, Video, Clock, ChevronRight, Trash2, Search } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -10,7 +10,9 @@ export function Dashboard() {
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'latest' | 'oldest' | 'name'>('latest');
+
   // Delete project state
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -92,6 +94,30 @@ export function Dashboard() {
         </button>
       </div>
 
+      {!loading && projects.length > 0 && (
+        <div className="flex flex-col sm:flex-row gap-3 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+            <input
+              type="text"
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <select
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value as 'latest' | 'oldest' | 'name')}
+            className="px-4 py-2.5 rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+          >
+            <option value="latest">Latest First</option>
+            <option value="oldest">Oldest First</option>
+            <option value="name">Name A-Z</option>
+          </select>
+        </div>
+      )}
+
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3].map(i => (
@@ -112,9 +138,30 @@ export function Dashboard() {
             Get started &rarr;
           </button>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map((project) => (
+      ) : (() => {
+        const filteredProjects = projects
+          .filter(p =>
+            (p.title || p.topic || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (p.status || '').toLowerCase().includes(searchQuery.toLowerCase())
+          )
+          .sort((a, b) => {
+            if (sortBy === 'latest') return new Date(b.createdAt || b.created_at || 0).getTime() - new Date(a.createdAt || a.created_at || 0).getTime();
+            if (sortBy === 'oldest') return new Date(a.createdAt || a.created_at || 0).getTime() - new Date(b.createdAt || b.created_at || 0).getTime();
+            if (sortBy === 'name') return (a.title || a.topic || '').localeCompare(b.title || b.topic || '');
+            return 0;
+          });
+        return (
+        <>
+          <p className="text-xs text-neutral-400 mb-4">
+            Showing {filteredProjects.length} of {projects.length} project{projects.length !== 1 ? 's' : ''}
+          </p>
+          {filteredProjects.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-neutral-200 p-12 text-center">
+              <p className="text-neutral-500">No projects match "{searchQuery}"</p>
+            </div>
+          ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredProjects.map((project) => (
             <div
               key={project.id}
               onClick={() => {
@@ -171,7 +218,10 @@ export function Dashboard() {
             </div>
           ))}
         </div>
-      )}
+          )}
+        </>
+        );
+      })()}
 
       {/* Delete Confirmation Modal */}
       {deletingId && (

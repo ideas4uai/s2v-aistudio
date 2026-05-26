@@ -532,6 +532,23 @@ export async function updateSceneNarration(req: Request, res: Response) {
   }
 }
 
+export async function updateSceneFields(req: Request, res: Response) {
+  const { id, sceneId } = req.params;
+  const { narration_text, visual_prompt, duration_target } = req.body;
+  try {
+    const project = await loadProject(id);
+    const scene = project.scenes.find((s: any) => s.scene_id === sceneId || s.id === sceneId);
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+    if (narration_text !== undefined) scene.narration_text = narration_text;
+    if (visual_prompt !== undefined && scene.visuals?.[0]) scene.visuals[0].prompt = visual_prompt;
+    if (duration_target !== undefined) scene.duration_target = Number(duration_target);
+    await saveProjectState(project);
+    res.json({ ok: true, scene });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+}
+
 export async function updateProjectCharacter(req: Request, res: Response) {
   const { id } = req.params;
   const { characterDescription } = req.body;
