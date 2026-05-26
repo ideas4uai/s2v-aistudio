@@ -20,7 +20,7 @@ const TASK_MODELS: Record<string, string> = {
   'segmentation': 'gemini-2.5-flash',
   'visual_expansion': 'gemini-2.5-flash',
   'world': 'gemini-2.5-flash',
-  'image': 'gemini-3.1-flash-image-preview',
+  'image': 'gemini-2.5-flash-image',
   'default': 'gemini-2.5-flash'
 };
 
@@ -138,28 +138,31 @@ export const AIService = {
     const ai = getAI(apiKey);
     console.log('[ImageGen] key prefix:', apiKey?.substring(0, 10), 'aspectRatio:', aspectRatio);
 
-    // gemini-3.1-flash-image-preview
-    const geminiModel = options?.model || 'gemini-3.1-flash-image-preview';
+    // gemini-2.5-flash-image
+    const geminiModel = options?.model || 'gemini-2.5-flash-image';
     try {
       console.log(`[ImageGen] Trying ${geminiModel}...`);
       const qualitySuffix = 'photorealistic, high quality, 8K';
-      const finalPrompt = prompt.includes('photorealistic') ? prompt : `${prompt}, ${qualitySuffix}`;
+      const basePrompt = prompt.includes('photorealistic') ? prompt : `${prompt}, ${qualitySuffix}`;
+      const promptWithAspect = `${basePrompt}. Vertical 9:16 portrait orientation.`;
       const response = await ai.models.generateContent({
         model: geminiModel,
-        contents: finalPrompt,
-        config: { responseModalities: ['IMAGE', 'TEXT'] }
-      });
-      const candidate = response.candidates?.[0];
-      if (candidate?.content?.parts) {
-        for (const part of candidate.content.parts) {
-          if (part.inlineData) {
-            const base64Result = part.inlineData.data as string;
-            console.log('[ImageGen] Gemini success! Size:', Math.round(base64Result.length * 0.75 / 1024), 'KB');
-            return base64Result;
-          }
+        contents: [{
+          role: 'user',
+          parts: [{ text: promptWithAspect }]
+        }],
+        config: {
+          responseModalities: ['TEXT', 'IMAGE'],
         }
+      });
+      const parts = response.candidates?.[0]?.content?.parts;
+      const imagePart = parts?.find((p: any) => p.inlineData);
+      if (!imagePart?.inlineData?.data) {
+        throw new Error('No image in response');
       }
-      throw new Error('No image part in Gemini response');
+      const base64Result = imagePart.inlineData.data as string;
+      console.log('[ImageGen] Gemini success! Size:', Math.round(base64Result.length * 0.75 / 1024), 'KB');
+      return base64Result;
     } catch (geminiErr: any) {
       markKeyExhausted(apiKey, 'image');
       console.error('[ImageGen] Gemini failed:', geminiErr?.message, 'status:', geminiErr?.status);

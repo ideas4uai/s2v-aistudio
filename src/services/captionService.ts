@@ -30,12 +30,15 @@ export const generateCaptions = async (scene: any, audioPath: string, mode: stri
     confidence: 0.9
   }));
 
-  const chunks: CaptionChunk[] = blocks.map((blockText, i) => ({
-    words: blockText.split(' '),
-    text: blockText,
-    start: i * blockDuration,
-    end: (i + 1) * blockDuration,
-  }));
+  const chunks: CaptionChunk[] = blocks.map((blockText, i) => {
+    const colorTag = i % 2 === 0 ? '{\\c&H00FFFFFF&}' : '{\\c&H0000FFFF&}';
+    return {
+      words: blockText.split(' '),
+      text: `${colorTag}${blockText}`,
+      start: i * blockDuration,
+      end: (i + 1) * blockDuration,
+    };
+  });
 
   return { words: wordsWithTiming, chunks };
 };
@@ -62,12 +65,15 @@ export const fallbackCaptions = (scene: any, mode: string): { words: WordTimesta
     confidence: 0.9
   }));
 
-  const chunks: CaptionChunk[] = blocks.map((blockText, i) => ({
-    words: blockText.split(' '),
-    text: blockText,
-    start: i * blockDuration,
-    end: (i + 1) * blockDuration,
-  }));
+  const chunks: CaptionChunk[] = blocks.map((blockText, i) => {
+    const colorTag = i % 2 === 0 ? '{\\c&H00FFFFFF&}' : '{\\c&H0000FFFF&}';
+    return {
+      words: blockText.split(' '),
+      text: `${colorTag}${blockText}`,
+      start: i * blockDuration,
+      end: (i + 1) * blockDuration,
+    };
+  });
 
   return { words: wordsWithTiming, chunks };
 };
