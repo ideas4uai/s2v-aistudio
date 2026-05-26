@@ -8,7 +8,6 @@ export interface DirectorPlan {
   pacing_notes: string;
   overall_mood: string;
   narrative_arc: string;
-  character_consistency?: string;
 }
 
 export class DirectorAgent {
@@ -45,7 +44,6 @@ Provide a JSON response with:
 - pacing_notes: (Exact rhythmic instructions: e.g. "Sync cuts to sub-bass peaks", "Gradual slow-motion ramps")
 - overall_mood: (High-level psychological vibe)
 - narrative_arc: (The visual "journey" from start to finish)
-- character_consistency: (A detailed, stable description of any recurring person or object. Essential for AI consistency.)
 
 Output ONLY valid JSON.`;
 

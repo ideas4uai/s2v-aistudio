@@ -340,10 +340,6 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       await updateProgress(project, 'AI is drafting the script and visual direction...', 10);
       const directorPlan = await withRetry(() => DirectorAgent.planVideo(project!), { retries: 2 });
       console.log(`[Orchestrator] DirectorAgent.planVideo complete`);
-      if (directorPlan.character_consistency && directorPlan.character_consistency !== 'N/A') {
-        project.character_description = directorPlan.character_consistency;
-      }
-      
       console.log(`[Orchestrator] Phase: scripting — calling ScriptwriterAgent.writeScript`);
       await updateProgress(project, 'Refining narrative structure...', 15);
       const { rawScript, scenes: drafts } = await withRetry(() => ScriptwriterAgent.writeScript(project!, directorPlan), { retries: 2 });

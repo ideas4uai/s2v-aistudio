@@ -142,13 +142,11 @@ export const AIService = {
     const geminiModel = options?.model || 'gemini-3.1-flash-image-preview';
     try {
       console.log(`[ImageGen] Trying ${geminiModel}...`);
-      const cleanedPrompt = prompt
-        .replace(/\[CHAR:[^\]]*\]/g, '')
-        .replace(/\[.*?\]/g, '')
-        .trim();
+      const qualitySuffix = 'photorealistic, high quality, 8K';
+      const finalPrompt = prompt.includes('photorealistic') ? prompt : `${prompt}, ${qualitySuffix}`;
       const response = await ai.models.generateContent({
         model: geminiModel,
-        contents: cleanedPrompt,
+        contents: finalPrompt,
         config: { responseModalities: ['IMAGE', 'TEXT'] }
       });
       const candidate = response.candidates?.[0];

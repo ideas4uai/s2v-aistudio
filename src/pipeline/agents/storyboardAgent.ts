@@ -4,77 +4,59 @@ import { DirectorPlan } from './directorAgent.js';
 import { AIService } from '../../services/aiService.js';
 import { Scene } from '../../models/scene.js';
 
+const SHOT_TYPES = ['wide shot', 'medium shot', 'close-up', 'detail shot', 'over-shoulder shot'];
+
 export const StoryboardAgent = {
   expandVisuals: async (project: Project, plan: DirectorPlan, drafts: any[]): Promise<Scene[]> => {
-    console.log(`[StoryboardAgent] Path: Expanding ${drafts.length} scenes with AI...`);
-    
-    const worldContext = `
-STYLE: ${plan.visual_style}
-COLOR BLOSSOM: ${plan.color_palette}
-CAMERA: ${plan.camera_language}
+    console.log(`[StoryboardAgent] Expanding ${drafts.length} scenes with narration-anchored prompts...`);
 
-CHARACTERS IN WORLD:
-${project.world_entities?.characters?.map(c => `- ${c.name}: ${c.prompt}`).join('\n') || 'N/A'}
-
-LOCATIONS IN WORLD:
-${project.world_entities?.locations?.map(l => `- ${l.name}: ${l.prompt}`).join('\n') || 'N/A'}
-`;
-
-    const scenes: Scene[] = [];
-    
-    // Process scenes in parallel for speed
     const expandedResults = await Promise.all(drafts.map(async (draft, idx) => {
-      const prompt = `You are a Visual Storyboard Artist. Expand this scene description into a high-quality, descriptive visual prompt for AI image generation.
+      const shotType = SHOT_TYPES[idx % SHOT_TYPES.length];
 
-      Topic: "${project.topic}"
-      Scene Narration: "${draft.narration}"
-      Draft Visual: "${draft.visual}"
-      Scene position: ${idx + 1} of ${drafts.length}
+      const expansionPrompt = `You are a visual director creating image prompts for an AI image generator.
 
-      ### WORLD CONTEXT:
-      ${worldContext}
+TOPIC: ${project.topic}
+NARRATION (what is being spoken): "${draft.narration}"
+SHOT TYPE FOR THIS SCENE: ${shotType}
 
-      ### RULES:
-      1. Reference specific character physical traits from the WORLD CONTEXT by name.
-      2. Ensure the visual style "${plan.visual_style}" is heavily emphasized.
-      3. Use descriptive lighting terms (e.g., "Rembrandt lighting", "Volumetric fog", "Golden hour").
-      4. Avoid words like "photorealistic" or "ultra-detailed". Use specific descriptors.
-      5. Output ONLY the expanded prompt, max 60 words.
-      6. This is scene ${idx + 1} of ${drafts.length} — choose a DIFFERENT camera angle and shot type than adjacent scenes. Cycle through: wide establishing shot, medium shot, close-up, over-the-shoulder, aerial/bird's eye, low-angle hero shot.
-      7. The visual MUST directly reflect this specific narration action — do not reuse the same composition from other scenes.
-      8. CRITICAL: Generate an image that DIRECTLY shows what the narration is talking about. If narration mentions Instagram → show phones, social media feeds, influencers. If learning → show students, books, classrooms. NEVER generate generic landscapes or unrelated imagery.`;
-      
+Your job: Write a single image generation prompt that shows EXACTLY what the narration is describing.
+
+RULES:
+1. The image must be a LITERAL representation of the narration content. If narration says "Instagram", show a phone with Instagram. If it says "students learning", show students in a classroom.
+2. Never generate landscapes, nature, or abstract art unless the narration explicitly mentions them.
+3. Always specify: subject, action, environment, lighting.
+4. Always end with: "photorealistic, 9:16 vertical, cinematic lighting, sharp focus"
+5. Max 50 words total.
+6. Do NOT mention any character names or story archetypes.
+
+FEW-SHOT EXAMPLES:
+Narration: "Instagram has 2 billion daily users"
+Prompt: "Close-up of smartphone screen showing Instagram feed with photos and reels, person's thumb scrolling, soft bokeh background, social media notification bubbles floating, photorealistic, 9:16 vertical, cinematic lighting, sharp focus"
+
+Narration: "Most students fail because they never practice"
+Prompt: "Student sitting at desk surrounded by textbooks looking frustrated, pen down, head in hands, warm study lamp light, realistic classroom background, photorealistic, 9:16 vertical, cinematic lighting, sharp focus"
+
+Narration: "The human brain processes images 60,000 times faster than text"
+Prompt: "Split screen: left side dense text document, right side colorful brain with glowing neural connections, scientific visualization style, deep blue background, photorealistic, 9:16 vertical, cinematic lighting, sharp focus"
+
+Narration: "Every successful YouTuber posts consistently"
+Prompt: "Content creator at modern desk setup with ring light and camera recording, multiple monitors showing YouTube analytics with upward trending graphs, motivated expression, photorealistic, 9:16 vertical, cinematic lighting, sharp focus"
+
+Now write the image prompt for this narration:
+"${draft.narration}"
+
+Return ONLY the image prompt. No explanation, no preamble, no quotes.`;
+
       try {
-        console.log(`[StoryboardAgent] Expanding scene ${idx + 1}/${drafts.length}...`);
-        // Add a slight staggered delay to avoid instant burst if rate limits are tight
+        console.log(`[StoryboardAgent] Expanding scene ${idx + 1}/${drafts.length} (${shotType})...`);
         await new Promise(resolve => setTimeout(resolve, idx * 200));
-        
-        const expandedPrompt = await AIService.generateText(prompt, { task: 'visual_expansion' });
-        
-        let finalPrompt = `Topic: ${project.topic}. Narration: "${draft.narration}". ` + expandedPrompt.trim();
-        if (plan.character_consistency && plan.character_consistency !== 'N/A') {
-          const raw: any = plan.character_consistency;
-          let charRef: string;
-          if (typeof raw === 'object' && raw !== null) {
-            const name = (raw.name || '').trim();
-            const styleSnippet = raw.style ? raw.style.split(/\s+/).slice(0, 5).join(' ') : '';
-            charRef = styleSnippet ? `${name}, ${styleSnippet}` : name;
-          } else {
-            charRef = String(raw).split(/\s+/).slice(0, 8).join(' ');
-          }
-          if (charRef) finalPrompt = `[CHAR: ${charRef}] ${finalPrompt}`;
-        }
-        
-        return {
-          ...draft,
-          expandedPrompt: finalPrompt
-        };
+
+        const expandedPrompt = await AIService.generateText(expansionPrompt, { task: 'visual_expansion' });
+
+        return { ...draft, expandedPrompt: expandedPrompt.trim() };
       } catch (e) {
-        console.warn(`[StoryboardAgent] Expansion failed for scene ${idx + 1}, using draft:`, e);
-        return {
-          ...draft,
-          expandedPrompt: draft.visual
-        };
+        console.warn(`[StoryboardAgent] Expansion failed for scene ${idx + 1}, using draft visual:`, e);
+        return { ...draft, expandedPrompt: draft.visual };
       }
     }));
 
@@ -119,4 +101,3 @@ ${project.world_entities?.locations?.map(l => `- ${l.name}: ${l.prompt}`).join('
     });
   }
 };
-
