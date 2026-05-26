@@ -86,14 +86,39 @@ Provide the output in JSON format exactly like this:
         }
       }
 
-      const result = { rawScript: parsed.rawScript || "", scenes: parsed.scenes || [] };
-      const totalWords = result.scenes.reduce((sum: number, s: any) =>
-        sum + (s.narration || '').split(' ').length, 0);
+      let scenes: any[] = parsed.scenes || [];
+      const totalWords = scenes.reduce((sum: number, s: any) =>
+        sum + (s.narration || '').split(' ').filter(Boolean).length, 0);
       console.log(`[Scriptwriter] Words: ${totalWords} / target: ${targetWords}`);
-      if (Math.abs(totalWords - targetWords) > targetWords * 0.2) {
-        console.warn('[Scriptwriter] Word count off >20%, consider retry');
+
+      if (totalWords < targetWords * 0.8) {
+        console.warn(`[Scriptwriter] Only ${totalWords} words, target ${targetWords}. Requesting expansion...`);
+        const expandPrompt = `The following video script is too short (${totalWords} words, need ${targetWords}).
+Expand each scene's narration to be longer and more detailed.
+Keep the same scene structure, titles, and visual prompts — only expand the narration text.
+Add more explanation, examples, and vivid detail to reach ${targetWords} total words.
+Script: ${JSON.stringify(scenes)}
+Return ONLY a valid JSON array of scenes in the exact same format, no markdown, no extra keys.`;
+        try {
+          const expandResponse = await AIService.generateText(expandPrompt, { task: 'script' });
+          let expandedRaw = expandResponse.replace(/```json\n?|```/g, '').trim();
+          const arrStart = expandedRaw.indexOf('[');
+          const arrEnd   = expandedRaw.lastIndexOf(']');
+          if (arrStart !== -1 && arrEnd !== -1) {
+            const expandedScenes = JSON.parse(expandedRaw.substring(arrStart, arrEnd + 1));
+            if (Array.isArray(expandedScenes) && expandedScenes.length > 0) {
+              scenes = expandedScenes;
+              const expandedWords = scenes.reduce((sum: number, s: any) =>
+                sum + (s.narration || '').split(' ').filter(Boolean).length, 0);
+              console.log(`[Scriptwriter] Expanded to ${expandedWords} words`);
+            }
+          }
+        } catch (expandErr) {
+          console.warn('[Scriptwriter] Expansion call failed, using original:', expandErr);
+        }
       }
-      return result;
+
+      return { rawScript: parsed.rawScript || "", scenes };
     } catch (e) {
       console.error('[ScriptwriterAgent] Failed:', e);
       throw e;
