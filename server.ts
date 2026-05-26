@@ -200,6 +200,26 @@ async function startServer() {
     res.json({ status: 'ok', version: '1.0.0' });
   });
 
+  app.get('/api/test-image', async (req, res) => {
+    try {
+      const { AIService } = await import('./src/services/aiService.js');
+      const base64 = await AIService.generateImageBase64(
+        'A simple red apple on a white table, photorealistic'
+      );
+      res.json({
+        success: true,
+        sizeKB: Math.round(base64.length * 0.75 / 1024)
+      });
+    } catch (err: any) {
+      res.json({
+        success: false,
+        error: err.message,
+        status: err.status
+      });
+    }
+  });
+
+
   // Error handling middleware
   app.use(async (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     console.error('API Error:', err);

@@ -137,13 +137,40 @@ export const AIService = {
       : `${prompt}, photorealistic, cinematic lighting, sharp focus`;
     const finalPrompt = `${qualityPrompt}. Vertical 9:16 portrait orientation.`;
 
-    // Provider 1: Fal.ai FLUX.1 schnell (primary - best quality)
+    // Provider 1: Imagen 4 Fast via AI Studio key (primary - confirmed working)
+    const imagenApiKey = getGeminiKey() || process.env.GEMINI_API_KEY;
+    if (imagenApiKey) {
+      try {
+        console.log('[ImageGen] Trying Imagen 4 Fast...');
+        const { GoogleGenAI } = await import('@google/genai');
+        const imagenAI = new GoogleGenAI({ apiKey: imagenApiKey });
+        const imagenResponse = await imagenAI.models.generateImages({
+          model: 'imagen-4.0-fast-generate-001',
+          prompt: finalPrompt,
+          config: {
+            numberOfImages: 1,
+            aspectRatio: '9:16',
+          }
+        });
+        const bytes = imagenResponse.generatedImages?.[0]?.image?.imageBytes;
+        if (!bytes) throw new Error('No image bytes');
+        const base64 = bytes as string;
+        console.log('[ImageGen] Imagen 4 Fast success! Size:', Math.round(base64.length * 0.75 / 1024), 'KB');
+        return base64;
+      } catch (e: any) {
+        console.warn('[ImageGen] Imagen 4 Fast failed:', e.message, 'status:', e.status);
+      }
+    }
+
+    // Provider 2: Fal.ai FLUX.1 schnell
     if (process.env.FAL_API_KEY) {
       try {
+        console.log('[ImageGen] FAL_API_KEY present:', !!process.env.FAL_API_KEY, 'prefix:', process.env.FAL_API_KEY?.substring(0, 8));
         console.log('[ImageGen] Trying Fal.ai FLUX.1...');
-        const { fal } = await import('@fal-ai/client');
-        fal.config({ credentials: process.env.FAL_API_KEY });
-        const result = await fal.subscribe('fal-ai/flux/schnell', {
+        const falModule = await import('@fal-ai/client');
+        const falClient = (falModule as any).fal || (falModule as any).default || falModule;
+        falClient.config({ credentials: process.env.FAL_API_KEY });
+        const result = await falClient.subscribe('fal-ai/flux/schnell', {
           input: {
             prompt: finalPrompt,
             image_size: { width: 1080, height: 1920 },
@@ -161,27 +188,37 @@ export const AIService = {
         console.log('[ImageGen] Fal.ai success! Size:', Math.round(base64.length * 0.75 / 1024), 'KB');
         return base64;
       } catch (e: any) {
-        console.warn('[ImageGen] Fal.ai failed:', e.message);
+        console.warn('[ImageGen] Fal.ai failed:', e.message, 'status:', e.status, 'body:', JSON.stringify(e.body || e.response || {}));
       }
     }
 
-    // Provider 2: Together AI FLUX.1 schnell-Free
+    // Provider 3: Together AI FLUX.1 schnell-Free
     if (process.env.TOGETHER_API_KEY) {
       try {
         console.log('[ImageGen] Trying Together AI...');
-        const Together = (await import('together-ai')).default;
-        const together = new Together({ apiKey: process.env.TOGETHER_API_KEY });
-        const response = await (together.images as any).create({
-          model: 'black-forest-labs/FLUX.1-schnell-Free',
-          prompt: finalPrompt,
-          width: 1080,
-          height: 1920,
-          steps: 4,
-          n: 1,
-          response_format: 'base64'
-        } as any);
-        const base64 = (response.data[0] as any)?.b64_json;
-        if (!base64) throw new Error('No base64 data');
+        const togetherRes = await fetch(
+          'https://api.together.xyz/v1/images/generations',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${process.env.TOGETHER_API_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'black-forest-labs/FLUX.1-schnell-Free',
+              prompt: finalPrompt,
+              width: 1080,
+              height: 1920,
+              steps: 4,
+              n: 1,
+              response_format: 'b64_json'
+            })
+          }
+        );
+        const togetherData = await togetherRes.json();
+        if (!togetherRes.ok) throw new Error(togetherData.error?.message || `HTTP ${togetherRes.status}`);
+        const base64 = togetherData.data?.[0]?.b64_json;
+        if (!base64) throw new Error('No b64_json in response');
         console.log('[ImageGen] Together AI success! Size:', Math.round(base64.length * 0.75 / 1024), 'KB');
         return base64;
       } catch (e: any) {
@@ -189,7 +226,7 @@ export const AIService = {
       }
     }
 
-    // Provider 3: Gemini 2.5 flash image (when quota available)
+    // Provider 4: Gemini 2.5 flash image (when quota available)
     const apiKey = getGeminiKey('image') || getGeminiKey();
     if (apiKey) {
       try {
@@ -217,7 +254,7 @@ export const AIService = {
       }
     }
 
-    // Provider 4: Picsum (always works)
+    // Provider 5: Picsum (always works)
     throw new Error('All AI providers failed - use Picsum fallback');
   },
   clearQuotaFlags: () => {}
