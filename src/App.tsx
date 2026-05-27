@@ -22,7 +22,6 @@ export default function App() {
                 <Route path="/projects/new" element={<CreateProject />} />
                 <Route path="/projects/:id" element={<ProjectDetail />} />
                 <Route path="/projects/:id/edit" element={<ProjectEditor />} />
-                <Route path="/universes/new" element={<UniverseEditor />} />
                 <Route path="/universes/:id" element={<UniverseEditor />} />
               </Routes>
             </Layout>
