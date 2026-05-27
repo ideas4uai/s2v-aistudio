@@ -607,21 +607,17 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
 export async function cleanupAssets(project: Project) {
   if (project.status !== 'completed') return;
   console.log(`[Orchestrator] Cleaning up intermediate assets for project ${project.project_id}`);
-  
+
+  const shouldDelete = (path: string) =>
+    path.includes('_audio.wav') ||
+    path.includes('_segment.mp4');
+
   for (const scene of project.scenes || []) {
      try {
-       // Delete scene audio
-       if (scene.narration_path?.startsWith('http')) {
+       if (scene.narration_path?.startsWith('http') && shouldDelete(scene.narration_path)) {
           await FirestoreService.deleteAssetByUrl(scene.narration_path);
        }
-       // Delete scene visual images
-       for (const visual of scene.visuals || []) {
-          if (visual.asset_path?.startsWith('http')) {
-             await FirestoreService.deleteAssetByUrl(visual.asset_path);
-          }
-       }
-       // Delete scene segments if they were uploaded
-       if (scene.rendered_path?.startsWith('http')) {
+       if (scene.rendered_path?.startsWith('http') && shouldDelete(scene.rendered_path)) {
           await FirestoreService.deleteAssetByUrl(scene.rendered_path);
        }
      } catch(e) {
