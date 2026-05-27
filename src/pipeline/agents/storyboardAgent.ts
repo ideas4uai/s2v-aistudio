@@ -110,7 +110,14 @@ Total duration of all frames must equal ${sceneDuration} seconds.`;
           } catch (parseErr) {
             console.warn(`[StoryboardAgent] Multi-frame parse failed for scene ${idx + 1}, falling back to single frame:`, parseErr);
           }
-          return { ...draft, expandedPrompt: frames?.[0]?.prompt || draft.visual, frames };
+          let referenceImageUrl: string | undefined;
+          if (isStoryEpisode) {
+            const primaryChar = featuredCharacters.find((c: any) =>
+              draft.narration?.toLowerCase().includes(c.name.toLowerCase())
+            ) || featuredCharacters[0];
+            referenceImageUrl = primaryChar?.referenceImageUrl;
+          }
+          return { ...draft, expandedPrompt: frames?.[0]?.prompt || draft.visual, frames, referenceImageUrl };
         }
 
         const expandedPrompt = await AIService.generateText(fullExpansionPrompt, { task: 'visual_expansion' });
@@ -147,6 +154,7 @@ Total duration of all frames must equal ${sceneDuration} seconds.`;
           status: 'pending',
           cache_key: '',
           ...(s.frames ? { frames: s.frames } : {}),
+          ...(s.referenceImageUrl ? { referenceImageUrl: s.referenceImageUrl } : {}),
         }],
         duration_target: s.duration || 5,
         duration_actual: null,

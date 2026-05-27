@@ -47,6 +47,7 @@ export interface Visual {
   asset_path?: string;
   rendered_path?: string;
   frames?: VisualFrame[];
+  referenceImageUrl?: string;
 }
 
 export interface VisualSegment {

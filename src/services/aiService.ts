@@ -130,6 +130,18 @@ export const AIService = {
     const orientationHint = isLandscape ? 'Horizontal 16:9 landscape orientation.' : 'Vertical 9:16 portrait orientation.';
     const finalPrompt = `${qualityPrompt}. ${orientationHint}`;
 
+    const referenceImageUrl = options?.referenceImageUrl as string | undefined;
+    let referenceImageBytes: string | undefined;
+    if (referenceImageUrl) {
+      try {
+        const res = await fetch(referenceImageUrl);
+        if (res.ok) referenceImageBytes = Buffer.from(await res.arrayBuffer()).toString('base64');
+        console.log('[ImageGen] Reference image loaded for character consistency');
+      } catch (e) {
+        console.warn('[ImageGen] Could not load reference image:', e);
+      }
+    }
+
     // Provider 1: Imagen 4 Fast via AI Studio key (primary - confirmed working)
     let imagenApiKey = '';
     try { imagenApiKey = getKeyForTask('image'); } catch { /* falls through to next provider */ }
@@ -144,6 +156,12 @@ export const AIService = {
           config: {
             numberOfImages: 1,
             aspectRatio,
+            ...(referenceImageBytes ? {
+              referenceImages: [{
+                referenceType: 'REFERENCE_TYPE_STYLE',
+                referenceImage: { bytesBase64Encoded: referenceImageBytes }
+              }]
+            } : {})
           }
         });
         const bytes = imagenResponse.generatedImages?.[0]?.image?.imageBytes;

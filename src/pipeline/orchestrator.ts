@@ -528,6 +528,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
            motion_instruction: frame.motion,
            status: 'pending',
            cache_key: generateAssetHash(frame.prompt, visual.asset_type, project.style_profile),
+           ...(visual.referenceImageUrl ? { referenceImageUrl: visual.referenceImageUrl } : {}),
          };
          const localAsset = await withRetry(() => generateAsset(frameVisual, frameVisual.cache_key, project.mode, project), { retries: 2 });
          if (localAsset) {
