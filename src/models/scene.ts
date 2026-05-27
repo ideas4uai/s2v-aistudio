@@ -26,6 +26,14 @@ export interface CaptionChunk {
   };
 }
 
+export interface VisualFrame {
+  frame_id: string;
+  prompt: string;
+  asset_path?: string;
+  duration: number;
+  motion: string;
+}
+
 export interface Visual {
   visual_id: string;
   prompt: string;
@@ -38,6 +46,7 @@ export interface Visual {
   fallback_used?: boolean;
   asset_path?: string;
   rendered_path?: string;
+  frames?: VisualFrame[];
 }
 
 export interface VisualSegment {

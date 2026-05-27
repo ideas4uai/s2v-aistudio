@@ -2,13 +2,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { Project } from '../../models/project.js';
 import { DirectorPlan } from './directorAgent.js';
 import { AIService } from '../../services/aiService.js';
-import { Scene } from '../../models/scene.js';
+import { Scene, VisualFrame } from '../../models/scene.js';
 
 const SHOT_TYPES = ['wide shot', 'medium shot', 'close-up', 'detail shot', 'over-shoulder shot'];
 
 export const StoryboardAgent = {
   expandVisuals: async (project: Project, plan: DirectorPlan, drafts: any[]): Promise<Scene[]> => {
-    console.log(`[StoryboardAgent] Expanding ${drafts.length} scenes with narration-anchored prompts...`);
+    const isStoryEpisode = project.projectType === 'story_episode' && !!project.universe;
+    console.log(`[StoryboardAgent] Expanding ${drafts.length} scenes (${isStoryEpisode ? 'story episode - multi-frame' : 'standard'})...`);
 
     const expandedResults = await Promise.all(drafts.map(async (draft, idx) => {
       const shotType = SHOT_TYPES[idx % SHOT_TYPES.length];
@@ -65,8 +66,54 @@ Return ONLY the image prompt. No explanation, no preamble, no quotes.`;
         console.log(`[StoryboardAgent] Expanding scene ${idx + 1}/${drafts.length} (${shotType})...`);
         await new Promise(resolve => setTimeout(resolve, idx * 200));
 
-        const expandedPrompt = await AIService.generateText(fullExpansionPrompt, { task: 'visual_expansion' });
+        if (isStoryEpisode) {
+          const sceneDuration = draft.duration || 7;
+          const multiFramePrompt = `You are a visual director creating image prompts for an AI image generator.
 
+TOPIC: ${project.topic}
+NARRATION (what is being spoken): "${draft.narration}"
+SHOT TYPE FOR THIS SCENE: ${shotType}
+${characterContext ? `\nCHARACTER VISUAL RULES:\n${characterContext}\n` : ''}
+Generate 3 visual frames for this scene showing character progression. Each frame shows a different moment in the same scene.
+
+Rules:
+1. Each frame must be a LITERAL representation of the narration content.
+2. Always specify: subject, action, environment, lighting.
+3. Include character appearance details where relevant.
+4. End every prompt with: "photorealistic, 9:16 vertical, cinematic lighting, sharp focus"
+5. Max 50 words per prompt.
+
+Return ONLY a JSON array (no extra text):
+[
+  { "prompt": "...", "motion": "zoom_in", "duration": 3 },
+  { "prompt": "...", "motion": "pan_right", "duration": 2 },
+  { "prompt": "...", "motion": "zoom_out", "duration": 2 }
+]
+Total duration of all frames must equal ${sceneDuration} seconds.`;
+
+          const rawResponse = await AIService.generateText(multiFramePrompt, { task: 'visual_expansion' });
+          let frames: VisualFrame[] | undefined;
+          try {
+            const arrStart = rawResponse.indexOf('[');
+            const arrEnd = rawResponse.lastIndexOf(']');
+            if (arrStart !== -1 && arrEnd !== -1) {
+              const parsed = JSON.parse(rawResponse.substring(arrStart, arrEnd + 1));
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                frames = parsed.map((f: any) => ({
+                  frame_id: uuidv4(),
+                  prompt: String(f.prompt || draft.visual),
+                  duration: Number(f.duration) || sceneDuration / 3,
+                  motion: String(f.motion || 'zoom_in'),
+                }));
+              }
+            }
+          } catch (parseErr) {
+            console.warn(`[StoryboardAgent] Multi-frame parse failed for scene ${idx + 1}, falling back to single frame:`, parseErr);
+          }
+          return { ...draft, expandedPrompt: frames?.[0]?.prompt || draft.visual, frames };
+        }
+
+        const expandedPrompt = await AIService.generateText(fullExpansionPrompt, { task: 'visual_expansion' });
         return { ...draft, expandedPrompt: expandedPrompt.trim() };
       } catch (e) {
         console.warn(`[StoryboardAgent] Expansion failed for scene ${idx + 1}, using draft visual:`, e);
@@ -99,6 +146,7 @@ Return ONLY the image prompt. No explanation, no preamble, no quotes.`;
           motion_instruction: motion,
           status: 'pending',
           cache_key: '',
+          ...(s.frames ? { frames: s.frames } : {}),
         }],
         duration_target: s.duration || 5,
         duration_actual: null,

@@ -34,7 +34,45 @@ async function guardedExec(command: string, signal?: AbortSignal) {
   });
 }
 
+async function renderMultiFrameVisual(visual: any, project: any, signal?: AbortSignal): Promise<string> {
+  const tmpDir = path.join(os.tmpdir(), 'ais-renderer');
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+
+  const outputPath = path.join(tmpDir, `${visual.visual_id}_multiframe.mp4`);
+  if (fs.existsSync(outputPath)) return outputPath;
+
+  const frameClips: string[] = [];
+  for (const frame of visual.frames!) {
+    const frameVisual = {
+      ...visual,
+      visual_id: frame.frame_id,
+      asset_path: frame.asset_path,
+      duration_target: frame.duration,
+      motion_instruction: frame.motion,
+      frames: undefined,
+    };
+    const clip = await renderVisualClip(frameVisual, project, signal);
+    if (clip) frameClips.push(clip);
+  }
+
+  if (frameClips.length === 0) return '';
+  if (frameClips.length === 1) return frameClips[0];
+
+  const listPath = path.join(tmpDir, `${visual.visual_id}_frames.txt`);
+  fs.writeFileSync(listPath, frameClips.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join('\n'));
+
+  await guardedExec(
+    `"${ffmpeg}" -f concat -safe 0 -i "${listPath}" -c copy -y "${outputPath}"`,
+    signal
+  );
+  return outputPath;
+}
+
 export const renderVisualClip = async (visual: any, project: any, signal?: AbortSignal) => {
+  if (visual.frames && visual.frames.length > 1) {
+    return renderMultiFrameVisual(visual, project, signal);
+  }
+
   const tmpDir = path.join(os.tmpdir(), 'ais-renderer');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
   

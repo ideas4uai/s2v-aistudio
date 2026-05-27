@@ -1,6 +1,6 @@
 import { Project } from '../models/project.js';
 import { StyleProfile } from '../models/types.js';
-import { Scene, Visual } from '../models/scene.js';
+import { Scene, Visual, VisualFrame } from '../models/scene.js';
 import { calculateQualityScore } from '../services/qualityService.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -511,36 +511,63 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   const visualsPromise = Promise.all(scene.visuals.map(async (visual, i) => {
      if (visual.status === 'completed') return;
      visual.status = 'processing';
-     
+
      if (!visual.cache_key) {
         visual.cache_key = generateVisualHash(visual.prompt, visual.asset_type, visual.duration_target, visual.motion_instruction || 'none', project.mode, project.style_profile);
      }
-     
-     console.log(`[Orchestrator] Generating image for scene ${scene.scene_id}, visual ${i} (${visual.asset_type})`);
-     let localAsset = await withRetry(() => generateAsset(visual, visual.cache_key, project.mode, project), { retries: 2 });
-     console.log(`[Orchestrator] Image complete for scene ${scene.scene_id}, visual ${i}: ${localAsset ? 'ok' : 'null'}`);
-     
-     if (localAsset) {
-        try {
-           const isVideo = localAsset.endsWith('.mp4');
-           const fileData = await fs.promises.readFile(localAsset);
-           const remoteUrl = await FirestoreService.uploadAsset(project.project_id!, `${visual.visual_id}${isVideo ? '.mp4' : '.png'}`, fileData, isVideo ? 'video/mp4' : 'image/png');
-           visual.asset_path = remoteUrl;
-           if (i === 0 && !isVideo) scene.image_path = remoteUrl;
-        } catch(e) {
-           visual.asset_path = localAsset;
-           if (i === 0 && !localAsset.endsWith('.mp4')) scene.image_path = localAsset;
-        }
+
+     if (visual.frames && visual.frames.length > 1) {
+       // Multi-frame: generate each frame's asset in parallel
+       console.log(`[Orchestrator] Generating ${visual.frames.length} frames for scene ${scene.scene_id}, visual ${i}`);
+       await Promise.all(visual.frames.map(async (frame: VisualFrame) => {
+         const frameVisual: Visual = {
+           visual_id: frame.frame_id,
+           prompt: frame.prompt,
+           asset_type: visual.asset_type,
+           duration_target: frame.duration,
+           motion_instruction: frame.motion,
+           status: 'pending',
+           cache_key: generateAssetHash(frame.prompt, visual.asset_type, project.style_profile),
+         };
+         const localAsset = await withRetry(() => generateAsset(frameVisual, frameVisual.cache_key, project.mode, project), { retries: 2 });
+         if (localAsset) {
+           try {
+             const fileData = await fs.promises.readFile(localAsset);
+             const remoteUrl = await FirestoreService.uploadAsset(project.project_id!, `${frame.frame_id}.png`, fileData, 'image/png');
+             frame.asset_path = remoteUrl;
+           } catch(e) {
+             frame.asset_path = localAsset;
+           }
+         }
+       }));
+       if (i === 0 && visual.frames[0]?.asset_path) scene.image_path = visual.frames[0].asset_path;
+     } else {
+       // Single-frame path (standard behavior)
+       console.log(`[Orchestrator] Generating image for scene ${scene.scene_id}, visual ${i} (${visual.asset_type})`);
+       let localAsset = await withRetry(() => generateAsset(visual, visual.cache_key, project.mode, project), { retries: 2 });
+       console.log(`[Orchestrator] Image complete for scene ${scene.scene_id}, visual ${i}: ${localAsset ? 'ok' : 'null'}`);
+       if (localAsset) {
+          try {
+             const isVideo = localAsset.endsWith('.mp4');
+             const fileData = await fs.promises.readFile(localAsset);
+             const remoteUrl = await FirestoreService.uploadAsset(project.project_id!, `${visual.visual_id}${isVideo ? '.mp4' : '.png'}`, fileData, isVideo ? 'video/mp4' : 'image/png');
+             visual.asset_path = remoteUrl;
+             if (i === 0 && !isVideo) scene.image_path = remoteUrl;
+          } catch(e) {
+             visual.asset_path = localAsset;
+             if (i === 0 && !localAsset.endsWith('.mp4')) scene.image_path = localAsset;
+          }
+       }
      }
-     
-     // Render visual clip
+
+     // Render visual clip — handles both single and multi-frame internally
      const renderedLocal = await renderVisualClip(visual, project, signal);
-     
+
      // Quick cancellation check after render
      if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
 
      if (renderedLocal) {
-        visual.rendered_path = renderedLocal; // We keep this local path for ffmpeg stitching internally!
+        visual.rendered_path = renderedLocal;
      }
      visual.status = 'completed';
   }));
