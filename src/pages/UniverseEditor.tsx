@@ -92,14 +92,14 @@ export function UniverseEditor() {
     if (!char.imagePrompt) return;
     setGeneratingImage(char.id);
     try {
-      const res = await authenticatedFetch('/api/visuals/generate', {
+      const res = await authenticatedFetch(`/api/universes/${id}/characters/${char.id}/image`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: char.imagePrompt }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      const url = data.url || data.imageUrl;
+      const url = data.imageUrl;
       if (url) updateCharacter(char.id, { referenceImageUrl: url });
     } catch (e) {
       console.error('Image generation failed:', e);

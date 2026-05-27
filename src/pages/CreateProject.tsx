@@ -101,6 +101,17 @@ export function CreateProject() {
   };
 
   const selectedUniverse = universes.find(u => u.id === episodeData.universeId);
+
+  useEffect(() => {
+    if (projectType === 'story_episode' && selectedUniverse && episodeData.episodeConcept.trim()) {
+      const episodeLabel = episodeData.episodeNumber ? `Episode ${episodeData.episodeNumber}: ` : '';
+      setFormData(prev => ({
+        ...prev,
+        title: `${selectedUniverse.title} - ${episodeLabel}${episodeData.episodeConcept.trim()}`,
+      }));
+    }
+  }, [projectType, episodeData.universeId, episodeData.episodeNumber, episodeData.episodeConcept]);
+
   const toggleCharacter = (charId: string) => {
     setEpisodeData(prev => ({
       ...prev,

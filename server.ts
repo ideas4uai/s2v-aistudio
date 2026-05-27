@@ -17,7 +17,7 @@ import { quotaRouter } from './src/server/routes/quota.js';
 import { voicesRouter } from './src/server/routes/voices.js';
 import { v4 as uuidv4 } from 'uuid';
 import { verifyIdToken } from './src/server/utils/auth.js';
-import { fdb } from './src/server/db/firestore.js';
+import { fdb, FirestoreService } from './src/server/db/firestore.js';
 import { getPoolStatus } from './src/utils/geminiAuth.js';
 import { requestContext } from './src/server/utils/context.js';
 
@@ -166,6 +166,24 @@ async function startServer() {
   app.get('/api/universes/:id', universeController.get);
   app.put('/api/universes/:id', universeController.update);
   app.delete('/api/universes/:id', universeController.remove);
+
+  app.post('/api/universes/:id/characters/:charId/image', async (req, res) => {
+    const { prompt } = req.body;
+    try {
+      const { AIService } = await import('./src/services/aiService.js');
+      const base64 = await AIService.generateImageBase64(prompt);
+      const buffer = Buffer.from(base64, 'base64');
+      const url = await FirestoreService.uploadAsset(
+        req.params.id,
+        `characters/${req.params.charId}.jpg`,
+        buffer,
+        'image/jpeg'
+      );
+      res.json({ imageUrl: url });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   app.use('/api/jobs', jobsRouter);
   app.use('/api/assets', assetsRouter);
   app.use('/api/visuals', visualsRouter);
