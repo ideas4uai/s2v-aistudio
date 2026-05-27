@@ -1,5 +1,40 @@
 import { Scene } from './scene.js';
 
+export interface StoryCharacter {
+  id: string;
+  name: string;
+  role: 'protagonist' | 'antagonist' | 'supporting' | string;
+  concept: string;
+  appearance: string;
+  personality: string;
+  colorPalette: string;
+  voiceStyle: string;
+  imagePrompt: string;
+  referenceImageUrl?: string;
+}
+
+export interface StoryLocation {
+  id: string;
+  name: string;
+  description: string;
+  imagePrompt: string;
+  mood: string;
+  timeOfDay: 'day' | 'night' | 'any';
+}
+
+export interface StoryBible {
+  projectId: string;
+  title: string;
+  logline: string;
+  world: string;
+  artStyle: string;
+  toneRules: string;
+  episodeStructure: string;
+  recurringElements: string;
+  characters: StoryCharacter[];
+  locations: StoryLocation[];
+}
+
 export interface Project {
   project_id: string;
   userId?: string;
@@ -54,4 +89,9 @@ export interface Project {
   music_track?: string;
   music_volume?: number;
   thumbnail_path?: string;
+  projectType?: 'educational' | 'story_episode' | 'standard';
+  storyBible?: StoryBible;
+  episodeNumber?: number;
+  featuredCharacterIds?: string[];
+  featuredLocationId?: string;
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, Sparkles, Layout } from 'lucide-react';
+import { ArrowLeft, Loader2, Sparkles, Layout, BookOpen } from 'lucide-react';
 import { VoiceCloner } from '../components/VoiceCloner';
 import { authenticatedFetch } from '../utils/api';
 
@@ -9,6 +9,15 @@ export function CreateProject() {
   const [loading, setLoading] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [projectType, setProjectType] = useState<'educational' | 'story_episode' | 'standard'>('educational');
+  const [storyBibles, setStoryBibles] = useState<any[]>([]);
+  const [episodeData, setEpisodeData] = useState({
+    storyBibleId: '',
+    episodeNumber: 1,
+    featuredCharacterIds: [] as string[],
+    featuredLocationId: '',
+    episodeConcept: '',
+  });
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -34,17 +43,23 @@ export function CreateProject() {
       setLoadingTemplates(true);
       try {
         const res = await authenticatedFetch('/api/templates');
-        if (res.ok) {
-          const data = await res.json();
-          setTemplates(data);
-        }
+        if (res.ok) setTemplates(await res.json());
       } catch (error) {
         console.error('Error fetching templates:', error);
       } finally {
         setLoadingTemplates(false);
       }
     };
+    const fetchBibles = async () => {
+      try {
+        const res = await authenticatedFetch('/api/story-bibles');
+        if (res.ok) setStoryBibles(await res.json());
+      } catch (error) {
+        console.error('Error fetching story bibles:', error);
+      }
+    };
     fetchTemplates();
+    fetchBibles();
   }, []);
 
   const applyTemplate = (template: any) => {
@@ -85,14 +100,36 @@ export function CreateProject() {
     }));
   };
 
+  const selectedBible = storyBibles.find(b => b.id === episodeData.storyBibleId);
+  const toggleCharacter = (charId: string) => {
+    setEpisodeData(prev => ({
+      ...prev,
+      featuredCharacterIds: prev.featuredCharacterIds.includes(charId)
+        ? prev.featuredCharacterIds.filter(id => id !== charId)
+        : [...prev.featuredCharacterIds, charId],
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
+      const payload: any = { ...formData, projectType };
+      if (projectType === 'story_episode') {
+        payload.episodeNumber = episodeData.episodeNumber;
+        payload.featuredCharacterIds = episodeData.featuredCharacterIds;
+        payload.featuredLocationId = episodeData.featuredLocationId;
+        if (episodeData.storyBibleId && selectedBible) {
+          payload.storyBible = selectedBible;
+        }
+        if (episodeData.episodeConcept) {
+          payload.description = episodeData.episodeConcept;
+        }
+      }
       const res = await authenticatedFetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const errorText = await res.text();
@@ -126,6 +163,110 @@ export function CreateProject() {
           </h1>
           <p className="text-neutral-500">Define your story and style to generate a short video.</p>
         </div>
+
+        {/* Project type selector */}
+        <div className="p-4 md:p-8 border-b border-neutral-100">
+          <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-wider mb-4">What are you creating?</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {([
+              { value: 'educational', label: 'Educational Short', desc: 'Fact-based, informational video' },
+              { value: 'story_episode', label: 'Story Episode', desc: 'Character-driven story with a Bible' },
+              { value: 'standard', label: 'Standard Video', desc: 'General purpose video' },
+            ] as const).map(type => (
+              <button
+                key={type.value}
+                type="button"
+                onClick={() => setProjectType(type.value)}
+                className={`p-4 rounded-xl border-2 text-left transition-all ${
+                  projectType === type.value ? 'border-indigo-600 bg-indigo-50' : 'border-neutral-200 hover:border-neutral-300'
+                }`}
+              >
+                <span className={`block font-bold text-sm mb-0.5 ${projectType === type.value ? 'text-indigo-700' : 'text-neutral-900'}`}>{type.label}</span>
+                <span className="block text-xs text-neutral-500">{type.desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {projectType === 'story_episode' && (
+          <div className="p-4 md:p-8 border-b border-neutral-100 space-y-5">
+            <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-2">
+              <BookOpen className="w-4 h-4" /> Episode Settings
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-bold text-neutral-700 mb-2">Story Bible</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-sm"
+                  value={episodeData.storyBibleId}
+                  onChange={e => setEpisodeData(prev => ({ ...prev, storyBibleId: e.target.value, featuredCharacterIds: [], featuredLocationId: '' }))}
+                >
+                  <option value="">— Select a Story Bible —</option>
+                  {storyBibles.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
+                </select>
+                {storyBibles.length === 0 && (
+                  <p className="text-xs text-neutral-400 mt-1">No story bibles yet. <a href="/story-bibles/new" className="text-indigo-600 hover:underline">Create one first.</a></p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-neutral-700 mb-2">Episode Number</label>
+                <input
+                  type="number"
+                  min={1}
+                  className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                  value={episodeData.episodeNumber}
+                  onChange={e => setEpisodeData(prev => ({ ...prev, episodeNumber: Number(e.target.value) }))}
+                />
+              </div>
+            </div>
+            {selectedBible && (
+              <>
+                <div>
+                  <label className="block text-sm font-bold text-neutral-700 mb-2">Featured Characters</label>
+                  <div className="flex flex-wrap gap-2">
+                    {(selectedBible.characters || []).map((c: any) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => toggleCharacter(c.id)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                          episodeData.featuredCharacterIds.includes(c.id)
+                            ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                            : 'border-neutral-200 text-neutral-600 hover:border-neutral-300'
+                        }`}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                    {(selectedBible.characters || []).length === 0 && (
+                      <p className="text-xs text-neutral-400">No characters in this bible.</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-neutral-700 mb-2">Featured Location</label>
+                  <select
+                    className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-sm"
+                    value={episodeData.featuredLocationId}
+                    onChange={e => setEpisodeData(prev => ({ ...prev, featuredLocationId: e.target.value }))}
+                  >
+                    <option value="">— Flexible / AI decides —</option>
+                    {(selectedBible.locations || []).map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                </div>
+              </>
+            )}
+            <div>
+              <label className="block text-sm font-bold text-neutral-700 mb-2">Episode Concept</label>
+              <textarea
+                className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-20 text-sm"
+                placeholder="What does this episode show or teach? What's the main conflict or event?"
+                value={episodeData.episodeConcept}
+                onChange={e => setEpisodeData(prev => ({ ...prev, episodeConcept: e.target.value }))}
+              />
+            </div>
+          </div>
+        )}
 
         {templates.length > 0 && (
           <div className="p-4 md:p-8 border-b border-neutral-100">

@@ -22,6 +22,27 @@ export class DirectorAgent {
     };
     const sceneCountHint = sceneCountGuide[targetLength] || sceneCountGuide['60s'];
 
+    const featuredCharacters = project.storyBible && project.featuredCharacterIds?.length
+      ? project.storyBible.characters.filter((c: any) => project.featuredCharacterIds!.includes(c.id))
+      : (project.storyBible?.characters || []);
+    const featuredLocation = project.storyBible && project.featuredLocationId
+      ? project.storyBible.locations.find((l: any) => l.id === project.featuredLocationId)
+      : null;
+
+    const bibleContext = project.storyBible ? `
+STORY UNIVERSE CONTEXT:
+World: ${project.storyBible.world}
+Art Style: ${project.storyBible.artStyle}
+Tone: ${project.storyBible.toneRules}
+Episode Structure: ${project.storyBible.episodeStructure}
+Episode #${project.episodeNumber || 1}
+
+CHARACTERS IN THIS EPISODE:
+${featuredCharacters.map((c: any) => `${c.name} (${c.role}): ${c.personality}`).join('\n')}
+
+LOCATION: ${featuredLocation ? `${featuredLocation.name} — ${featuredLocation.description}` : 'flexible'}
+` : '';
+
     const prompt = `You are an expert AI Video Director. You are designing a visual blueprint for a high-concept video.
 Topic: "${project.topic}"
 Style Profile: ${project.style_profile}
@@ -29,6 +50,7 @@ Hook Strategy: ${project.hook_strategy}
 Pacing Intensity: ${project.pacing_intensity}
 Mode: ${project.mode}
 Target Length: ${targetLength} (plan for ${sceneCountHint})
+${bibleContext}
 
 Your job is to dictate the creative direction so that the Storyboard and Scriptwriter follow a unified vision.
 ### DIRECTIVES:

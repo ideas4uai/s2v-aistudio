@@ -252,6 +252,95 @@ export const FirestoreService = {
     return urlData.publicUrl;
   },
 
+  async saveDocument(collection: string, id: string, data: any) {
+    const token = requestContext.getStore()?.token;
+    if (!token) {
+      console.warn(`[FirestoreService] Cannot save ${collection}/${id}: No auth token`);
+      return;
+    }
+    const docPath = `${collection}/${id}`;
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/${docPath}`;
+    try {
+      const dataToSave = { ...data, updatedAt: new Date().toISOString() };
+      const fields = jsonToFirestore(dataToSave).mapValue.fields;
+      const updateMaskParams = Object.keys(fields).map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+      const { url: authUrl, headers: authHeaders } = withAuth(`${url}?${updateMaskParams}`, token);
+      const res = await fetch(authUrl, {
+        method: 'PATCH',
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: `projects/${projectId}/databases/${databaseId}/documents/${docPath}`, fields })
+      });
+      if (!res.ok) throw new Error(`REST Error ${res.status}: ${await res.text()}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, docPath);
+    }
+  },
+
+  async getDocument(collection: string, id: string) {
+    const token = requestContext.getStore()?.token;
+    if (!token) return null;
+    const docPath = `${collection}/${id}`;
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/${docPath}`;
+    try {
+      const { url: authUrl, headers: authHeaders } = withAuth(url, token);
+      const res = await fetch(authUrl, { headers: authHeaders });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(await res.text());
+      const data: any = await res.json();
+      return firestoreToJson({ mapValue: data });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, docPath);
+    }
+  },
+
+  async listDocuments(collection: string, userId: string) {
+    const token = requestContext.getStore()?.token;
+    if (!token) return [];
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents:runQuery`;
+    try {
+      const { url: authUrl, headers: authHeaders } = withAuth(url, token);
+      const res = await fetch(authUrl, {
+        method: 'POST',
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId: collection }],
+            ...(userId !== 'dev-user' && {
+              where: {
+                fieldFilter: {
+                  field: { fieldPath: 'userId' },
+                  op: 'EQUAL',
+                  value: { stringValue: userId }
+                }
+              }
+            })
+          }
+        })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data: any = await res.json();
+      return data.filter((item: any) => item.document).map((item: any) =>
+        firestoreToJson({ mapValue: item.document })
+      );
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, collection);
+    }
+  },
+
+  async deleteDocument(collection: string, id: string) {
+    const token = requestContext.getStore()?.token;
+    if (!token) return;
+    const docPath = `${collection}/${id}`;
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/${docPath}`;
+    try {
+      const { url: authUrl, headers: authHeaders } = withAuth(url, token);
+      const res = await fetch(authUrl, { method: 'DELETE', headers: authHeaders });
+      if (!res.ok) throw new Error(`REST Error ${res.status}: ${await res.text()}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, docPath);
+    }
+  },
+
   async deleteAssetByUrl(urlStr: string) {
     try {
       // Supabase public URL format:

@@ -47,11 +47,25 @@ Now write the image prompt for this narration:
 
 Return ONLY the image prompt. No explanation, no preamble, no quotes.`;
 
+      const featuredCharacters = project.storyBible && project.featuredCharacterIds?.length
+        ? project.storyBible.characters.filter((c: any) => project.featuredCharacterIds!.includes(c.id))
+        : (project.storyBible?.characters || []);
+
+      const characterContext = featuredCharacters.length > 0
+        ? featuredCharacters.map((c: any) =>
+            `If ${c.name} appears in this scene: ${c.appearance}. Colors: ${c.colorPalette}. Art style: ${project.storyBible?.artStyle || 'photorealistic'}.`
+          ).join(' ')
+        : '';
+
+      const fullExpansionPrompt = characterContext
+        ? `${expansionPrompt}\n\nCHARACTER VISUAL RULES (apply if the scene includes these characters):\n${characterContext}`
+        : expansionPrompt;
+
       try {
         console.log(`[StoryboardAgent] Expanding scene ${idx + 1}/${drafts.length} (${shotType})...`);
         await new Promise(resolve => setTimeout(resolve, idx * 200));
 
-        const expandedPrompt = await AIService.generateText(expansionPrompt, { task: 'visual_expansion' });
+        const expandedPrompt = await AIService.generateText(fullExpansionPrompt, { task: 'visual_expansion' });
 
         return { ...draft, expandedPrompt: expandedPrompt.trim() };
       } catch (e) {
