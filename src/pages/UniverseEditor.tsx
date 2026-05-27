@@ -46,6 +46,7 @@ export function UniverseEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isNew = id === 'new';
+  const isSaved = id && id !== 'new';
 
   const [universe, setUniverse] = useState<any>(emptyUniverse());
   const [activeTab, setActiveTab] = useState<Tab>('overview');
@@ -258,6 +259,11 @@ export function UniverseEditor() {
               >
                 <Plus className="w-4 h-4" /> Add Character
               </button>
+              {!isSaved && (
+                <div className="text-amber-600 text-sm mb-4 p-3 bg-amber-50 rounded-lg">
+                  ⚠️ Save the universe first before generating character reference images.
+                </div>
+              )}
               {(universe.characters || []).map((char: StoryCharacter) => (
                 <div key={char.id} className="border border-neutral-200 rounded-xl overflow-hidden">
                   <div
@@ -331,7 +337,8 @@ export function UniverseEditor() {
                       <div className="flex items-center gap-3">
                         <button
                           onClick={() => generateCharacterImage(char)}
-                          disabled={!char.imagePrompt || generatingImage === char.id}
+                          disabled={!char.imagePrompt || generatingImage === char.id || !isSaved}
+                          title={!isSaved ? 'Save the universe first' : ''}
                           className="flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                         >
                           {generatingImage === char.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
