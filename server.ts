@@ -208,7 +208,7 @@ async function startServer() {
     try {
       const { AIService } = await import('./src/services/aiService.js');
       const base64 = await AIService.generateImageBase64(
-        prompt + ', ultra high quality, establishing shot',
+        prompt + ', ultra high quality, 4K, cinematic establishing shot, wide angle',
         { aspectRatio: '16:9', quality: '4k' }
       );
       const buffer = Buffer.from(base64, 'base64');
@@ -217,6 +217,23 @@ async function startServer() {
         `locations/${req.params.locationId}_${Date.now()}.jpg`,
         buffer,
         'image/jpeg'
+      );
+      res.json({ imageUrl: url });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/universes/:id/locations/:locationId/image/upload', async (req, res) => {
+    const { base64, mimeType } = req.body;
+    try {
+      const buffer = Buffer.from(base64, 'base64');
+      const ext = mimeType === 'image/png' ? 'png' : 'jpg';
+      const url = await FirestoreService.uploadAsset(
+        req.params.id,
+        `locations/${req.params.locationId}_${Date.now()}.${ext}`,
+        buffer,
+        mimeType
       );
       res.json({ imageUrl: url });
     } catch (err: any) {

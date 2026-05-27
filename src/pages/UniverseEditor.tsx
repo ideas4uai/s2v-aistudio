@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, Loader2, Image as ImageIcon, BookOpen, Users, MapPin, Sliders, Download, Upload } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Loader2, Image as ImageIcon, BookOpen, Users, MapPin, Sliders, Download, Upload, Sparkles } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 import { v4 as uuidv4 } from 'uuid';
 import type { Universe, StoryCharacter, StoryLocation } from '../models/project';
@@ -66,6 +66,7 @@ export function UniverseEditor() {
   const [generatingImage, setGeneratingImage] = useState<string | null>(null);
   const [generatingLocationImage, setGeneratingLocationImage] = useState<string | null>(null);
   const [lightboxChar, setLightboxChar] = useState<StoryCharacter | null>(null);
+  const [locationLightbox, setLocationLightbox] = useState<StoryLocation | null>(null);
 
   useEffect(() => {
     if (isNew) {
@@ -203,6 +204,62 @@ export function UniverseEditor() {
       console.error('Image generation failed:', e);
     } finally {
       setGeneratingImage(null);
+    }
+  };
+
+  const handleDownloadLocationImage = async (loc: StoryLocation) => {
+    if (!loc.referenceImageUrl) return;
+    try {
+      const res = await fetch(loc.referenceImageUrl);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `${loc.name}_location.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      window.open(loc.referenceImageUrl, '_blank');
+    }
+  };
+
+  const handleUploadLocationImage = async (loc: StoryLocation, file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { alert('Please upload an image file'); return; }
+    if (file.size > 10 * 1024 * 1024) { alert('Image must be under 10MB'); return; }
+    setGeneratingLocationImage(loc.id);
+    try {
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.readAsDataURL(file);
+      });
+      const res = await authenticatedFetch(`/api/universes/${id}/locations/${loc.id}/image/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64, mimeType: file.type }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      if (data.imageUrl) {
+        const bustUrl = `${data.imageUrl}?t=${Date.now()}`;
+        updateLocation(loc.id, { referenceImageUrl: bustUrl });
+        const updatedLocs = universe.locations.map((l: StoryLocation) =>
+          l.id === loc.id ? { ...l, referenceImageUrl: data.imageUrl } : l
+        );
+        await authenticatedFetch(`/api/universes/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...universe, locations: updatedLocs }),
+        });
+        console.log('[Universe] Location image uploaded:', loc.name, data.imageUrl);
+      }
+    } catch (err: any) {
+      alert('Upload failed: ' + err.message);
+    } finally {
+      setGeneratingLocationImage(null);
     }
   };
 
@@ -593,23 +650,48 @@ export function UniverseEditor() {
                         <label className="block text-xs font-bold text-neutral-600 mb-1">Image Generation Prompt</label>
                         <textarea className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-16" value={loc.imagePrompt} onChange={e => updateLocation(loc.id, { imagePrompt: e.target.value })} placeholder="Full Imagen 4 ready prompt for this location" />
                       </div>
-                      <div className="flex items-center gap-3 flex-wrap">
+                      {loc.referenceImageUrl && (
+                        <div className="mb-1">
+                          <img
+                            src={loc.referenceImageUrl}
+                            alt={loc.name}
+                            className="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => setLocationLightbox(loc)}
+                          />
+                          <button
+                            onClick={() => handleDownloadLocationImage(loc)}
+                            className="flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1"
+                          >
+                            <Download size={12} /> Download
+                          </button>
+                        </div>
+                      )}
+                      <div className="flex gap-2 flex-wrap">
                         <button
                           onClick={() => generateLocationImage(loc)}
                           disabled={!loc.imagePrompt || generatingLocationImage === loc.id || !isSaved}
                           title={!isSaved ? 'Save the universe first' : ''}
-                          className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                          className="flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                          {generatingLocationImage === loc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
-                          Generate Location Image
+                          {generatingLocationImage === loc.id ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                          {loc.referenceImageUrl ? 'Re-generate' : 'Generate Image'}
                         </button>
-                        {loc.referenceImageUrl && (
-                          <img
-                            src={loc.referenceImageUrl}
-                            alt={loc.name}
-                            className="w-20 h-12 rounded-lg object-cover border border-neutral-200"
-                          />
-                        )}
+                        <button
+                          onClick={() => document.getElementById(`loc-upload-${loc.id}`)?.click()}
+                          disabled={generatingLocationImage === loc.id || !isSaved}
+                          title={!isSaved ? 'Save the universe first' : ''}
+                          className="flex items-center gap-2 px-3 py-2 border border-neutral-300 rounded-lg text-sm hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <Upload size={14} />
+                          {loc.referenceImageUrl ? 'Replace Image' : 'Upload Image'}
+                        </button>
+                        <input
+                          type="file"
+                          id={`loc-upload-${loc.id}`}
+                          accept="image/*"
+                          className="hidden"
+                          onChange={e => handleUploadLocationImage(loc, e.target.files?.[0])}
+                        />
                       </div>
                     </div>
                   )}
@@ -671,6 +753,36 @@ export function UniverseEditor() {
               </button>
               <button
                 onClick={() => setLightboxChar(null)}
+                className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {locationLightbox && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setLocationLightbox(null)}
+        >
+          <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+            <img
+              src={locationLightbox.referenceImageUrl || ''}
+              alt={locationLightbox.name}
+              className="w-full rounded-xl"
+            />
+            <p className="text-white text-center mt-2 font-semibold">{locationLightbox.name}</p>
+            <div className="flex gap-2 mt-2 justify-center">
+              <button
+                onClick={() => handleDownloadLocationImage(locationLightbox)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors"
+              >
+                Download
+              </button>
+              <button
+                onClick={() => setLocationLightbox(null)}
                 className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 transition-colors"
               >
                 Close
