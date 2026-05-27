@@ -79,9 +79,25 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           const scaleFilter = is4k
             ? (isShorts ? 'scale=2160:3840' : 'scale=3840:2160')
             : (isShorts ? 'scale=-1:4000'   : 'scale=4000:-1');
-          // Increment fills exactly 0→1.1 zoom over the full clip; sin drift adds subtle horizontal pan
           const zoomIncrement = (0.1 / frames).toFixed(6);
-          const filter = `${scaleFilter},zoompan=z='min(zoom+${zoomIncrement},1.1)':d=${frames}:x='iw/2-(iw/zoom/2)+sin(on/${frames})*20':y='ih/2-(ih/zoom/2)':s=${w}x${h}:fps=30,trim=duration=${duration}`;
+          const motion = visual.motion_instruction || 'zoom_in';
+          let zoompanExpr: string;
+          switch (motion) {
+            case 'zoom_out':
+              zoompanExpr = `z='if(eq(on,0),1.1,max(zoom-${zoomIncrement},1.0))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`;
+              break;
+            case 'pan_right':
+              zoompanExpr = `z='1.05':x='(iw-iw/zoom)*(on/${frames})':y='ih/2-(ih/zoom/2)'`;
+              break;
+            case 'pan_left':
+              zoompanExpr = `z='1.05':x='(iw-iw/zoom)*(1-on/${frames})':y='ih/2-(ih/zoom/2)'`;
+              break;
+            case 'zoom_in':
+            default:
+              zoompanExpr = `z='min(zoom+${zoomIncrement},1.1)':x='iw/2-(iw/zoom/2)+sin(on/${frames})*20':y='ih/2-(ih/zoom/2)'`;
+              break;
+          }
+          const filter = `${scaleFilter},zoompan=${zoompanExpr}:d=${frames}:s=${w}x${h}:fps=30,trim=duration=${duration}`;
 
           const storedPreset = project?.settings?.exportPreset;
           const preset = isPreview ? 'ultrafast' : (storedPreset || 'fast');
