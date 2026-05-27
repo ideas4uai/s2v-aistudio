@@ -10,15 +10,15 @@ export const universeController = {
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const id = req.body.id || uuidv4();
+      const id = uuidv4();
       const universe = {
         ...req.body,
         id,
         userId,
-        createdAt: req.body.createdAt || new Date().toISOString(),
+        createdAt: new Date().toISOString(),
       };
       await FirestoreService.saveDocument(COLLECTION, id, universe);
-      res.status(201).json(universe);
+      res.json(universe);
     } catch (error) {
       console.error('[Universe] Save failed:', error);
       res.status(500).json({ error: 'Failed to save universe' });

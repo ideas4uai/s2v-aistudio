@@ -50,38 +50,54 @@ export function UniverseEditor() {
 
   const [universe, setUniverse] = useState<any>(emptyUniverse());
   const [activeTab, setActiveTab] = useState<Tab>('overview');
-  const [loading, setLoading] = useState(!isNew);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [expandedChar, setExpandedChar] = useState<string | null>(null);
   const [expandedLoc, setExpandedLoc] = useState<string | null>(null);
   const [generatingImage, setGeneratingImage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isNew) return;
-    authenticatedFetch(`/api/universes/${id}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data) setUniverse(data); })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    if (isNew) {
+      // Eagerly create a blank universe so we always have a real ID
+      authenticatedFetch('/api/universes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Untitled Universe',
+          logline: '',
+          world: '',
+          artStyle: 'photorealistic',
+          toneRules: '',
+          episodeStructure: '',
+          recurringElements: '',
+          characters: [],
+          locations: [],
+        }),
+      })
+        .then(r => r.ok ? r.json() : Promise.reject(new Error('Create failed')))
+        .then(data => {
+          if (data.id) navigate(`/universes/${data.id}`, { replace: true });
+        })
+        .catch(console.error);
+    } else {
+      authenticatedFetch(`/api/universes/${id}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data) setUniverse(data); })
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    }
   }, [id, isNew]);
 
   const save = async () => {
     setSaving(true);
     try {
-      const method = isNew ? 'POST' : 'PUT';
-      const url = isNew ? '/api/universes' : `/api/universes/${id}`;
-      const res = await authenticatedFetch(url, {
-        method,
+      const res = await authenticatedFetch(`/api/universes/${id}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(universe),
       });
       if (!res.ok) throw new Error(await res.text());
-      const saved = await res.json();
-      if (isNew && saved.id) {
-        navigate(`/universes/${saved.id}`, { replace: true });
-      } else {
-        setUniverse(saved);
-      }
+      setUniverse(await res.json());
     } catch (e) {
       console.error('Save failed:', e);
     } finally {
