@@ -87,7 +87,8 @@ export interface Scene {
   mode?: 'shorts' | 'long';
   preview_mode?: boolean;
   suggestions?: string[];
-  
+  is_null_tease?: boolean;
+
   // Source-aware generation metadata
   primarySubject?: string;
   location?: string;

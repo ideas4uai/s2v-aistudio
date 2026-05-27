@@ -20,6 +20,7 @@ export interface StoryLocation {
   imagePrompt: string;
   mood: string;
   timeOfDay: 'day' | 'night' | 'any';
+  referenceImageUrl?: string;
 }
 
 export interface Universe {

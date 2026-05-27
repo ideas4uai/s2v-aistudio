@@ -87,6 +87,34 @@ Provide the output in JSON format exactly like this:
       }
 
       let scenes: any[] = parsed.scenes || [];
+
+      // NULL tease: append a hidden final scene for story episodes with a NULL character
+      if (project.projectType === 'story_episode') {
+        const hasNull = project.universe?.characters?.some(
+          (c: any) => c.name?.toUpperCase() === 'NULL' || c.id === 'null'
+        );
+        if (hasNull) {
+          const nullTeases: Record<number, string> = {
+            1: 'Phone screen briefly shows corrupted N̷U̷L̷L̷ text for 1 frame, looks like a glitch',
+            2: 'News ticker text corrupts with ERROR://NULL for 2 frames then returns to normal',
+            3: 'One character eye briefly flashes signal red for 1 frame during emotional moment',
+            4: 'Aura or glow effect around a character briefly turns all red for half a second',
+            5: 'Mechanical or digital element shows ERROR//NULL text buried in visual noise',
+            6: 'A shadowy figure is visible for 3 seconds, cold and still, says nothing',
+            7: 'All previous teases replay in quick 8-second montage before final scene',
+          };
+          const episodeNum = project.episodeNumber || 1;
+          const nullTease = nullTeases[episodeNum] || nullTeases[1];
+          scenes.push({
+            narration: '',
+            visual: nullTease,
+            duration: episodeNum === 7 ? 8 : 1.5,
+            order: scenes.length,
+            is_null_tease: true,
+          });
+          console.log(`[Scriptwriter] NULL tease appended for episode ${episodeNum}`);
+        }
+      }
       const totalWords = scenes.reduce((sum: number, s: any) =>
         sum + (s.narration || '').split(' ').filter(Boolean).length, 0);
       console.log(`[Scriptwriter] Words: ${totalWords} / target: ${targetWords}`);

@@ -64,6 +64,7 @@ export function UniverseEditor() {
   const [expandedChar, setExpandedChar] = useState<string | null>(null);
   const [expandedLoc, setExpandedLoc] = useState<string | null>(null);
   const [generatingImage, setGeneratingImage] = useState<string | null>(null);
+  const [generatingLocationImage, setGeneratingLocationImage] = useState<string | null>(null);
   const [lightboxChar, setLightboxChar] = useState<StoryCharacter | null>(null);
 
   useEffect(() => {
@@ -186,7 +187,8 @@ export function UniverseEditor() {
       const data = await res.json();
       const url = data.imageUrl;
       if (url) {
-        updateCharacter(char.id, { referenceImageUrl: url });
+        const bustUrl = `${url}?t=${Date.now()}`;
+        updateCharacter(char.id, { referenceImageUrl: bustUrl });
         const updatedChars = universe.characters.map((c: StoryCharacter) =>
           c.id === char.id ? { ...c, referenceImageUrl: url } : c
         );
@@ -201,6 +203,38 @@ export function UniverseEditor() {
       console.error('Image generation failed:', e);
     } finally {
       setGeneratingImage(null);
+    }
+  };
+
+  const generateLocationImage = async (loc: StoryLocation) => {
+    if (!loc.imagePrompt) return;
+    setGeneratingLocationImage(loc.id);
+    try {
+      const res = await authenticatedFetch(`/api/universes/${id}/locations/${loc.id}/image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: loc.imagePrompt }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const url = data.imageUrl;
+      if (url) {
+        const bustUrl = `${url}?t=${Date.now()}`;
+        updateLocation(loc.id, { referenceImageUrl: bustUrl });
+        const updatedLocs = universe.locations.map((l: StoryLocation) =>
+          l.id === loc.id ? { ...l, referenceImageUrl: url } : l
+        );
+        await authenticatedFetch(`/api/universes/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...universe, locations: updatedLocs }),
+        });
+        console.log('[Universe] Location image saved:', loc.name, url);
+      }
+    } catch (e) {
+      console.error('Location image generation failed:', e);
+    } finally {
+      setGeneratingLocationImage(null);
     }
   };
 
@@ -558,6 +592,24 @@ export function UniverseEditor() {
                       <div>
                         <label className="block text-xs font-bold text-neutral-600 mb-1">Image Generation Prompt</label>
                         <textarea className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-16" value={loc.imagePrompt} onChange={e => updateLocation(loc.id, { imagePrompt: e.target.value })} placeholder="Full Imagen 4 ready prompt for this location" />
+                      </div>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <button
+                          onClick={() => generateLocationImage(loc)}
+                          disabled={!loc.imagePrompt || generatingLocationImage === loc.id || !isSaved}
+                          title={!isSaved ? 'Save the universe first' : ''}
+                          className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {generatingLocationImage === loc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
+                          Generate Location Image
+                        </button>
+                        {loc.referenceImageUrl && (
+                          <img
+                            src={loc.referenceImageUrl}
+                            alt={loc.name}
+                            className="w-20 h-12 rounded-lg object-cover border border-neutral-200"
+                          />
+                        )}
                       </div>
                     </div>
                   )}

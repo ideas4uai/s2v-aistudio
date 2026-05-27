@@ -63,6 +63,15 @@ Return ONLY the image prompt. No explanation, no preamble, no quotes.`;
         : expansionPrompt;
 
       try {
+        // NULL tease scenes bypass normal expansion
+        if ((draft as any).is_null_tease) {
+          return {
+            ...draft,
+            expandedPrompt: draft.visual || 'corrupted digital glitch, signal red and black, ERROR text fragments, reality distortion, scan lines, dark void, ominous, photorealistic, 9:16 vertical, cinematic frame',
+            is_null_tease: true,
+          };
+        }
+
         console.log(`[StoryboardAgent] Expanding scene ${idx + 1}/${drafts.length} (${shotType})...`);
         await new Promise(resolve => setTimeout(resolve, idx * 200));
 
@@ -167,6 +176,7 @@ Total duration of all frames must equal ${sceneDuration} seconds.`;
         status: 'pending',
         error_log: null,
         suggestions: [],
+        ...(s.is_null_tease ? { is_null_tease: true } : {}),
       } as any;
     });
   }

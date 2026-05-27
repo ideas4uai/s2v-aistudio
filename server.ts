@@ -177,7 +177,7 @@ async function startServer() {
       const buffer = Buffer.from(base64, 'base64');
       const url = await FirestoreService.uploadAsset(
         req.params.id,
-        `characters/${req.params.charId}.jpg`,
+        `characters/${req.params.charId}_${Date.now()}.jpg`,
         buffer,
         'image/jpeg'
       );
@@ -196,6 +196,27 @@ async function startServer() {
         `characters/${req.params.charId}.${ext}`,
         buffer,
         mimeType
+      );
+      res.json({ imageUrl: url });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/universes/:id/locations/:locationId/image', async (req, res) => {
+    const { prompt } = req.body;
+    try {
+      const { AIService } = await import('./src/services/aiService.js');
+      const base64 = await AIService.generateImageBase64(
+        prompt + ', ultra high quality, establishing shot',
+        { aspectRatio: '16:9', quality: '4k' }
+      );
+      const buffer = Buffer.from(base64, 'base64');
+      const url = await FirestoreService.uploadAsset(
+        req.params.id,
+        `locations/${req.params.locationId}_${Date.now()}.jpg`,
+        buffer,
+        'image/jpeg'
       );
       res.json({ imageUrl: url });
     } catch (err: any) {
