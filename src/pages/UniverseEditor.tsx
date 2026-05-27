@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, Loader2, Image as ImageIcon, BookOpen, Users, MapPin, Sliders } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Loader2, Image as ImageIcon, BookOpen, Users, MapPin, Sliders, Download } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 import { v4 as uuidv4 } from 'uuid';
 import type { Universe, StoryCharacter, StoryLocation } from '../models/project';
@@ -55,6 +55,7 @@ export function UniverseEditor() {
   const [expandedChar, setExpandedChar] = useState<string | null>(null);
   const [expandedLoc, setExpandedLoc] = useState<string | null>(null);
   const [generatingImage, setGeneratingImage] = useState<string | null>(null);
+  const [lightboxChar, setLightboxChar] = useState<StoryCharacter | null>(null);
 
   useEffect(() => {
     if (isNew) {
@@ -179,6 +180,7 @@ export function UniverseEditor() {
   }
 
   return (
+    <>
     <div className="p-4 md:p-8 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <button
@@ -288,7 +290,12 @@ export function UniverseEditor() {
                   >
                     <div className="flex items-center gap-3">
                       {char.referenceImageUrl ? (
-                        <img src={char.referenceImageUrl} alt={char.name} className="w-8 h-8 rounded-full object-cover border border-neutral-200" />
+                        <img
+                          src={char.referenceImageUrl}
+                          alt={char.name}
+                          className="w-8 h-8 rounded-full object-cover border border-neutral-200 cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={e => { e.stopPropagation(); setLightboxChar(char); }}
+                        />
                       ) : (
                         <div className="w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center text-xs font-bold text-neutral-400">
                           {char.name?.[0]?.toUpperCase() || '?'}
@@ -350,7 +357,7 @@ export function UniverseEditor() {
                         <label className="block text-xs font-bold text-neutral-600 mb-1">Image Generation Prompt</label>
                         <textarea className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-16" value={char.imagePrompt} onChange={e => updateCharacter(char.id, { imagePrompt: e.target.value })} placeholder="Full Imagen 4 ready prompt for generating a reference image" />
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-wrap">
                         <button
                           onClick={() => generateCharacterImage(char)}
                           disabled={!char.imagePrompt || generatingImage === char.id || !isSaved}
@@ -361,7 +368,23 @@ export function UniverseEditor() {
                           Generate Reference Image
                         </button>
                         {char.referenceImageUrl && (
-                          <img src={char.referenceImageUrl} alt="Reference" className="w-12 h-12 rounded-lg object-cover border border-neutral-200" />
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={char.referenceImageUrl}
+                              alt="Reference"
+                              className="w-12 h-12 rounded-lg object-cover border border-neutral-200 cursor-pointer hover:opacity-80 transition-opacity"
+                              onClick={() => setLightboxChar(char)}
+                            />
+                            <a
+                              href={char.referenceImageUrl}
+                              download={`${char.name}_reference.jpg`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                            >
+                              <Download size={12} /> Download
+                            </a>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -468,5 +491,37 @@ export function UniverseEditor() {
         </div>
       </div>
     </div>
+
+      {lightboxChar && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setLightboxChar(null)}
+        >
+          <div className="relative max-w-md w-full" onClick={e => e.stopPropagation()}>
+            <img
+              src={lightboxChar.referenceImageUrl || ''}
+              alt={lightboxChar.name}
+              className="w-full rounded-xl"
+            />
+            <p className="text-white text-center mt-2 font-semibold">{lightboxChar.name}</p>
+            <div className="flex gap-2 mt-2 justify-center">
+              <a
+                href={lightboxChar.referenceImageUrl || ''}
+                download={`${lightboxChar.name}_reference.jpg`}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors"
+              >
+                Download
+              </a>
+              <button
+                onClick={() => setLightboxChar(null)}
+                className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
