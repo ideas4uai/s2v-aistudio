@@ -38,7 +38,7 @@ ${characterContext}
 ${locationContext}
 
 ### SCRIPT REQUIREMENTS:
-1. HOOK (Mandatory): Scene 1 (order: 0) MUST open with a hook — a shocking fact, provocative question, or bold statement that creates immediate curiosity. Keep the hook line to MAX 8 words. Examples: "Most people have NO idea how AI really works." / "This technology will change everything you know." Start with the hook line, then expand the explanation in subsequent scenes.
+1. HOOK (Mandatory): Scene 1 MUST open with a hook — a shocking fact, provocative question, or bold statement. The hook should be 8-15 words, compelling and curiosity-driving. This scene can be longer than 8 words — the hook is the OPENING LINE only, not the entire scene narration. After the hook line, expand the explanation within the same scene.
 2. Write a script that is engaging, rhythmic, and perfectly timed for a ${project.mode} video.
 3. The narration should be punchy and minimize filler words.
 4. TTS OPTIMIZATION (Mandatory): All 'narration' text MUST be optimized for Text-to-Speech. Remove all emojis, hashtags, and complex markdown (bolding, italics inside text) that could cause the engine to stutter or mispronounce symbols.

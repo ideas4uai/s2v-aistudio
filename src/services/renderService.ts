@@ -101,7 +101,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
 
           const storedPreset = project?.settings?.exportPreset;
           const preset = isPreview ? 'ultrafast' : (storedPreset || 'fast');
-          const qualityFlags = isPreview ? '' : is4k ? '-crf 18 -b:v 8M' : '-crf 20 -b:v 2M';
+          const qualityFlags = isPreview ? '' : is4k ? '-crf 18 -b:v 8M' : '-crf 20 -b:v 4M';
           await guardedExec(`"${ffmpeg}" -loop 1 -i "${imagePath}" -c:v libx264 -preset ${preset} ${qualityFlags} -r 30 -t ${duration} -pix_fmt yuv420p -vf "${filter}" -y "${outputPath}"`, signal);
         } else {
            const fallbackRes = project?.settings?.aspectRatio === '9:16' ? '1080x1920' : '1920x1080';
@@ -172,8 +172,8 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
   }
 
   const audioInput = audioValid
-    ? `-i "${audioPath}" -c:a aac`
-    : `-f lavfi -i anullsrc=r=44100:cl=stereo -c:a aac`;
+    ? `-i "${audioPath}" -c:a aac -ar 44100 -ac 2 -b:a 192k`
+    : `-f lavfi -i anullsrc=r=44100:cl=stereo -c:a aac -ar 44100 -ac 2 -b:a 192k`;
 
   try {
      // -stream_loop -1 loops the visual if audio is longer than the rendered clip
@@ -219,7 +219,7 @@ export const renderCaptions = async (scene: any, signal?: AbortSignal) => {
   try {
     const isPreview = scene.quality === 'draft' || scene.preview_mode || false;
     const preset = isPreview ? 'ultrafast' : 'fast';
-    await guardedExec(`"${ffmpeg}" -i "${inputPath}" -vf "${subtitleFilter}" -c:v libx264 -preset ${preset} -c:a copy -y "${outputPath}"`, signal);
+    await guardedExec(`"${ffmpeg}" -i "${inputPath}" -vf "${subtitleFilter}" -c:v libx264 -preset ${preset} -crf 18 -b:v 4M -c:a copy -y "${outputPath}"`, signal);
     return outputPath;
   } catch(e: any) {
     if (e.message === 'PIPELINE_CANCELLED') throw e;

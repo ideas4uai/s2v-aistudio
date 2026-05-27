@@ -122,10 +122,13 @@ export const AIService = {
     }
   },
   generateImageBase64: async (prompt: string, options?: any): Promise<string> => {
+    const isLandscape = options?.aspectRatio === '16:9';
+    const aspectRatio = isLandscape ? '16:9' : '9:16';
     const qualityPrompt = prompt.includes('photorealistic')
       ? prompt
       : `${prompt}, photorealistic, cinematic lighting, sharp focus`;
-    const finalPrompt = `${qualityPrompt}. Vertical 9:16 portrait orientation.`;
+    const orientationHint = isLandscape ? 'Horizontal 16:9 landscape orientation.' : 'Vertical 9:16 portrait orientation.';
+    const finalPrompt = `${qualityPrompt}. ${orientationHint}`;
 
     // Provider 1: Imagen 4 Fast via AI Studio key (primary - confirmed working)
     let imagenApiKey = '';
@@ -140,7 +143,7 @@ export const AIService = {
           prompt: finalPrompt,
           config: {
             numberOfImages: 1,
-            aspectRatio: '9:16',
+            aspectRatio,
           }
         });
         const bytes = imagenResponse.generatedImages?.[0]?.image?.imageBytes;
@@ -164,7 +167,7 @@ export const AIService = {
         const result = await falClient.subscribe('fal-ai/flux/schnell', {
           input: {
             prompt: finalPrompt,
-            image_size: { width: 1080, height: 1920 },
+            image_size: isLandscape ? { width: 1920, height: 1080 } : { width: 1080, height: 1920 },
             num_images: 1,
             num_inference_steps: 4,
             enable_safety_checker: false
@@ -198,8 +201,8 @@ export const AIService = {
             body: JSON.stringify({
               model: 'black-forest-labs/FLUX.1-schnell-Free',
               prompt: finalPrompt,
-              width: 1080,
-              height: 1920,
+              width: isLandscape ? 1920 : 1080,
+              height: isLandscape ? 1080 : 1920,
               steps: 4,
               n: 1,
               response_format: 'b64_json'

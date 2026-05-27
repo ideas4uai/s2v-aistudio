@@ -5,8 +5,9 @@ import { getFromCache, saveToCache } from './cacheService.js';
 import { AIService } from './aiService.js';
 import { hashCode } from '../utils/hash.js';
 
-async function generateImageFromGemini(prompt: string, outputPath: string): Promise<string> {
-  const base64Data = await AIService.generateImageBase64(prompt, { task: 'image' });
+async function generateImageFromGemini(prompt: string, outputPath: string, project?: any): Promise<string> {
+  const aspectRatio = project?.settings?.aspectRatio === '16:9' ? '16:9' : '9:16';
+  const base64Data = await AIService.generateImageBase64(prompt, { task: 'image', aspectRatio });
 
   const buffer = Buffer.from(base64Data, 'base64');
   const dir = path.dirname(outputPath);
@@ -44,7 +45,7 @@ async function simulateAssetCreation(filePath: string, assetType: string, visual
   await fs.promises.writeFile(filePath, 'simulated'.padEnd(101, '.'));
 }
 
-export async function generateAsset(visual: Visual, assetHash: string, mode: string): Promise<string> {
+export async function generateAsset(visual: Visual, assetHash: string, mode: string, project?: any): Promise<string> {
   const cachedPath = await getFromCache(assetHash);
   
   if (cachedPath) {
@@ -78,7 +79,7 @@ export async function generateAsset(visual: Visual, assetHash: string, mode: str
   if (visual.asset_type === 'ai_image') {
     try {
       console.log(`[Asset Engine] Attempting Gemini image generation for: ${visual.visual_id}`);
-      await generateImageFromGemini(visual.prompt, tempFile);
+      await generateImageFromGemini(visual.prompt, tempFile, project);
       console.log(`[Asset Engine] Gemini image generation successful for: ${visual.visual_id}`);
     } catch (error) {
       console.warn(`[Asset Engine] Gemini image generation failed for ${visual.visual_id}, falling back to simulation: ${error instanceof Error ? error.message : String(error)}`);

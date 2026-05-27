@@ -517,7 +517,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
      }
      
      console.log(`[Orchestrator] Generating image for scene ${scene.scene_id}, visual ${i} (${visual.asset_type})`);
-     let localAsset = await withRetry(() => generateAsset(visual, visual.cache_key, project.mode), { retries: 2 });
+     let localAsset = await withRetry(() => generateAsset(visual, visual.cache_key, project.mode, project), { retries: 2 });
      console.log(`[Orchestrator] Image complete for scene ${scene.scene_id}, visual ${i}: ${localAsset ? 'ok' : 'null'}`);
      
      if (localAsset) {
@@ -873,7 +873,7 @@ export async function regenerateVisual(project_id: string, scene_id: string, vis
   visual.asset_hash = generateAssetHash(visual.prompt, visual.asset_type, project.style_profile);
   
   try {
-    visual.asset_path = await withRetry(() => generateAsset(visual, visual.asset_hash || visual.cache_key, project.mode), { retries: 1 });
+    visual.asset_path = await withRetry(() => generateAsset(visual, visual.asset_hash || visual.cache_key, project.mode, project), { retries: 1 });
     const renderedPath = await renderVisualClip(visual, project);
     if (!renderedPath) throw new Error('Rendering failed');
     visual.rendered_path = renderedPath;
