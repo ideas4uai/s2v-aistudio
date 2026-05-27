@@ -10,9 +10,9 @@ export function CreateProject() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [projectType, setProjectType] = useState<'educational' | 'story_episode' | 'standard'>('educational');
-  const [storyBibles, setStoryBibles] = useState<any[]>([]);
+  const [universes, setUniverses] = useState<any[]>([]);
   const [episodeData, setEpisodeData] = useState({
-    storyBibleId: '',
+    universeId: '',
     episodeNumber: 1,
     featuredCharacterIds: [] as string[],
     featuredLocationId: '',
@@ -50,16 +50,16 @@ export function CreateProject() {
         setLoadingTemplates(false);
       }
     };
-    const fetchBibles = async () => {
+    const fetchUniverses = async () => {
       try {
-        const res = await authenticatedFetch('/api/story-bibles');
-        if (res.ok) setStoryBibles(await res.json());
+        const res = await authenticatedFetch('/api/universes');
+        if (res.ok) setUniverses(await res.json());
       } catch (error) {
-        console.error('Error fetching story bibles:', error);
+        console.error('Error fetching universes:', error);
       }
     };
     fetchTemplates();
-    fetchBibles();
+    fetchUniverses();
   }, []);
 
   const applyTemplate = (template: any) => {
@@ -100,7 +100,7 @@ export function CreateProject() {
     }));
   };
 
-  const selectedBible = storyBibles.find(b => b.id === episodeData.storyBibleId);
+  const selectedUniverse = universes.find(u => u.id === episodeData.universeId);
   const toggleCharacter = (charId: string) => {
     setEpisodeData(prev => ({
       ...prev,
@@ -119,8 +119,8 @@ export function CreateProject() {
         payload.episodeNumber = episodeData.episodeNumber;
         payload.featuredCharacterIds = episodeData.featuredCharacterIds;
         payload.featuredLocationId = episodeData.featuredLocationId;
-        if (episodeData.storyBibleId && selectedBible) {
-          payload.storyBible = selectedBible;
+        if (episodeData.universeId && selectedUniverse) {
+          payload.universe = selectedUniverse;
         }
         if (episodeData.episodeConcept) {
           payload.description = episodeData.episodeConcept;
@@ -195,17 +195,17 @@ export function CreateProject() {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
-                <label className="block text-sm font-bold text-neutral-700 mb-2">Story Bible</label>
+                <label className="block text-sm font-bold text-neutral-700 mb-2">Universe</label>
                 <select
                   className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-sm"
-                  value={episodeData.storyBibleId}
-                  onChange={e => setEpisodeData(prev => ({ ...prev, storyBibleId: e.target.value, featuredCharacterIds: [], featuredLocationId: '' }))}
+                  value={episodeData.universeId}
+                  onChange={e => setEpisodeData(prev => ({ ...prev, universeId: e.target.value, featuredCharacterIds: [], featuredLocationId: '' }))}
                 >
-                  <option value="">— Select a Story Bible —</option>
-                  {storyBibles.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
+                  <option value="">— Select a Universe —</option>
+                  {universes.map(u => <option key={u.id} value={u.id}>{u.title}</option>)}
                 </select>
-                {storyBibles.length === 0 && (
-                  <p className="text-xs text-neutral-400 mt-1">No story bibles yet. <a href="/story-bibles/new" className="text-indigo-600 hover:underline">Create one first.</a></p>
+                {universes.length === 0 && (
+                  <p className="text-xs text-neutral-400 mt-1">No universes yet. <a href="/universes/new" className="text-indigo-600 hover:underline">Create one first.</a></p>
                 )}
               </div>
               <div>
@@ -219,12 +219,12 @@ export function CreateProject() {
                 />
               </div>
             </div>
-            {selectedBible && (
+            {selectedUniverse && (
               <>
                 <div>
                   <label className="block text-sm font-bold text-neutral-700 mb-2">Featured Characters</label>
                   <div className="flex flex-wrap gap-2">
-                    {(selectedBible.characters || []).map((c: any) => (
+                    {(selectedUniverse.characters || []).map((c: any) => (
                       <button
                         key={c.id}
                         type="button"
@@ -238,8 +238,8 @@ export function CreateProject() {
                         {c.name}
                       </button>
                     ))}
-                    {(selectedBible.characters || []).length === 0 && (
-                      <p className="text-xs text-neutral-400">No characters in this bible.</p>
+                    {(selectedUniverse.characters || []).length === 0 && (
+                      <p className="text-xs text-neutral-400">No characters in this universe.</p>
                     )}
                   </div>
                 </div>
@@ -251,7 +251,7 @@ export function CreateProject() {
                     onChange={e => setEpisodeData(prev => ({ ...prev, featuredLocationId: e.target.value }))}
                   >
                     <option value="">— Flexible / AI decides —</option>
-                    {(selectedBible.locations || []).map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    {(selectedUniverse.locations || []).map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
                   </select>
                 </div>
               </>

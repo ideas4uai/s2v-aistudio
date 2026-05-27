@@ -22,7 +22,7 @@ export interface StoryLocation {
   timeOfDay: 'day' | 'night' | 'any';
 }
 
-export interface StoryBible {
+export interface Universe {
   projectId: string;
   title: string;
   logline: string;
@@ -90,7 +90,7 @@ export interface Project {
   music_volume?: number;
   thumbnail_path?: string;
   projectType?: 'educational' | 'story_episode' | 'standard';
-  storyBible?: StoryBible;
+  universe?: Universe;
   episodeNumber?: number;
   featuredCharacterIds?: string[];
   featuredLocationId?: string;

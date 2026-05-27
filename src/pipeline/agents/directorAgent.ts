@@ -22,19 +22,19 @@ export class DirectorAgent {
     };
     const sceneCountHint = sceneCountGuide[targetLength] || sceneCountGuide['60s'];
 
-    const featuredCharacters = project.storyBible && project.featuredCharacterIds?.length
-      ? project.storyBible.characters.filter((c: any) => project.featuredCharacterIds!.includes(c.id))
-      : (project.storyBible?.characters || []);
-    const featuredLocation = project.storyBible && project.featuredLocationId
-      ? project.storyBible.locations.find((l: any) => l.id === project.featuredLocationId)
+    const featuredCharacters = project.universe && project.featuredCharacterIds?.length
+      ? project.universe.characters.filter((c: any) => project.featuredCharacterIds!.includes(c.id))
+      : (project.universe?.characters || []);
+    const featuredLocation = project.universe && project.featuredLocationId
+      ? project.universe.locations.find((l: any) => l.id === project.featuredLocationId)
       : null;
 
-    const bibleContext = project.storyBible ? `
-STORY UNIVERSE CONTEXT:
-World: ${project.storyBible.world}
-Art Style: ${project.storyBible.artStyle}
-Tone: ${project.storyBible.toneRules}
-Episode Structure: ${project.storyBible.episodeStructure}
+    const universeContext = project.universe ? `
+UNIVERSE CONTEXT:
+World: ${project.universe.world}
+Art Style: ${project.universe.artStyle}
+Tone: ${project.universe.toneRules}
+Episode Structure: ${project.universe.episodeStructure}
 Episode #${project.episodeNumber || 1}
 
 CHARACTERS IN THIS EPISODE:
@@ -50,7 +50,7 @@ Hook Strategy: ${project.hook_strategy}
 Pacing Intensity: ${project.pacing_intensity}
 Mode: ${project.mode}
 Target Length: ${targetLength} (plan for ${sceneCountHint})
-${bibleContext}
+${universeContext}
 
 Your job is to dictate the creative direction so that the Storyboard and Scriptwriter follow a unified vision.
 ### DIRECTIVES:

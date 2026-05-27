@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Plus, Trash2, Loader2, Image as ImageIcon, BookOpen, Users, MapPin, Sliders } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 import { v4 as uuidv4 } from 'uuid';
-import type { StoryBible, StoryCharacter, StoryLocation } from '../models/project';
+import type { Universe, StoryCharacter, StoryLocation } from '../models/project';
 
 const ART_STYLES = ['cinematic', 'anime', 'realistic', 'cartoon', '3d_rendered', 'watercolor', 'cyberpunk', 'mixed'];
 
@@ -28,7 +28,7 @@ const emptyLocation = (): StoryLocation => ({
   timeOfDay: 'any',
 });
 
-const emptyBible = (): Omit<StoryBible, 'projectId'> & { id?: string; userId?: string } => ({
+const emptyUniverse = (): Omit<Universe, 'projectId'> & { id?: string; userId?: string } => ({
   title: '',
   logline: '',
   world: '',
@@ -42,12 +42,12 @@ const emptyBible = (): Omit<StoryBible, 'projectId'> & { id?: string; userId?: s
 
 type Tab = 'overview' | 'cast' | 'locations' | 'rules';
 
-export function StoryBibleEditor() {
+export function UniverseEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isNew = id === 'new';
 
-  const [bible, setBible] = useState<any>(emptyBible());
+  const [universe, setUniverse] = useState<any>(emptyUniverse());
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
@@ -57,9 +57,9 @@ export function StoryBibleEditor() {
 
   useEffect(() => {
     if (isNew) return;
-    authenticatedFetch(`/api/story-bibles/${id}`)
+    authenticatedFetch(`/api/universes/${id}`)
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data) setBible(data); })
+      .then(data => { if (data) setUniverse(data); })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [id, isNew]);
@@ -68,18 +68,18 @@ export function StoryBibleEditor() {
     setSaving(true);
     try {
       const method = isNew ? 'POST' : 'PUT';
-      const url = isNew ? '/api/story-bibles' : `/api/story-bibles/${id}`;
+      const url = isNew ? '/api/universes' : `/api/universes/${id}`;
       const res = await authenticatedFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bible),
+        body: JSON.stringify(universe),
       });
       if (!res.ok) throw new Error(await res.text());
       const saved = await res.json();
       if (isNew && saved.id) {
-        navigate(`/story-bibles/${saved.id}`, { replace: true });
+        navigate(`/universes/${saved.id}`, { replace: true });
       } else {
-        setBible(saved);
+        setUniverse(saved);
       }
     } catch (e) {
       console.error('Save failed:', e);
@@ -100,9 +100,7 @@ export function StoryBibleEditor() {
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       const url = data.url || data.imageUrl;
-      if (url) {
-        updateCharacter(char.id, { referenceImageUrl: url });
-      }
+      if (url) updateCharacter(char.id, { referenceImageUrl: url });
     } catch (e) {
       console.error('Image generation failed:', e);
     } finally {
@@ -111,47 +109,47 @@ export function StoryBibleEditor() {
   };
 
   const updateCharacter = (charId: string, patch: Partial<StoryCharacter>) => {
-    setBible((b: any) => ({
-      ...b,
-      characters: b.characters.map((c: StoryCharacter) => c.id === charId ? { ...c, ...patch } : c),
+    setUniverse((u: any) => ({
+      ...u,
+      characters: u.characters.map((c: StoryCharacter) => c.id === charId ? { ...c, ...patch } : c),
     }));
   };
 
   const updateLocation = (locId: string, patch: Partial<StoryLocation>) => {
-    setBible((b: any) => ({
-      ...b,
-      locations: b.locations.map((l: StoryLocation) => l.id === locId ? { ...l, ...patch } : l),
+    setUniverse((u: any) => ({
+      ...u,
+      locations: u.locations.map((l: StoryLocation) => l.id === locId ? { ...l, ...patch } : l),
     }));
   };
 
   const addCharacter = () => {
     const c = emptyCharacter();
-    setBible((b: any) => ({ ...b, characters: [...b.characters, c] }));
+    setUniverse((u: any) => ({ ...u, characters: [...u.characters, c] }));
     setExpandedChar(c.id);
     setActiveTab('cast');
   };
 
   const removeCharacter = (charId: string) => {
-    setBible((b: any) => ({ ...b, characters: b.characters.filter((c: StoryCharacter) => c.id !== charId) }));
+    setUniverse((u: any) => ({ ...u, characters: u.characters.filter((c: StoryCharacter) => c.id !== charId) }));
     if (expandedChar === charId) setExpandedChar(null);
   };
 
   const addLocation = () => {
     const l = emptyLocation();
-    setBible((b: any) => ({ ...b, locations: [...b.locations, l] }));
+    setUniverse((u: any) => ({ ...u, locations: [...u.locations, l] }));
     setExpandedLoc(l.id);
     setActiveTab('locations');
   };
 
   const removeLocation = (locId: string) => {
-    setBible((b: any) => ({ ...b, locations: b.locations.filter((l: StoryLocation) => l.id !== locId) }));
+    setUniverse((u: any) => ({ ...u, locations: u.locations.filter((l: StoryLocation) => l.id !== locId) }));
     if (expandedLoc === locId) setExpandedLoc(null);
   };
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Overview', icon: <BookOpen className="w-4 h-4" /> },
-    { id: 'cast', label: `Cast (${bible.characters?.length || 0})`, icon: <Users className="w-4 h-4" /> },
-    { id: 'locations', label: `Locations (${bible.locations?.length || 0})`, icon: <MapPin className="w-4 h-4" /> },
+    { id: 'cast', label: `Cast (${universe.characters?.length || 0})`, icon: <Users className="w-4 h-4" /> },
+    { id: 'locations', label: `Locations (${universe.locations?.length || 0})`, icon: <MapPin className="w-4 h-4" /> },
     { id: 'rules', label: 'Rules', icon: <Sliders className="w-4 h-4" /> },
   ];
 
@@ -178,7 +176,7 @@ export function StoryBibleEditor() {
           className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-          Save Bible
+          Save Universe
         </button>
       </div>
 
@@ -186,15 +184,15 @@ export function StoryBibleEditor() {
         <div className="p-6 border-b border-neutral-100 bg-neutral-50/50">
           <input
             className="text-2xl font-bold text-neutral-900 bg-transparent border-none outline-none w-full placeholder-neutral-300"
-            placeholder="Story Bible Title (e.g. Signal Squad)"
-            value={bible.title || ''}
-            onChange={e => setBible((b: any) => ({ ...b, title: e.target.value }))}
+            placeholder="Universe Title (e.g. Signal Squad)"
+            value={universe.title || ''}
+            onChange={e => setUniverse((u: any) => ({ ...u, title: e.target.value }))}
           />
           <input
             className="text-sm text-neutral-500 bg-transparent border-none outline-none w-full mt-1 placeholder-neutral-400"
             placeholder="One-sentence logline..."
-            value={bible.logline || ''}
-            onChange={e => setBible((b: any) => ({ ...b, logline: e.target.value }))}
+            value={universe.logline || ''}
+            onChange={e => setUniverse((u: any) => ({ ...u, logline: e.target.value }))}
           />
         </div>
 
@@ -222,8 +220,8 @@ export function StoryBibleEditor() {
                 <textarea
                   className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-28 text-sm"
                   placeholder="Describe the world, setting, and universe for the AI to understand the context..."
-                  value={bible.world || ''}
-                  onChange={e => setBible((b: any) => ({ ...b, world: e.target.value }))}
+                  value={universe.world || ''}
+                  onChange={e => setUniverse((u: any) => ({ ...u, world: e.target.value }))}
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -231,8 +229,8 @@ export function StoryBibleEditor() {
                   <label className="block text-sm font-bold text-neutral-700 mb-2">Art Style</label>
                   <select
                     className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-sm"
-                    value={bible.artStyle || 'cinematic'}
-                    onChange={e => setBible((b: any) => ({ ...b, artStyle: e.target.value }))}
+                    value={universe.artStyle || 'cinematic'}
+                    onChange={e => setUniverse((u: any) => ({ ...u, artStyle: e.target.value }))}
                   >
                     {ART_STYLES.map(s => (
                       <option key={s} value={s}>{s.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
@@ -244,8 +242,8 @@ export function StoryBibleEditor() {
                   <input
                     className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                     placeholder="e.g. Hook → Problem → Action → Lesson → CTA"
-                    value={bible.episodeStructure || ''}
-                    onChange={e => setBible((b: any) => ({ ...b, episodeStructure: e.target.value }))}
+                    value={universe.episodeStructure || ''}
+                    onChange={e => setUniverse((u: any) => ({ ...u, episodeStructure: e.target.value }))}
                   />
                 </div>
               </div>
@@ -260,7 +258,7 @@ export function StoryBibleEditor() {
               >
                 <Plus className="w-4 h-4" /> Add Character
               </button>
-              {(bible.characters || []).map((char: StoryCharacter) => (
+              {(universe.characters || []).map((char: StoryCharacter) => (
                 <div key={char.id} className="border border-neutral-200 rounded-xl overflow-hidden">
                   <div
                     className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-neutral-50 transition-colors"
@@ -347,7 +345,7 @@ export function StoryBibleEditor() {
                   )}
                 </div>
               ))}
-              {(bible.characters || []).length === 0 && (
+              {(universe.characters || []).length === 0 && (
                 <div className="text-center py-12 text-neutral-400">
                   <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
                   <p className="text-sm">No characters yet. Add your first character.</p>
@@ -364,7 +362,7 @@ export function StoryBibleEditor() {
               >
                 <Plus className="w-4 h-4" /> Add Location
               </button>
-              {(bible.locations || []).map((loc: StoryLocation) => (
+              {(universe.locations || []).map((loc: StoryLocation) => (
                 <div key={loc.id} className="border border-neutral-200 rounded-xl overflow-hidden">
                   <div
                     className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-neutral-50 transition-colors"
@@ -413,7 +411,7 @@ export function StoryBibleEditor() {
                   )}
                 </div>
               ))}
-              {(bible.locations || []).length === 0 && (
+              {(universe.locations || []).length === 0 && (
                 <div className="text-center py-12 text-neutral-400">
                   <MapPin className="w-10 h-10 mx-auto mb-3 opacity-30" />
                   <p className="text-sm">No locations yet. Add your first location.</p>
@@ -429,8 +427,8 @@ export function StoryBibleEditor() {
                 <textarea
                   className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-20 text-sm"
                   placeholder="e.g. 70% story action, 20% humor, 10% teaching moments. Never break 4th wall."
-                  value={bible.toneRules || ''}
-                  onChange={e => setBible((b: any) => ({ ...b, toneRules: e.target.value }))}
+                  value={universe.toneRules || ''}
+                  onChange={e => setUniverse((u: any) => ({ ...u, toneRules: e.target.value }))}
                 />
               </div>
               <div>
@@ -438,8 +436,8 @@ export function StoryBibleEditor() {
                 <textarea
                   className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-20 text-sm"
                   placeholder="e.g. Villain arc, running catchphrase, recurring callbacks, mystery subplot..."
-                  value={bible.recurringElements || ''}
-                  onChange={e => setBible((b: any) => ({ ...b, recurringElements: e.target.value }))}
+                  value={universe.recurringElements || ''}
+                  onChange={e => setUniverse((u: any) => ({ ...u, recurringElements: e.target.value }))}
                 />
               </div>
             </div>

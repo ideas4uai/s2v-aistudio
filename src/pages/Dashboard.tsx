@@ -12,7 +12,7 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'latest' | 'oldest' | 'name'>('latest');
-  const [storyBibles, setStoryBibles] = useState<any[]>([]);
+  const [universes, setUniverses] = useState<any[]>([]);
 
   // Delete project state
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -21,17 +21,17 @@ export function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [projectsRes, biblesRes] = await Promise.all([
+      const [projectsRes, universesRes] = await Promise.all([
         authenticatedFetch('/api/projects'),
-        authenticatedFetch('/api/story-bibles'),
+        authenticatedFetch('/api/universes'),
       ]);
       if (projectsRes.ok) {
         setProjects(await projectsRes.json());
       } else {
         setError(`Server returned ${projectsRes.status}: ${projectsRes.statusText}`);
       }
-      if (biblesRes.ok) {
-        setStoryBibles(await biblesRes.json());
+      if (universesRes.ok) {
+        setUniverses(await universesRes.json());
       }
     } catch (error) {
       console.error('Error fetching projects:', error);
@@ -100,40 +100,40 @@ export function Dashboard() {
         </button>
       </div>
 
-      {/* Story Bibles section */}
+      {/* Universes section */}
       <div className="mb-10">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-neutral-800 flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-indigo-500" /> Story Bibles
+            <BookOpen className="w-5 h-5 text-indigo-500" /> Your Universes
           </h2>
           <button
-            onClick={() => navigate('/story-bibles/new')}
+            onClick={() => navigate('/universes/new')}
             className="flex items-center gap-1.5 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
           >
-            <Plus className="w-4 h-4" /> New
+            <Plus className="w-4 h-4" /> New Universe
           </button>
         </div>
         <div className="flex gap-4 flex-wrap">
-          {storyBibles.map(bible => (
+          {universes.map(universe => (
             <div
-              key={bible.id}
-              onClick={() => navigate(`/story-bibles/${bible.id}`)}
+              key={universe.id}
+              onClick={() => navigate(`/universes/${universe.id}`)}
               className="bg-white border border-neutral-200 rounded-xl p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 transition-all w-44"
             >
               <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center mb-3">
                 <BookOpen className="w-5 h-5 text-indigo-600" />
               </div>
-              <p className="font-bold text-neutral-900 text-sm truncate">{bible.title || 'Untitled'}</p>
-              <p className="text-xs text-neutral-400 mt-1">{(bible.characters || []).length} chars · {(bible.locations || []).length} locations</p>
+              <p className="font-bold text-neutral-900 text-sm truncate">{universe.title || 'Untitled'}</p>
+              <p className="text-xs text-neutral-400 mt-1">{(universe.characters || []).length} chars · {(universe.locations || []).length} locations</p>
             </div>
           ))}
-          {storyBibles.length === 0 && !loading && (
+          {universes.length === 0 && !loading && (
             <div
-              onClick={() => navigate('/story-bibles/new')}
+              onClick={() => navigate('/universes/new')}
               className="bg-neutral-50 border-2 border-dashed border-neutral-200 rounded-xl p-4 cursor-pointer hover:border-indigo-300 transition-all w-44 flex flex-col items-center justify-center text-center"
             >
               <Plus className="w-6 h-6 text-neutral-300 mb-2" />
-              <p className="text-xs font-bold text-neutral-400">Create Story Bible</p>
+              <p className="text-xs font-bold text-neutral-400">Create Universe</p>
             </div>
           )}
         </div>

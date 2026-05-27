@@ -47,13 +47,13 @@ Now write the image prompt for this narration:
 
 Return ONLY the image prompt. No explanation, no preamble, no quotes.`;
 
-      const featuredCharacters = project.storyBible && project.featuredCharacterIds?.length
-        ? project.storyBible.characters.filter((c: any) => project.featuredCharacterIds!.includes(c.id))
-        : (project.storyBible?.characters || []);
+      const featuredCharacters = project.universe && project.featuredCharacterIds?.length
+        ? project.universe.characters.filter((c: any) => project.featuredCharacterIds!.includes(c.id))
+        : (project.universe?.characters || []);
 
       const characterContext = featuredCharacters.length > 0
         ? featuredCharacters.map((c: any) =>
-            `If ${c.name} appears in this scene: ${c.appearance}. Colors: ${c.colorPalette}. Art style: ${project.storyBible?.artStyle || 'photorealistic'}.`
+            `If ${c.name} appears in this scene: ${c.appearance}. Colors: ${c.colorPalette}. Art style: ${project.universe?.artStyle || 'photorealistic'}.`
           ).join(' ')
         : '';
 

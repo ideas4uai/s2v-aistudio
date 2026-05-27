@@ -2,26 +2,26 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { FirestoreService } from '../server/db/firestore.js';
 
-const COLLECTION = 'story_bibles';
+const COLLECTION = 'universes';
 
-export const storyBibleController = {
+export const universeController = {
   async save(req: Request, res: Response) {
     const userId = (req as any).user?.uid;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
       const id = req.body.id || uuidv4();
-      const bible = {
+      const universe = {
         ...req.body,
         id,
         userId,
         createdAt: req.body.createdAt || new Date().toISOString(),
       };
-      await FirestoreService.saveDocument(COLLECTION, id, bible);
-      res.status(201).json(bible);
+      await FirestoreService.saveDocument(COLLECTION, id, universe);
+      res.status(201).json(universe);
     } catch (error) {
-      console.error('[StoryBible] Save failed:', error);
-      res.status(500).json({ error: 'Failed to save story bible' });
+      console.error('[Universe] Save failed:', error);
+      res.status(500).json({ error: 'Failed to save universe' });
     }
   },
 
@@ -30,22 +30,22 @@ export const storyBibleController = {
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const bibles = await FirestoreService.listDocuments(COLLECTION, userId) || [];
-      res.json(bibles);
+      const universes = await FirestoreService.listDocuments(COLLECTION, userId) || [];
+      res.json(universes);
     } catch (error) {
-      console.error('[StoryBible] List failed:', error);
-      res.status(500).json({ error: 'Failed to list story bibles' });
+      console.error('[Universe] List failed:', error);
+      res.status(500).json({ error: 'Failed to list universes' });
     }
   },
 
   async get(req: Request, res: Response) {
     try {
-      const bible = await FirestoreService.getDocument(COLLECTION, req.params.id);
-      if (!bible) return res.status(404).json({ error: 'Story bible not found' });
-      res.json(bible);
+      const universe = await FirestoreService.getDocument(COLLECTION, req.params.id);
+      if (!universe) return res.status(404).json({ error: 'Universe not found' });
+      res.json(universe);
     } catch (error) {
-      console.error('[StoryBible] Get failed:', error);
-      res.status(500).json({ error: 'Failed to get story bible' });
+      console.error('[Universe] Get failed:', error);
+      res.status(500).json({ error: 'Failed to get universe' });
     }
   },
 
@@ -55,14 +55,14 @@ export const storyBibleController = {
 
     try {
       const existing: any = await FirestoreService.getDocument(COLLECTION, req.params.id);
-      if (!existing) return res.status(404).json({ error: 'Story bible not found' });
+      if (!existing) return res.status(404).json({ error: 'Universe not found' });
 
       const updated = { ...existing, ...req.body, id: req.params.id, userId };
       await FirestoreService.saveDocument(COLLECTION, req.params.id, updated);
       res.json(updated);
     } catch (error) {
-      console.error('[StoryBible] Update failed:', error);
-      res.status(500).json({ error: 'Failed to update story bible' });
+      console.error('[Universe] Update failed:', error);
+      res.status(500).json({ error: 'Failed to update universe' });
     }
   },
 
@@ -72,10 +72,10 @@ export const storyBibleController = {
 
     try {
       await FirestoreService.deleteDocument(COLLECTION, req.params.id);
-      res.json({ message: 'Story bible deleted' });
+      res.json({ message: 'Universe deleted' });
     } catch (error) {
-      console.error('[StoryBible] Delete failed:', error);
-      res.status(500).json({ error: 'Failed to delete story bible' });
+      console.error('[Universe] Delete failed:', error);
+      res.status(500).json({ error: 'Failed to delete universe' });
     }
   },
 };
