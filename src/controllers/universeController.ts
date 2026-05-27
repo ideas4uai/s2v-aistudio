@@ -6,22 +6,21 @@ const COLLECTION = 'universes';
 
 export const universeController = {
   async save(req: Request, res: Response) {
+    console.log('[Universe] POST /api/universes called');
+    console.log('[Universe] body:', JSON.stringify(req.body));
     const userId = (req as any).user?.uid;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
       const id = uuidv4();
-      const universe = {
-        ...req.body,
-        id,
-        userId,
-        createdAt: new Date().toISOString(),
-      };
+      const universe = { id, ...req.body, userId, createdAt: new Date().toISOString() };
+      console.log('[Universe] saving with id:', id);
       await FirestoreService.saveDocument(COLLECTION, id, universe);
+      console.log('[Universe] saved successfully');
       res.json(universe);
-    } catch (error) {
-      console.error('[Universe] Save failed:', error);
-      res.status(500).json({ error: 'Failed to save universe' });
+    } catch (err: any) {
+      console.error('[Universe] save error:', err.message);
+      res.status(500).json({ error: err.message });
     }
   },
 
@@ -50,19 +49,18 @@ export const universeController = {
   },
 
   async update(req: Request, res: Response) {
+    console.log('[Universe] PUT /api/universes/:id called, id:', req.params.id);
+    console.log('[Universe] body keys:', Object.keys(req.body));
     const userId = (req as any).user?.uid;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const existing: any = await FirestoreService.getDocument(COLLECTION, req.params.id);
-      if (!existing) return res.status(404).json({ error: 'Universe not found' });
-
-      const updated = { ...existing, ...req.body, id: req.params.id, userId };
-      await FirestoreService.saveDocument(COLLECTION, req.params.id, updated);
-      res.json(updated);
-    } catch (error) {
-      console.error('[Universe] Update failed:', error);
-      res.status(500).json({ error: 'Failed to update universe' });
+      await FirestoreService.saveDocument(COLLECTION, req.params.id, req.body);
+      console.log('[Universe] updated successfully');
+      res.json(req.body);
+    } catch (err: any) {
+      console.error('[Universe] update error:', err.message);
+      res.status(500).json({ error: err.message });
     }
   },
 
