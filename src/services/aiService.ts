@@ -1,5 +1,5 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
-import { getGeminiKey, markKeyExhausted, getPoolStatus } from '../utils/geminiAuth.js';
+import { getKeyForTask, getGeminiKey, type KeyTask } from '../utils/geminiAuth.js';
 
 // Lazy initialization to ensure we catch the latest process.env state
 const aiInstances: Record<string, GoogleGenAI> = {};
@@ -24,6 +24,16 @@ const TASK_MODELS: Record<string, string> = {
   'default': 'gemini-2.5-flash'
 };
 
+const TASK_KEY_MAP: Record<string, KeyTask> = {
+  'planning':         'script',
+  'script':           'script',
+  'seo':              'script',
+  'world':            'scenes',
+  'segmentation':     'scenes',
+  'visual_expansion': 'visual',
+  'image':            'image',
+};
+
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 export const AIService = {
@@ -32,38 +42,32 @@ export const AIService = {
     let model = options?.model;
     const maxRetries = 2;
     let retryCount = 0;
-    let keyRotationCount = 0;
-    const maxKeyRotations = 10;
 
-    // Auto-select best model for task if not explicitly overridden
     if (!model) {
       model = task && TASK_MODELS[task] ? TASK_MODELS[task] : TASK_MODELS['default'];
     }
-    
+
     const execute = async (currentModel: string): Promise<string> => {
-      const apiKey = getGeminiKey(task);
+      const taskKey = (TASK_KEY_MAP[task] ?? 'script') as KeyTask;
+      const apiKey = getKeyForTask(taskKey);
       const ai = getAI(apiKey);
-      console.log(`[AIService] Generating text for task: ${task || 'general'} with model: ${currentModel} (Attempt ${retryCount + 1})`);
-      console.log('[AIService] Using key prefix:', apiKey?.substring(0, 10));
-      console.log('[AIService] Using model:', currentModel);
+      console.log(`[AIService] Task: ${task || 'general'}, model: ${currentModel}, key: ...${apiKey.slice(-4)}`);
 
       try {
         const isJsonTask = task === 'script' || task === 'planning' || task === 'scenes' || task === 'segmentation' || task === 'world';
-        
         const response = await ai.models.generateContent({
           model: currentModel,
           contents: prompt,
           config: {
-             ...(isJsonTask ? { responseMimeType: "application/json" } : {}),
-             safetySettings: [
-               { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-               { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-               { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-               { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-             ]
+            ...(isJsonTask ? { responseMimeType: "application/json" } : {}),
+            safetySettings: [
+              { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+              { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+              { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+              { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            ]
           }
         });
-        
         const text = response.text || '';
         console.log(`[AIService] Text generation successful. Length: ${text.length}`);
         return text;
@@ -72,37 +76,24 @@ export const AIService = {
         const is503 = error?.status === 503 || error?.message?.includes('503') ||
                       error?.message?.includes('UNAVAILABLE') || error?.message?.includes('high demand');
 
-        if (is429 || is503) {
-          markKeyExhausted(apiKey, 'text');
-          const status = getPoolStatus('text');
-          console.log(`[AIService] ${is503 ? '503 server overload' : 'quota exhausted'} on key ...${apiKey.slice(-4)}, rotating... (${status.available}/${status.total} available)`);
-
-          if (status.available > 0 && keyRotationCount < maxKeyRotations) {
-            keyRotationCount++;
-            if (is503) await delay(3000);
-            return execute(currentModel);
-          }
-
-          // All keys exhausted — fall back to cheaper model
-          if (retryCount < maxRetries) {
-            retryCount++;
-            keyRotationCount = 0;
-            const backoffDelay = Math.pow(2, retryCount) * 1000;
-            console.warn(`[AIService] All keys exhausted for ${currentModel}. Falling to gemini-2.5-flash-lite in ${backoffDelay}ms...`);
-            await delay(backoffDelay);
-            if (currentModel === 'gemini-2.5-flash-lite') {
-              throw new Error('429 RESOURCE_EXHAUSTED: AI Quota Exceeded. Please try again in 1 minute or upgrade to a paid API key in Settings.');
-            }
-            return execute('gemini-2.5-flash-lite');
-          }
-          throw new Error('429 RESOURCE_EXHAUSTED: AI Quota Exceeded. Please try again in 1 minute or upgrade to a paid API key in Settings.');
+        if ((is429 || is503) && retryCount < maxRetries) {
+          retryCount++;
+          const backoffDelay = is503 ? 3000 : Math.pow(2, retryCount) * 1000;
+          console.warn(`[AIService] ${is503 ? '503 overload' : 'quota hit'} on ${currentModel}. Falling back to gemini-2.5-flash-lite in ${backoffDelay}ms...`);
+          await delay(backoffDelay);
+          if (currentModel !== 'gemini-2.5-flash-lite') return execute('gemini-2.5-flash-lite');
+          throw new Error('429 RESOURCE_EXHAUSTED: AI Quota Exceeded. Please try again in 1 minute.');
         }
-        
+
+        if (is429 || is503) {
+          throw new Error('429 RESOURCE_EXHAUSTED: AI Quota Exceeded. Please try again in 1 minute.');
+        }
+
         if (error?.status === 'PERMISSION_DENIED' || error?.message?.includes('403') || error?.message?.includes('400')) {
           console.error('[AIService] RAW ERROR:', JSON.stringify(error, null, 2));
           throw error;
         }
-        
+
         throw error;
       }
     };
@@ -110,12 +101,11 @@ export const AIService = {
     return execute(model);
   },
   analyzeImage: async (imageBase64: string, prompt: string, options?: any) => {
-    const task = 'world';
-    const model = options?.model || TASK_MODELS[task] || 'gemini-2.5-flash';
+    const model = options?.model || TASK_MODELS['world'] || 'gemini-2.5-flash';
     console.log(`[AIService] Analyzing image with model: ${model}`);
 
     try {
-      const apiKey = getGeminiKey(task);
+      const apiKey = getKeyForTask('scenes');
       const ai = getAI(apiKey);
       const response = await ai.models.generateContent({
         model,
@@ -138,7 +128,8 @@ export const AIService = {
     const finalPrompt = `${qualityPrompt}. Vertical 9:16 portrait orientation.`;
 
     // Provider 1: Imagen 4 Fast via AI Studio key (primary - confirmed working)
-    const imagenApiKey = getGeminiKey() || process.env.GEMINI_API_KEY;
+    let imagenApiKey = '';
+    try { imagenApiKey = getKeyForTask('image'); } catch { /* falls through to next provider */ }
     if (imagenApiKey) {
       try {
         console.log('[ImageGen] Trying Imagen 4 Fast...');
@@ -227,29 +218,23 @@ export const AIService = {
     }
 
     // Provider 4: Gemini 2.5 flash image (when quota available)
-    const apiKey = getGeminiKey('image') || getGeminiKey();
-    if (apiKey) {
+    let geminiImageKey = '';
+    try { geminiImageKey = getKeyForTask('image'); } catch { /* no key configured */ }
+    if (geminiImageKey) {
       try {
         console.log('[ImageGen] Trying Gemini 2.5 flash image...');
-        const ai = getAI(apiKey);
+        const ai = getAI(geminiImageKey);
         const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash-image',
-          contents: [{
-            role: 'user',
-            parts: [{ text: finalPrompt }]
-          }],
-          config: {
-            responseModalities: ['TEXT', 'IMAGE']
-          }
+          contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
+          config: { responseModalities: ['TEXT', 'IMAGE'] }
         });
         const parts = response.candidates?.[0]?.content?.parts;
         const imagePart = parts?.find((p: any) => p.inlineData);
         if (!imagePart?.inlineData?.data) throw new Error('No image in response');
-        markKeyExhausted(apiKey, 'image');
         console.log('[ImageGen] Gemini success!');
         return imagePart.inlineData.data as string;
       } catch (e: any) {
-        if (apiKey) markKeyExhausted(apiKey, 'image');
         console.warn('[ImageGen] Gemini failed:', e.message);
       }
     }

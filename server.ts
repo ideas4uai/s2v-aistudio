@@ -18,7 +18,6 @@ import { voicesRouter } from './src/server/routes/voices.js';
 import { v4 as uuidv4 } from 'uuid';
 import { verifyIdToken } from './src/server/utils/auth.js';
 import { fdb, FirestoreService } from './src/server/db/firestore.js';
-import { getPoolStatus } from './src/utils/geminiAuth.js';
 import { requestContext } from './src/server/utils/context.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -269,22 +268,10 @@ async function startServer() {
   app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
     
-    // Masked debug logging for Gemini keys
-    const maskKey = (key: string | undefined) => {
-      if (!key) return 'exists: no';
-      const trimmed = key.trim().replace(/^["']|["']$/g, '');
-      if (trimmed.length === 0) return 'exists: yes, but empty';
-      return `exists: yes, len: ${trimmed.length}, prefix: ${trimmed.substring(0, 6)}, suffix: ${trimmed.substring(trimmed.length - 4)}`;
-    };
-    
-    console.log(`[STARTUP] GEMINI_API_KEY -> ${maskKey(process.env.GEMINI_API_KEY)}`);
-    console.log(`[STARTUP] MY_CUSTOM_GEMINI_API_KEY -> ${maskKey(process.env.MY_CUSTOM_GEMINI_API_KEY)}`);
-
-    const pool = getPoolStatus();
-    console.log(`[STARTUP] Key pool: ${pool.available}/${pool.total} keys loaded`);
-    if (pool.total === 0) {
-      console.error('[STARTUP] WARNING: No Gemini API keys detected — AI generation will fail');
-    }
+    console.log('[STARTUP] GEMINI_KEY_SCRIPT:', process.env.GEMINI_KEY_SCRIPT ? 'loaded' : 'MISSING');
+    console.log('[STARTUP] GEMINI_KEY_SCENES:', process.env.GEMINI_KEY_SCENES ? 'loaded' : 'MISSING');
+    console.log('[STARTUP] GEMINI_KEY_VISUAL:', process.env.GEMINI_KEY_VISUAL ? 'loaded' : 'MISSING');
+    console.log('[STARTUP] GEMINI_KEY_IMAGE:', process.env.GEMINI_KEY_IMAGE  ? 'loaded' : 'MISSING');
 
     const piperBin = process.env.PIPER_BIN_PATH;
     if (piperBin) {
