@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, Loader2, Image as ImageIcon, BookOpen, Users, MapPin, Sliders, Download } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Loader2, Image as ImageIcon, BookOpen, Users, MapPin, Sliders, Download, Upload } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 import { v4 as uuidv4 } from 'uuid';
 import type { Universe, StoryCharacter, StoryLocation } from '../models/project';
@@ -130,6 +130,46 @@ export function UniverseEditor() {
       URL.revokeObjectURL(url);
     } catch (e) {
       window.open(char.referenceImageUrl, '_blank');
+    }
+  };
+
+  const handleUploadCharacterImage = async (char: StoryCharacter, file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { alert('Please upload an image file'); return; }
+    if (file.size > 10 * 1024 * 1024) { alert('Image must be under 10MB'); return; }
+
+    setGeneratingImage(char.id);
+    try {
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.readAsDataURL(file);
+      });
+
+      const res = await authenticatedFetch(`/api/universes/${id}/characters/${char.id}/image/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64, mimeType: file.type }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+      if (data.imageUrl) {
+        updateCharacter(char.id, { referenceImageUrl: data.imageUrl });
+        const updatedChars = universe.characters.map((c: StoryCharacter) =>
+          c.id === char.id ? { ...c, referenceImageUrl: data.imageUrl } : c
+        );
+        await authenticatedFetch(`/api/universes/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...universe, characters: updatedChars }),
+        });
+        console.log('[Universe] Character image uploaded:', char.name, data.imageUrl);
+      }
+    } catch (err: any) {
+      alert('Upload failed: ' + err.message);
+    } finally {
+      setGeneratingImage(null);
     }
   };
 
@@ -410,15 +450,31 @@ export function UniverseEditor() {
                         <label className="block text-xs font-bold text-neutral-600 mb-1">Image Generation Prompt</label>
                         <textarea className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-16" value={char.imagePrompt} onChange={e => updateCharacter(char.id, { imagePrompt: e.target.value })} placeholder="Full Imagen 4 ready prompt for generating a reference image" />
                       </div>
-                      <div className="flex items-center gap-3 flex-wrap">
+                      <input
+                        type="file"
+                        id={`upload-${char.id}`}
+                        accept="image/*"
+                        className="hidden"
+                        onChange={e => handleUploadCharacterImage(char, e.target.files?.[0])}
+                      />
+                      <div className="flex items-center gap-2 flex-wrap">
                         <button
                           onClick={() => generateCharacterImage(char)}
                           disabled={!char.imagePrompt || generatingImage === char.id || !isSaved}
                           title={!isSaved ? 'Save the universe first' : ''}
-                          className="flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                          className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                         >
                           {generatingImage === char.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
-                          Generate Reference Image
+                          Generate with AI
+                        </button>
+                        <button
+                          onClick={() => document.getElementById(`upload-${char.id}`)?.click()}
+                          disabled={generatingImage === char.id || !isSaved}
+                          title={!isSaved ? 'Save the universe first' : ''}
+                          className="flex items-center gap-2 px-3 py-2 text-sm border border-neutral-300 rounded-lg hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {generatingImage === char.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload size={14} />}
+                          {char.referenceImageUrl ? 'Replace Image' : 'Upload Image'}
                         </button>
                         {char.referenceImageUrl && (
                           <div className="flex items-center gap-2">

@@ -186,6 +186,23 @@ async function startServer() {
       res.status(500).json({ error: err.message });
     }
   });
+  app.post('/api/universes/:id/characters/:charId/image/upload', async (req, res) => {
+    const { base64, mimeType } = req.body;
+    try {
+      const buffer = Buffer.from(base64, 'base64');
+      const ext = mimeType === 'image/png' ? 'png' : 'jpg';
+      const url = await FirestoreService.uploadAsset(
+        req.params.id,
+        `characters/${req.params.charId}.${ext}`,
+        buffer,
+        mimeType
+      );
+      res.json({ imageUrl: url });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.use('/api/jobs', jobsRouter);
   app.use('/api/assets', assetsRouter);
   app.use('/api/visuals', visualsRouter);
