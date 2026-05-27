@@ -5,7 +5,16 @@ import { authenticatedFetch } from '../utils/api';
 import { v4 as uuidv4 } from 'uuid';
 import type { Universe, StoryCharacter, StoryLocation } from '../models/project';
 
-const ART_STYLES = ['cinematic', 'anime', 'realistic', 'cartoon', '3d_rendered', 'watercolor', 'cyberpunk', 'mixed'];
+const STYLE_PRESETS = [
+  { label: 'Custom (fill below)', value: '' },
+  { label: 'Anime Cinematic', value: 'semi-realistic anime, Trigger Studio quality, flat colour shading, bold clean outlines, Cyberpunk Edgerunners character design language, warm amber and neon teal lighting' },
+  { label: 'Photorealistic', value: 'photorealistic, cinematic lighting, sharp focus, 8K quality, professional photography' },
+  { label: 'Makoto Shinkai', value: 'Makoto Shinkai anime style, soft atmospheric lighting, painterly backgrounds, warm golden hour, detailed environments' },
+  { label: 'Studio Ghibli', value: 'Studio Ghibli style, hand-drawn feel, soft watercolour backgrounds, expressive characters, warm natural lighting' },
+  { label: 'Cyberpunk', value: 'cyberpunk aesthetic, neon lighting, dark environments, holographic displays, rain-slicked streets, high contrast' },
+  { label: 'Indian Miniature Modern', value: 'modern Indian miniature painting style, vibrant colours, intricate patterns, flat perspective, bold outlines, traditional motifs' },
+  { label: 'Webtoon', value: 'webtoon style, clean lines, flat colours, expressive faces, Korean manhwa aesthetic, bright colour palette' },
+];
 
 const emptyCharacter = (): StoryCharacter => ({
   id: uuidv4(),
@@ -244,17 +253,32 @@ export function UniverseEditor() {
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
+                <div className="md:col-span-2">
                   <label className="block text-sm font-bold text-neutral-700 mb-2">Art Style</label>
-                  <select
-                    className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-sm"
-                    value={universe.artStyle || 'cinematic'}
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs text-neutral-500 whitespace-nowrap">Quick preset:</span>
+                    <select
+                      className="flex-1 px-3 py-2 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-sm"
+                      value={STYLE_PRESETS.find(p => p.value === universe.artStyle)?.value ?? ''}
+                      onChange={e => {
+                        if (e.target.value !== '') {
+                          setUniverse((u: any) => ({ ...u, artStyle: e.target.value }));
+                        }
+                      }}
+                    >
+                      {STYLE_PRESETS.map(p => (
+                        <option key={p.label} value={p.value}>{p.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <textarea
+                    rows={3}
+                    className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm resize-none"
+                    placeholder="Describe the art style in detail — this is injected into every image prompt"
+                    value={universe.artStyle || ''}
                     onChange={e => setUniverse((u: any) => ({ ...u, artStyle: e.target.value }))}
-                  >
-                    {ART_STYLES.map(s => (
-                      <option key={s} value={s}>{s.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
-                    ))}
-                  </select>
+                  />
+                  <p className="text-xs text-neutral-400 mt-1">This description is injected into every image prompt</p>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-neutral-700 mb-2">Episode Structure</label>
