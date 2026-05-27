@@ -18,6 +18,7 @@ interface Scene {
   visuals?: any[];
   suggestions?: string[];
   image_path?: string;
+  rendered_path?: string;
   status?: string;
 }
 
@@ -1366,12 +1367,13 @@ export function ProjectEditor() {
                   {[...project.scenes].sort((a, b) => a.order - b.order).map((scene, idx) => {
                     const sceneId = scene.id || scene.scene_id || String(idx);
                     const isGeneratingThisAudio = generatingAudioId === sceneId;
-                    
+                    const sceneImageUrl = scene.visuals?.[0]?.asset_path || scene.image_path || scene.rendered_path;
+
                     return (
                       <div key={sceneId} className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden flex flex-col">
                         <div className="aspect-video bg-neutral-100 relative">
-                          {scene.image_path ? (
-                            <img src={scene.image_path} alt={`Scene ${idx + 1}`} className="w-full h-full object-cover" />
+                          {sceneImageUrl ? (
+                            <img src={sceneImageUrl} alt={`Scene ${idx + 1}`} className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-neutral-300">
                               <ImageIcon className="w-8 h-8" />
@@ -1532,9 +1534,9 @@ export function ProjectEditor() {
                   </div>
                 )}
 
-                {(project.scenes?.filter(s => !s.image_path && !s.visuals?.[0]?.rendered_path).length ?? 0) > 0 && (
+                {(project.scenes?.filter(s => !s.visuals?.[0]?.asset_path && !s.image_path && !s.visuals?.[0]?.rendered_path).length ?? 0) > 0 && (
                   <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
-                    ⚠ {project.scenes.filter(s => !s.image_path && !s.visuals?.[0]?.rendered_path).length} scene(s) missing images. Generate assets before rendering for best results.
+                    ⚠ {project.scenes.filter(s => !s.visuals?.[0]?.asset_path && !s.image_path && !s.visuals?.[0]?.rendered_path).length} scene(s) missing images. Generate assets before rendering for best results.
                   </div>
                 )}
 
@@ -1673,8 +1675,9 @@ export function ProjectEditor() {
                                   .sort((a, b) => (a.order || 0) - (b.order || 0))
                                   .map((scene, idx) => {
                                     const dur = Number(scene.duration) || 5;
-                                    const width = Math.max(160, dur * 40); 
-                                    
+                                    const width = Math.max(160, dur * 40);
+                                    const sceneImageUrl = scene.visuals?.[0]?.asset_path || scene.image_path || scene.rendered_path;
+
                                     return (
                                       <div 
                                         key={scene.id || scene.scene_id || `timeline-${idx}`} 
@@ -1696,12 +1699,12 @@ export function ProjectEditor() {
                                         </div>
                                         
                                         <div className="flex-1 space-y-3">
-                                          {scene.image_path ? (
+                                          {sceneImageUrl ? (
                                             <div className="aspect-video rounded-xl overflow-hidden shadow-inner bg-neutral-900/10 border border-white/10 group-hover:scale-[1.02] transition-transform duration-500">
-                                              <img 
-                                                src={scene.image_path} 
-                                                alt="" 
-                                                className={`w-full h-full object-cover transition-all duration-700 ${scene.status === 'completed' ? 'grayscale-0' : 'grayscale group-hover:grayscale-0'}`} 
+                                              <img
+                                                src={sceneImageUrl}
+                                                alt=""
+                                                className={`w-full h-full object-cover transition-all duration-700 ${scene.status === 'completed' ? 'grayscale-0' : 'grayscale group-hover:grayscale-0'}`}
                                               />
                                             </div>
                                           ) : (
