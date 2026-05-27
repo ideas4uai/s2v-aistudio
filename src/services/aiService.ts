@@ -147,11 +147,12 @@ export const AIService = {
     try { imagenApiKey = getKeyForTask('image'); } catch { /* falls through to next provider */ }
     if (imagenApiKey) {
       try {
-        console.log('[ImageGen] Trying Imagen 4 Fast...');
+        const imagenModel = options?.quality === '4k' ? 'imagen-4.0-generate-001' : 'imagen-4.0-fast-generate-001';
+        console.log(`[ImageGen] Trying Imagen 4 (${imagenModel})...`);
         const { GoogleGenAI } = await import('@google/genai');
         const imagenAI = new GoogleGenAI({ apiKey: imagenApiKey });
         const imagenResponse = await imagenAI.models.generateImages({
-          model: 'imagen-4.0-fast-generate-001',
+          model: imagenModel,
           prompt: finalPrompt,
           config: {
             numberOfImages: 1,

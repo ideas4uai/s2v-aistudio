@@ -170,7 +170,10 @@ async function startServer() {
     const { prompt } = req.body;
     try {
       const { AIService } = await import('./src/services/aiService.js');
-      const base64 = await AIService.generateImageBase64(prompt);
+      const base64 = await AIService.generateImageBase64(
+        prompt + ', ultra high quality, 4K, highly detailed',
+        { aspectRatio: '9:16', quality: '4k' }
+      );
       const buffer = Buffer.from(base64, 'base64');
       const url = await FirestoreService.uploadAsset(
         req.params.id,

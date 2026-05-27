@@ -45,6 +45,15 @@ export function Dashboard() {
     fetchProjects();
   }, [user]);
 
+  const handleDeleteUniverse = async (id: string) => {
+    try {
+      await authenticatedFetch(`/api/universes/${id}`, { method: 'DELETE' });
+      setUniverses(prev => prev.filter(u => u.id !== id));
+    } catch (err) {
+      alert('Failed to delete universe');
+    }
+  };
+
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setDeletingId(id);
@@ -118,8 +127,19 @@ export function Dashboard() {
             <div
               key={universe.id}
               onClick={() => navigate(`/universes/${universe.id}`)}
-              className="bg-white border border-neutral-200 rounded-xl p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 transition-all w-44"
+              className="relative group bg-white border border-neutral-200 rounded-xl p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 transition-all w-44"
             >
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  if (window.confirm(`Delete "${universe.title || 'Untitled'}" universe? This cannot be undone.`)) {
+                    handleDeleteUniverse(universe.id);
+                  }
+                }}
+                className="absolute top-2 right-2 p-1.5 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <Trash2 size={14} />
+              </button>
               <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center mb-3">
                 <BookOpen className="w-5 h-5 text-indigo-600" />
               </div>

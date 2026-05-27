@@ -115,6 +115,24 @@ export function UniverseEditor() {
     }
   };
 
+  const handleDownloadCharacterImage = async (char: StoryCharacter) => {
+    if (!char.referenceImageUrl) return;
+    try {
+      const res = await fetch(char.referenceImageUrl);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${char.name}_reference.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      window.open(char.referenceImageUrl, '_blank');
+    }
+  };
+
   const generateCharacterImage = async (char: StoryCharacter) => {
     if (!char.imagePrompt) return;
     setGeneratingImage(char.id);
@@ -127,7 +145,18 @@ export function UniverseEditor() {
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       const url = data.imageUrl;
-      if (url) updateCharacter(char.id, { referenceImageUrl: url });
+      if (url) {
+        updateCharacter(char.id, { referenceImageUrl: url });
+        const updatedChars = universe.characters.map((c: StoryCharacter) =>
+          c.id === char.id ? { ...c, referenceImageUrl: url } : c
+        );
+        await authenticatedFetch(`/api/universes/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...universe, characters: updatedChars }),
+        });
+        console.log('[Universe] Character image saved:', char.name, url);
+      }
     } catch (e) {
       console.error('Image generation failed:', e);
     } finally {
@@ -399,15 +428,12 @@ export function UniverseEditor() {
                               className="w-12 h-12 rounded-lg object-cover border border-neutral-200 cursor-pointer hover:opacity-80 transition-opacity"
                               onClick={() => setLightboxChar(char)}
                             />
-                            <a
-                              href={char.referenceImageUrl}
-                              download={`${char.name}_reference.jpg`}
-                              target="_blank"
-                              rel="noreferrer"
+                            <button
+                              onClick={() => handleDownloadCharacterImage(char)}
                               className="text-xs text-blue-600 hover:underline flex items-center gap-1"
                             >
                               <Download size={12} /> Download
-                            </a>
+                            </button>
                           </div>
                         )}
                       </div>
@@ -529,13 +555,12 @@ export function UniverseEditor() {
             />
             <p className="text-white text-center mt-2 font-semibold">{lightboxChar.name}</p>
             <div className="flex gap-2 mt-2 justify-center">
-              <a
-                href={lightboxChar.referenceImageUrl || ''}
-                download={`${lightboxChar.name}_reference.jpg`}
+              <button
+                onClick={() => handleDownloadCharacterImage(lightboxChar)}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors"
               >
                 Download
-              </a>
+              </button>
               <button
                 onClick={() => setLightboxChar(null)}
                 className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 transition-colors"
