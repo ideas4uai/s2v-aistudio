@@ -39,7 +39,16 @@ export async function generateNarration(
       await fs.writeFile(textFilePath, text, 'utf8');
 
       const voicesDir = process.env.PIPER_VOICES_DIR || path.dirname(piperBin);
-      let modelName = 'en_US-lessac-medium';
+      const VOICE_MAP: Record<string, string> = {
+        'VEER':     'en_US-lessac-medium',
+        'BYTE':     'en_US-ryan-high',
+        'NOVA':     'en_GB-alba-medium',
+        'NARRATOR': 'en_US-lessac-medium',
+      };
+
+      let modelName = VOICE_MAP[
+        (settings?.character as string | undefined)?.toUpperCase() ?? ''
+      ] ?? VOICE_MAP['NARRATOR'];
 
       if (lang === 'hindi') {
         modelName = 'hi_IN-rohan-medium';

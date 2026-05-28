@@ -90,6 +90,7 @@ export interface Scene {
   suggestions?: string[];
   is_null_tease?: boolean;
   emotion?: string;
+  character?: string;
 
   // Source-aware generation metadata
   primarySubject?: string;
