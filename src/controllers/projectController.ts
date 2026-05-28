@@ -127,10 +127,9 @@ export async function generateScenes(req: Request, res: Response) {
       console.log(`[ProjectController] Video plan generated.`);
     }
 
-    // Fast-path: script already has Visual Prompt sections — parse directly, skip StoryboardAgent
+    // Fast-path: script has Visual Prompt sections — use prompts directly, skip StoryboardAgent entirely
     if (hasManualScript && hasVisualPrompts) {
-      console.log(`[ProjectController] Script has Visual Prompts — parsing directly, skipping StoryboardAgent`);
-      const blocks = scriptToUse.split(/\n(?=Scene\s*\d+|Visual Prompt:|Narration:)/i);
+      console.log(`[ProjectController] Script has Visual Prompts — building scenes directly, skipping StoryboardAgent`);
       const directScenes: any[] = [];
       let current: any = {};
       for (const line of scriptToUse.split('\n')) {
@@ -145,21 +144,40 @@ export async function generateScenes(req: Request, res: Response) {
         directScenes.push({ narration: current.narration, visual: `Cinematic visual: ${current.narration}`, duration: 5 });
       }
       if (directScenes.length > 0) {
-        const scenesResult = await StoryboardAgent.expandVisuals(project, plan, directScenes);
-        project.scenes = scenesResult.map(s => ({
-          scene_id: s.scene_id || uuidv4(),
+        const featuredCharsForDetection = ((project.universe as any)?.characters as any[] | undefined)
+          ?.filter((c: any) => !project.featuredCharacterIds?.length || project.featuredCharacterIds.includes(c.id)) ?? [];
+        const detectChar = (narration: string): string => {
+          const text = narration.toLowerCase();
+          for (const char of featuredCharsForDetection) {
+            if (text.includes(char.name.toLowerCase())) return char.name.toUpperCase();
+          }
+          return 'NARRATOR';
+        };
+
+        project.scenes = directScenes.map((s: any, idx: number) => ({
+          scene_id: uuidv4(),
           projectId: id,
-          order: s.order,
-          narration_text: s.narration_text,
-          caption_text: s.caption_text,
-          duration_target: s.duration_target,
+          order: idx,
+          narration_text: s.narration,
+          caption_text: s.narration,
+          character: detectChar(s.narration || ''),
+          emotion: 'neutral',
+          duration_target: s.duration || 5,
           status: 'pending',
           stage: 'audio',
-          visuals: [{ visual_id: uuidv4(), prompt: s.visuals?.[0]?.prompt || '', asset_type: 'image', status: 'pending', duration_target: s.duration_target }]
+          visuals: [{
+            visual_id: uuidv4(),
+            prompt: s.visual,
+            asset_type: 'ai_image',
+            motion_instruction: 'zoom_in',
+            status: 'pending',
+            cache_key: '',
+            duration_target: s.duration || 5,
+          }],
         } as any));
         await saveProjectState(project);
-        console.log(`[ProjectController] generateScenes (visual-prompt fast-path) successful for project ${id}`);
-        return res.json({ message: 'Scenes generated successfully', count: scenesResult.length });
+        console.log(`[ProjectController] generateScenes (visual-prompt fast-path, ${directScenes.length} scenes) successful for project ${id}`);
+        return res.json({ message: 'Scenes generated successfully', count: directScenes.length });
       }
     }
 

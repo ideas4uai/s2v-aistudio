@@ -17,12 +17,32 @@ function detectEmotion(text: string): string {
   return 'neutral';
 }
 
+const CHARACTER_KEYWORDS: Record<string, string[]> = {
+  'byte': ['efficiency', 'optimis', 'percent', 'proud', 'recommended', 'calculated', 'routes', 'logged', 'sending'],
+  'nova': ['pattern recognition', 'explains', 'ai is', 'systems trained', 'data', 'observing', 'difference', 'dynamic'],
+  'veer': ['stops walking', 'stares', 'reads', 'wonders', 'deeply unsettling', 'disturbed', 'realises', 'finds this'],
+};
+
 function detectCharacter(narration: string, chars: any[]): string {
   const text = narration.toLowerCase();
+  let bestChar = 'NARRATOR';
+  let bestScore = 0;
+
   for (const char of chars) {
-    if (text.includes(char.name.toLowerCase())) return char.name.toUpperCase();
+    const name = char.name.toLowerCase();
+    let score = 0;
+    if (text.includes(name)) score += 3;
+    const keywords = CHARACTER_KEYWORDS[name] || [];
+    for (const kw of keywords) {
+      if (text.includes(kw)) score += 2;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestChar = char.name.toUpperCase();
+    }
   }
-  return 'NARRATOR';
+
+  return bestScore > 0 ? bestChar : 'NARRATOR';
 }
 
 export const StoryboardAgent = {

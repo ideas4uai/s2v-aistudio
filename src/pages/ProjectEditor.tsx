@@ -90,9 +90,17 @@ interface Project {
       imagePrompt?: string;
       referenceImageUrl?: string;
     }[];
+    locations?: {
+      id: string;
+      name: string;
+      description: string;
+      imagePrompt?: string;
+      referenceImageUrl?: string;
+    }[];
   };
   episodeNumber?: number;
   featuredCharacterIds?: string[];
+  featuredLocationId?: string;
 }
 
 export function ProjectEditor() {
@@ -245,6 +253,8 @@ export function ProjectEditor() {
       }
       setCharacterText(data.character_description || '');
       const savedEntities = data.world_entities || { characters: [], locations: [], objects: [] };
+      let mergedEntities = { ...savedEntities };
+
       if (data.universe?.characters?.length > 0 && savedEntities.characters.length === 0) {
         const universeChars = (data.universe.characters as any[])
           .filter((c: any) => !data.featuredCharacterIds?.length || data.featuredCharacterIds.includes(c.id))
@@ -254,10 +264,26 @@ export function ProjectEditor() {
             prompt: c.imagePrompt || c.appearance || '',
             referenceImageUrl: c.referenceImageUrl,
           }));
-        setWorldEntities({ ...savedEntities, characters: universeChars.length > 0 ? universeChars : savedEntities.characters });
-      } else {
-        setWorldEntities(savedEntities);
+        if (universeChars.length > 0) mergedEntities = { ...mergedEntities, characters: universeChars };
       }
+
+      if (data.universe && data.featuredLocationId && savedEntities.locations.length === 0) {
+        const featuredLoc = (data.universe.locations as any[] | undefined)
+          ?.find((l: any) => l.id === data.featuredLocationId);
+        if (featuredLoc) {
+          mergedEntities = {
+            ...mergedEntities,
+            locations: [{
+              name: featuredLoc.name,
+              description: featuredLoc.description,
+              prompt: featuredLoc.imagePrompt || '',
+              referenceImageUrl: featuredLoc.referenceImageUrl,
+            }],
+          };
+        }
+      }
+
+      setWorldEntities(mergedEntities);
       setSettings(data.settings || {
         hookStrategy: 'Curiosity',
         exportMode: 'youtube',
@@ -686,6 +712,7 @@ export function ProjectEditor() {
 
   const universe = project.universe;
   const isUniverseMode = !!universe;
+  const featuredLocation = universe?.locations?.find((l) => l.id === project.featuredLocationId);
 
   const tabs = [
     { id: 1, name: 'Script', icon: FileText },
@@ -1238,7 +1265,29 @@ export function ProjectEditor() {
                         <MapPin className="w-5 h-5 text-indigo-600" /> Locations & Environments
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {worldEntities.locations.map((loc: any, idx: number) => (
+                        {/* Universe featured location — read-only card */}
+                        {universe && featuredLocation && (
+                          <div className="bg-neutral-50 rounded-xl p-4 border border-neutral-100">
+                            {featuredLocation.referenceImageUrl && (
+                              <div className="w-full aspect-video rounded-lg overflow-hidden mb-3 bg-neutral-200">
+                                <img src={featuredLocation.referenceImageUrl} alt={featuredLocation.name} className="w-full h-full object-cover" />
+                              </div>
+                            )}
+                            <h4 className="font-bold text-neutral-800 mb-1">{featuredLocation.name}</h4>
+                            <p className="text-xs text-neutral-500 mb-2">{featuredLocation.description}</p>
+                            <div className="text-xs text-neutral-600 bg-white p-2 rounded-lg border border-neutral-200">
+                              {featuredLocation.imagePrompt || featuredLocation.description}
+                              <p className="text-[10px] text-purple-500 mt-1.5">
+                                Managed by Universe —{' '}
+                                <a href={`/universes/${universe.projectId || universe.id}`} className="hover:underline">
+                                  edit in Universe Editor
+                                </a>
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                        {/* Non-universe editable locations */}
+                        {!isUniverseMode && worldEntities.locations.map((loc: any, idx: number) => (
                           <div key={idx} className="bg-neutral-50 rounded-xl p-4 border border-neutral-100 group">
                             <div className="flex justify-between items-start mb-2">
                               <h4 className="font-bold text-neutral-800">{loc.name}</h4>
@@ -1256,8 +1305,11 @@ export function ProjectEditor() {
                             />
                           </div>
                         ))}
-                        {worldEntities.locations.length === 0 && (
+                        {worldEntities.locations.length === 0 && !isUniverseMode && (
                           <p className="text-sm text-neutral-400 italic py-4">No locations identified yet.</p>
+                        )}
+                        {isUniverseMode && !featuredLocation && (
+                          <p className="text-sm text-neutral-400 italic py-4">No featured location set for this episode.</p>
                         )}
                       </div>
                     </div>
