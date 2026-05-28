@@ -169,13 +169,15 @@ export async function generateScenes(req: Request, res: Response) {
           return speakerPatterns.some((p: string) => text.includes(p)) ? char.name.toUpperCase() : 'NARRATOR';
         };
 
-        project.scenes = directScenes.map((s: any, idx: number) => ({
+        project.scenes = directScenes.map((s: any, idx: number) => {
+          const existingScene = (project.scenes || []).find((es: any) => es.order === idx);
+          return {
           scene_id: uuidv4(),
           projectId: id,
           order: idx,
           narration_text: s.narration,
           caption_text: s.narration,
-          character: detectChar(s.narration || ''),
+          character: existingScene?.character || detectChar(s.narration || ''),
           emotion: 'neutral',
           duration_target: s.duration || 5,
           status: 'pending',
@@ -189,7 +191,8 @@ export async function generateScenes(req: Request, res: Response) {
             cache_key: '',
             duration_target: s.duration || 5,
           }],
-        } as any));
+          } as any;
+        });
         await saveProjectState(project);
         console.log(`[ProjectController] generateScenes (visual-prompt fast-path, ${directScenes.length} scenes) successful for project ${id}`);
         return res.json({ message: 'Scenes generated successfully', count: directScenes.length });

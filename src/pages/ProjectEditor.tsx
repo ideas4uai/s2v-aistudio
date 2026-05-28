@@ -673,18 +673,15 @@ export function ProjectEditor() {
   };
 
   const handleUpdateSceneCharacter = async (sceneId: string, character: string) => {
-    const scene = project?.scenes.find(s => (s.id || s.scene_id) === sceneId);
     setProject(prev => prev ? {
       ...prev,
-      scenes: prev.scenes.map(s =>
-        (s.id === sceneId || s.scene_id === sceneId) ? { ...s, character } : s
-      )
+      scenes: prev.scenes.map(s => s.id === sceneId ? { ...s, character } : s)
     } : prev);
     try {
       await authenticatedFetch(`/api/projects/${id}/scenes/${sceneId}/update-narration`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ narrationText: scene?.narration_text || '', character })
+        body: JSON.stringify({ character })
       });
     } catch (err) {
       console.error('Failed to save scene character:', err);
@@ -1445,7 +1442,7 @@ export function ProjectEditor() {
                               <select
                                 value={scene.character || 'NARRATOR'}
                                 onChange={e => handleUpdateSceneCharacter(sceneId, e.target.value)}
-                                className="ml-auto text-xs border border-neutral-200 rounded-lg px-2 py-1 bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                                className="ml-auto text-xs font-semibold px-2 py-1 border border-purple-300 rounded-lg bg-purple-50 text-purple-700 hover:border-purple-500 cursor-pointer outline-none"
                               >
                                 <option value="NARRATOR">NARRATOR</option>
                                 {(universe?.characters || []).map((c) => (
