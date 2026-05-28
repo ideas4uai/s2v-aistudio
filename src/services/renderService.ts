@@ -36,19 +36,18 @@ async function guardedExec(command: string, signal?: AbortSignal) {
 
 async function callAnimator(
   config: Record<string, any>
-): Promise<string> {
+): Promise<string | null> {
   const { execFile } = await import('child_process');
   const { promisify } = await import('util');
   const execFileAsync = promisify(execFile);
 
-  // Write config to temp file (avoids Windows shell quote escaping issues)
   const configPath = path.join(
     os.tmpdir(),
     `animator_config_${Date.now()}.json`
   );
-  await fs.promises.writeFile(configPath, JSON.stringify(config));
-
   try {
+    await fs.promises.writeFile(configPath, JSON.stringify(config));
+
     const pythonCmd = process.platform === 'win32'
       ? 'python' : 'python3';
     const scriptPath = path.join(
@@ -64,6 +63,9 @@ async function callAnimator(
     const result = JSON.parse(stdout.trim());
     if (result.error) throw new Error(result.error);
     return config.output;
+  } catch (err: any) {
+    console.warn('[Animator] Python animation failed, using Ken Burns fallback:', err.message?.split('\n')[0]);
+    return null;
   } finally {
     fs.promises.unlink(configPath).catch(() => {});
   }
@@ -218,8 +220,12 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           const storedPreset = project?.settings?.exportPreset;
           const preset = isPreview ? 'ultrafast' : (storedPreset || 'fast');
           const qualityFlags = isPreview ? '' : is4k ? '-crf 18 -b:v 8M' : '-crf 20 -b:v 4M';
-          await guardedExec(`"${ffmpeg}" -i "${animatedPath}" -c:v libx264 -preset ${preset} ${qualityFlags} -r 30 -t ${duration} -pix_fmt yuv420p -vf "${filter}" -y "${outputPath}"`, signal);
-          fs.promises.unlink(animatedPath).catch(() => {});
+          const animatorSucceeded = fs.existsSync(animatedPath);
+          const kenburnInput = animatorSucceeded
+            ? `-i "${animatedPath}"`
+            : `-loop 1 -i "${imagePath}"`;
+          await guardedExec(`"${ffmpeg}" ${kenburnInput} -c:v libx264 -preset ${preset} ${qualityFlags} -r 30 -t ${duration} -pix_fmt yuv420p -vf "${filter}" -y "${outputPath}"`, signal);
+          if (animatorSucceeded) fs.promises.unlink(animatedPath).catch(() => {});
         } else {
            const fallbackRes = project?.settings?.aspectRatio === '9:16' ? '1080x1920' : '1920x1080';
            await guardedExec(`"${ffmpeg}" -f lavfi -i color=c=blue:s=${fallbackRes}:d=${duration} -y -c:v libx264 -pix_fmt yuv420p "${outputPath}"`, signal);
@@ -290,12 +296,10 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
 
   const audioInput = audioValid
     ? `-i "${audioPath}" -c:a aac -ar 44100 -ac 2 -b:a 192k`
-    : `-f lavfi -i anullsrc=r=44100:cl=stereo -c:a aac -ar 44100 -ac 2 -b:a 192k`;
+    : `-f lavfi -i anullsrc=r=44100:cl=stereo -c:a aac`;
 
   try {
-     // -stream_loop -1 loops the visual if audio is longer than the rendered clip
-     // -t ${outputDuration} cuts output at exact audio length (replaces -shortest)
-     await guardedExec(`"${ffmpeg}" -stream_loop -1 -i "${visualPath}" ${audioInput} -c:v copy -t ${outputDuration} -y "${outputPath}"`, signal);
+     await guardedExec(`"${ffmpeg}" -stream_loop -1 -i "${visualPath}" ${audioInput} -c:v copy -t ${outputDuration} -shortest -y "${outputPath}"`, signal);
      return outputPath;
   } catch(e: any) {
      if (e.message === 'PIPELINE_CANCELLED') throw e;
@@ -366,7 +370,7 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
   fs.writeFileSync(listFile, listContent);
   
   try {
-     await guardedExec(`"${ffmpeg}" -f concat -safe 0 -i "${listFile}" -c copy -y "${outputPath}"`, signal);
+     await guardedExec(`"${ffmpeg}" -f concat -safe 0 -i "${listFile}" -map 0:v -map 0:a -c:v copy -c:a copy -y "${outputPath}"`, signal);
 
      if (project?.music_track) {
        const musicDir = process.env.MUSIC_DIR || path.join(process.cwd(), 'music');
@@ -376,7 +380,7 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
          const outputWithMusic = path.join(tmpDir, `final_music_${Date.now()}.mp4`);
          try {
            await guardedExec(
-             `"${ffmpeg}" -i "${outputPath}" -stream_loop -1 -i "${musicPath}" -filter_complex "[1:a]volume=${volume}[bg];[0:a][bg]amix=inputs=2:duration=first[aout]" -map 0:v -map "[aout]" -c:v copy -c:a aac -ar 44100 -ac 2 -b:a 192k -y "${outputWithMusic}"`,
+             `"${ffmpeg}" -i "${outputPath}" -stream_loop -1 -i "${musicPath}" -filter_complex "[0:a]aformat=sample_rates=44100:channel_layouts=stereo[a0];[1:a]volume=${volume}[bg];[a0][bg]amix=inputs=2:duration=first[aout]" -map 0:v -map "[aout]" -c:v copy -c:a aac -ar 44100 -ac 2 -b:a 192k -y "${outputWithMusic}"`,
              signal
            );
            fs.promises.unlink(outputPath).catch(() => {});
