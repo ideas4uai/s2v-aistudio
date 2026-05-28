@@ -421,12 +421,26 @@ export async function generateSceneImage(req: Request, res: Response) {
     const scene = project.scenes.find(s => s.scene_id === sceneId || (s as any).id === sceneId);
     if (!scene) return res.status(404).json({ error: 'Scene not found' });
 
-    const prompt = scene.visuals?.[0]?.prompt || (scene as any).visual_prompt || 'Cinematic video scene';
+    const prompt = (req.body?.prompt) || scene.visuals?.[0]?.prompt || (scene as any).visual_prompt || 'Cinematic video scene';
     console.log(`[generateSceneImage] Generating image for scene ${sceneId}, prompt: ${prompt.substring(0, 60)}...`);
+
+    // Resolve reference image: body > universe character match
+    let referenceImageUrl: string | undefined = req.body?.referenceImageUrl;
+    if (!referenceImageUrl && (project as any).universe) {
+      const sceneChar = (scene as any).character as string | undefined;
+      if (sceneChar) {
+        const matchingChar = ((project as any).universe.characters as any[] | undefined)
+          ?.find((c: any) => c.name.toUpperCase() === sceneChar.toUpperCase());
+        referenceImageUrl = matchingChar?.referenceImageUrl;
+      }
+    }
 
     let buffer: Buffer;
     try {
-      const base64Data = await AIService.generateImageBase64(prompt);
+      const base64Data = await AIService.generateImageBase64(prompt, {
+        aspectRatio: project.settings?.aspectRatio === '16:9' ? '16:9' : '9:16',
+        referenceImageUrl,
+      });
       buffer = Buffer.from(base64Data, 'base64');
     } catch (geminiErr) {
       console.warn('[generateSceneImage] Gemini failed, using Picsum fallback:', geminiErr instanceof Error ? geminiErr.message : geminiErr);

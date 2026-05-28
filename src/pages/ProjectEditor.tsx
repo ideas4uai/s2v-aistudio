@@ -131,6 +131,7 @@ export function ProjectEditor() {
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   const [isGeneratingMedia, setIsGeneratingMedia] = useState(false);
   const [generatingAudioId, setGeneratingAudioId] = useState<string | null>(null);
+  const [generatingImageId, setGeneratingImageId] = useState<string | null>(null);
   
   const [isRendering, setIsRendering] = useState(false);
   const [renderStatus, setRenderStatus] = useState<string>('idle');
@@ -402,8 +403,13 @@ export function ProjectEditor() {
         const sceneId = scene.id || scene.scene_id;
         if (!sceneId || scene.status === 'completed') continue;
         try {
+          const featuredChar = project.universe?.characters?.find(
+            c => scene.character && c.name.toUpperCase() === (scene.character as string).toUpperCase()
+          );
           const res = await authenticatedFetch(`/api/projects/${id}/scenes/${sceneId}/generate-image`, {
-            method: 'POST'
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ referenceImageUrl: featuredChar?.referenceImageUrl })
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
@@ -424,6 +430,31 @@ export function ProjectEditor() {
     } finally {
       setIsGeneratingMedia(false);
       await fetchProject();
+    }
+  };
+
+  const handleGenerateSceneImage = async (sceneId: string) => {
+    const scene = project?.scenes.find(s => s.id === sceneId);
+    if (!scene) return;
+    setGeneratingImageId(sceneId);
+    try {
+      const featuredChar = project?.universe?.characters?.find(
+        c => scene.character && c.name.toUpperCase() === (scene.character as string).toUpperCase()
+      );
+      const res = await authenticatedFetch(`/api/projects/${id}/scenes/${sceneId}/generate-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: scene.visual_prompt,
+          referenceImageUrl: featuredChar?.referenceImageUrl,
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await fetchProject();
+    } catch (err) {
+      console.warn('Scene image generation failed:', sceneId, err);
+    } finally {
+      setGeneratingImageId(null);
     }
   };
 
@@ -1396,6 +1427,15 @@ export function ProjectEditor() {
           {/* TAB 3: SCENES */}
           {activeTab === 3 && (
             <div className="space-y-6">
+              {universe && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700">
+                  <strong>Story Episode workflow:</strong> After reviewing scenes, go to{' '}
+                  <button onClick={() => setActiveTab(4)} className="underline font-semibold">
+                    Media tab
+                  </button>
+                  {' '}and click "Generate All Assets" to render with character consistency from your Universe.
+                </div>
+              )}
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold text-neutral-900">Scene Breakdown</h2>
                 <button className="flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-700">
@@ -1676,14 +1716,24 @@ export function ProjectEditor() {
                             </div>
                           )}
                           
-                          <button 
-                            onClick={() => handleGenerateAudio(sceneId)}
-                            disabled={isGeneratingThisAudio || editingSceneId === sceneId || isUpdatingNarration}
-                            className="w-full py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                          >
-                            {isGeneratingThisAudio ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />}
-                            Generate Audio
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleGenerateSceneImage(sceneId)}
+                              disabled={generatingImageId === sceneId}
+                              className="flex-1 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                              {generatingImageId === sceneId ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
+                              Generate Image
+                            </button>
+                            <button
+                              onClick={() => handleGenerateAudio(sceneId)}
+                              disabled={isGeneratingThisAudio || editingSceneId === sceneId || isUpdatingNarration}
+                              className="flex-1 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                              {isGeneratingThisAudio ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />}
+                              Generate Audio
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
