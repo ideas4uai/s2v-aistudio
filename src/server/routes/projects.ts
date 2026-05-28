@@ -165,16 +165,20 @@ projectsRouter.delete('/:id', async (req, res) => {
 });
 
 projectsRouter.post('/', async (req, res) => {
-  const { title, description, script, settings, referenceImages } = req.body;
+  const {
+    title, description, script, settings, referenceImages,
+    projectType, universe, universeId, episodeNumber,
+    featuredCharacterIds, featuredLocationId
+  } = req.body;
   const id = uuidv4();
   const userId = (req as any).user?.uid;
-  
+
   if (!userId) {
      return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {
-    const newProject = {
+    const newProject: any = {
       project_id: id,
       id: id,
       userId,
@@ -187,10 +191,17 @@ projectsRouter.post('/', async (req, res) => {
       status: 'draft',
       characterDescription: '',
       worldEntities: { characters: [], locations: [], objects: [] },
+      projectType: projectType || 'standard',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       scenes: []
     };
+
+    if (universe) newProject.universe = universe;
+    if (universeId) newProject.universeId = universeId;
+    if (episodeNumber) newProject.episodeNumber = episodeNumber;
+    if (featuredCharacterIds) newProject.featuredCharacterIds = featuredCharacterIds;
+    if (featuredLocationId) newProject.featuredLocationId = featuredLocationId;
     
     console.log(`[API] Creating project: ${id} - ${title}`);
     await FirestoreService.saveProject(newProject);

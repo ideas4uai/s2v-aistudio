@@ -1347,22 +1347,41 @@ export function ProjectEditor() {
                         <Clock className="w-3 h-3" /> {scene.duration}s
                       </div>
                       
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm shrink-0">
-                          {idx + 1}
-                        </div>
-                        <h3 className="font-bold text-neutral-900">Scene {idx + 1}</h3>
-                        <select
-                          value={scene.character || 'NARRATOR'}
-                          onChange={e => handleUpdateSceneCharacter(sceneId, e.target.value)}
-                          className="ml-auto text-xs border border-neutral-200 rounded-lg px-2 py-1 bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
-                        >
-                          <option value="NARRATOR">NARRATOR</option>
-                          {(universe?.characters || []).map((c) => (
-                            <option key={c.id} value={c.name.toUpperCase()}>{c.name}</option>
-                          ))}
-                        </select>
-                      </div>
+                      {(() => {
+                        const VOICE_DISPLAY: Record<string, string> = {
+                          'NARRATOR': 'Lessac (neutral)',
+                          'VEER':     'Lessac (Veer)',
+                          'BYTE':     'Ryan (fast/energetic)',
+                          'NOVA':     'Alba (calm/precise)',
+                          'MIRA':     'Lessac (soft)',
+                          'BIAS':     'Lessac (glitch)',
+                          'PATCH':    'Lessac (warm)',
+                          'NULL':     'Lessac (distorted)',
+                        };
+                        const charKey = (scene.character || 'NARRATOR').toUpperCase();
+                        const voiceLabel = VOICE_DISPLAY[charKey] || 'Lessac (neutral)';
+                        return (
+                          <div className="mb-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm shrink-0">
+                                {idx + 1}
+                              </div>
+                              <h3 className="font-bold text-neutral-900">Scene {idx + 1}</h3>
+                              <select
+                                value={scene.character || 'NARRATOR'}
+                                onChange={e => handleUpdateSceneCharacter(sceneId, e.target.value)}
+                                className="ml-auto text-xs border border-neutral-200 rounded-lg px-2 py-1 bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                              >
+                                <option value="NARRATOR">NARRATOR</option>
+                                {(universe?.characters || []).map((c) => (
+                                  <option key={c.id} value={c.name.toUpperCase()}>{c.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <p className="text-xs text-gray-400 mt-1 text-right">🎙️ Voice: {voiceLabel}</p>
+                          </div>
+                        );
+                      })()}
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>

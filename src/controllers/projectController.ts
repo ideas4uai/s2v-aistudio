@@ -101,16 +101,68 @@ export async function generateScenes(req: Request, res: Response) {
   try {
     const project = await loadProject(id);
     const scriptToUse = userScript || project.script;
-    
+
     if (!scriptToUse) {
       console.warn(`[ProjectController] No script provided for project ${id}`);
       return res.status(400).json({ error: 'No script found. Generate a script first.' });
     }
 
-    console.log(`[ProjectController] Planning video for project ${id}...`);
-    const plan = await DirectorAgent.planVideo(project);
-    console.log(`[ProjectController] Video plan generated.`);
-    
+    const hasManualScript = scriptToUse.trim().length > 100;
+    const hasVisualPrompts = scriptToUse.includes('Visual Prompt');
+
+    let plan: import('../pipeline/agents/directorAgent.js').DirectorPlan;
+    if (hasManualScript) {
+      console.log(`[ProjectController] Manual script detected — skipping DirectorAgent for project ${id}`);
+      plan = {
+        visual_style: (project.settings as any)?.visualStyle || (project.settings as any)?.artStyle || 'cinematic',
+        color_palette: 'natural, vibrant',
+        camera_language: 'mixed shots',
+        pacing_notes: 'moderate pacing',
+        overall_mood: 'engaging',
+        narrative_arc: 'linear'
+      };
+    } else {
+      console.log(`[ProjectController] Planning video for project ${id}...`);
+      plan = await DirectorAgent.planVideo(project);
+      console.log(`[ProjectController] Video plan generated.`);
+    }
+
+    // Fast-path: script already has Visual Prompt sections — parse directly, skip StoryboardAgent
+    if (hasManualScript && hasVisualPrompts) {
+      console.log(`[ProjectController] Script has Visual Prompts — parsing directly, skipping StoryboardAgent`);
+      const blocks = scriptToUse.split(/\n(?=Scene\s*\d+|Visual Prompt:|Narration:)/i);
+      const directScenes: any[] = [];
+      let current: any = {};
+      for (const line of scriptToUse.split('\n')) {
+        const narMatch = line.match(/^Narration:\s*(.+)/i);
+        const visMatch = line.match(/^Visual Prompt:\s*(.+)/i);
+        const durMatch = line.match(/^Duration:\s*(\d+(?:\.\d+)?)/i);
+        if (narMatch) { current.narration = narMatch[1].trim(); }
+        if (visMatch) { current.visual = visMatch[1].trim(); if (current.narration) { directScenes.push({ ...current }); current = {}; } }
+        if (durMatch) { current.duration = parseFloat(durMatch[1]); }
+      }
+      if (current.narration && !current.visual) {
+        directScenes.push({ narration: current.narration, visual: `Cinematic visual: ${current.narration}`, duration: 5 });
+      }
+      if (directScenes.length > 0) {
+        const scenesResult = await StoryboardAgent.expandVisuals(project, plan, directScenes);
+        project.scenes = scenesResult.map(s => ({
+          scene_id: s.scene_id || uuidv4(),
+          projectId: id,
+          order: s.order,
+          narration_text: s.narration_text,
+          caption_text: s.caption_text,
+          duration_target: s.duration_target,
+          status: 'pending',
+          stage: 'audio',
+          visuals: [{ visual_id: uuidv4(), prompt: s.visuals?.[0]?.prompt || '', asset_type: 'image', status: 'pending', duration_target: s.duration_target }]
+        } as any));
+        await saveProjectState(project);
+        console.log(`[ProjectController] generateScenes (visual-prompt fast-path) successful for project ${id}`);
+        return res.json({ message: 'Scenes generated successfully', count: scenesResult.length });
+      }
+    }
+
     console.log(`[ProjectController] Segmenting script for project ${id}...`);
     const prompt = `You are a script segmentation specialist. Segment this script into logical scenes for a short video.
     
@@ -518,12 +570,13 @@ export async function getProjectStatus(req: Request, res: Response) {
 
 export async function updateSceneNarration(req: Request, res: Response) {
   const { id, sceneId } = req.params;
-  const { narrationText } = req.body;
+  const { narrationText, character } = req.body;
   try {
      const project = await loadProject(id);
      const scene = project.scenes.find(s => s.scene_id === sceneId || (s as any).id === sceneId);
      if (scene) {
-        scene.narration_text = narrationText;
+        if (narrationText !== undefined) scene.narration_text = narrationText;
+        if (character !== undefined) (scene as any).character = character;
         await saveProjectState(project);
      }
      res.json({ message: 'Updated' });
