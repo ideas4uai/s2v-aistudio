@@ -17,6 +17,15 @@ RUN mkdir -p /usr/local/share/piper-voices && \
     https://huggingface.co/rhasspy/piper-voices/resolve/main/te/te_IN/maya/medium/te_IN-maya-medium.onnx \
     https://huggingface.co/rhasspy/piper-voices/resolve/main/te/te_IN/maya/medium/te_IN-maya-medium.onnx.json
 
+RUN curl -L -o /usr/local/share/piper-voices/en_US-ryan-high.onnx \
+    https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high/en_US-ryan-high.onnx && \
+    curl -L -o /usr/local/share/piper-voices/en_US-ryan-high.onnx.json \
+    https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high/en_US-ryan-high.onnx.json && \
+    curl -L -o /usr/local/share/piper-voices/en_GB-alba-medium.onnx \
+    https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alba/medium/en_GB-alba-medium.onnx && \
+    curl -L -o /usr/local/share/piper-voices/en_GB-alba-medium.onnx.json \
+    https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alba/medium/en_GB-alba-medium.onnx.json
+
 RUN apt-get update && apt-get install -y ffmpeg python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
