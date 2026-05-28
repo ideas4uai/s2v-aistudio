@@ -48,6 +48,7 @@ export interface Visual {
   rendered_path?: string;
   frames?: VisualFrame[];
   referenceImageUrl?: string;
+  emotion?: string;
 }
 
 export interface VisualSegment {
@@ -88,6 +89,7 @@ export interface Scene {
   preview_mode?: boolean;
   suggestions?: string[];
   is_null_tease?: boolean;
+  emotion?: string;
 
   // Source-aware generation metadata
   primarySubject?: string;

@@ -6,6 +6,17 @@ import { Scene, VisualFrame } from '../../models/scene.js';
 
 const SHOT_TYPES = ['wide shot', 'medium shot', 'close-up', 'detail shot', 'over-shoulder shot'];
 
+function detectEmotion(text: string): string {
+  const t = text.toLowerCase();
+  if (/confus|what|why|how|bhai|kya|\?/.test(t)) return 'confused';
+  if (/wow|amazing|great|yes|finally|aha|excited/.test(t)) return 'excited';
+  if (/think|hmm|wait|maybe|actually|wonder/.test(t)) return 'thinking';
+  if (/wrong|error|fail|broken|bug|crash/.test(t)) return 'angry';
+  if (/sad|sorry|unfortunate|disappoint/.test(t)) return 'sad';
+  if (/!\s*$/.test(t)) return 'surprised';
+  return 'neutral';
+}
+
 export const StoryboardAgent = {
   expandVisuals: async (project: Project, plan: DirectorPlan, drafts: any[]): Promise<Scene[]> => {
     const isStoryEpisode = project.projectType === 'story_episode' && !!project.universe;
@@ -146,6 +157,8 @@ Total duration of all frames must equal ${sceneDuration} seconds.`;
         motion = effects[Math.floor(Math.random() * effects.length)];
       }
 
+      const emotion = detectEmotion(s.narration || '');
+
       return {
         scene_id: uuidv4(),
         order: s.order || idx,
@@ -154,6 +167,7 @@ Total duration of all frames must equal ${sceneDuration} seconds.`;
         caption_text: s.narration,
         captions: [],
         caption_chunks: [],
+        emotion,
         visuals: [{
           visual_id: uuidv4(),
           prompt: s.expandedPrompt,
@@ -162,6 +176,7 @@ Total duration of all frames must equal ${sceneDuration} seconds.`;
           motion_instruction: motion,
           status: 'pending',
           cache_key: '',
+          emotion,
           ...(s.frames ? { frames: s.frames } : {}),
           ...(s.referenceImageUrl ? { referenceImageUrl: s.referenceImageUrl } : {}),
         }],
