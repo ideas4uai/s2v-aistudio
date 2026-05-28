@@ -41,21 +41,32 @@ async function callAnimator(
   const { promisify } = await import('util');
   const execFileAsync = promisify(execFile);
 
-  const pythonCmd = process.platform === 'win32'
-    ? 'python' : 'python3';
-  const scriptPath = path.join(
-    process.cwd(), 'src', 'scripts', 'animator.py'
+  // Write config to temp file (avoids Windows shell quote escaping issues)
+  const configPath = path.join(
+    os.tmpdir(),
+    `animator_config_${Date.now()}.json`
   );
+  await fs.promises.writeFile(configPath, JSON.stringify(config));
 
-  const { stdout } = await execFileAsync(
-    pythonCmd,
-    [scriptPath, JSON.stringify(config)],
-    { timeout: 120000 }
-  );
+  try {
+    const pythonCmd = process.platform === 'win32'
+      ? 'python' : 'python3';
+    const scriptPath = path.join(
+      process.cwd(), 'src', 'scripts', 'animator.py'
+    );
 
-  const result = JSON.parse(stdout.trim());
-  if (result.error) throw new Error(result.error);
-  return config.output;
+    const { stdout } = await execFileAsync(
+      pythonCmd,
+      [scriptPath, configPath],
+      { timeout: 120000 }
+    );
+
+    const result = JSON.parse(stdout.trim());
+    if (result.error) throw new Error(result.error);
+    return config.output;
+  } finally {
+    fs.promises.unlink(configPath).catch(() => {});
+  }
 }
 
 async function renderMultiFrameVisual(visual: any, project: any, signal?: AbortSignal): Promise<string> {

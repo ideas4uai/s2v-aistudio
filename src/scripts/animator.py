@@ -241,37 +241,66 @@ def impact_flash(img_path, output_path, fps=12):
 
 # ─── DISPATCHER ──────────────────────────────────────────
 if __name__ == '__main__':
-    config = json.loads(sys.argv[1])
-    effect = config['effect']
+    if len(sys.argv) < 2:
+        print(json.dumps({'error': 'No config provided'}))
+        sys.exit(1)
+
+    arg = sys.argv[1]
+
+    # Support file path input (for Windows compatibility)
+    if arg.endswith('.json') and os.path.exists(arg):
+        with open(arg, 'r') as f:
+            config = json.load(f)
+    else:
+        # Try direct JSON string
+        try:
+            config = json.loads(arg)
+        except json.JSONDecodeError:
+            # Try cleaning up Windows shell quote mangling
+            cleaned = arg.strip("'\"").replace('\\"', '"')
+            config = json.loads(cleaned)
+
+    effect = config.get('effect')
 
     handlers = {
         'breathing':    lambda c: breathing(
-            c['input'], c['output'], c['duration']),
+            c['input'], c['output'],
+            float(c.get('duration', 3.0))),
         'talking':      lambda c: talking_sync(
-            c['input'], c['audio'], c['output'], c['duration']),
+            c['input'], c['audio'], c['output'],
+            float(c['duration'])),
         'pan_right':    lambda c: pan(
-            c['input'], c['output'], c['duration'], 'right'),
+            c['input'], c['output'],
+            float(c['duration']), 'right'),
         'pan_left':     lambda c: pan(
-            c['input'], c['output'], c['duration'], 'left'),
+            c['input'], c['output'],
+            float(c['duration']), 'left'),
         'zoom_in':      lambda c: zoom(
-            c['input'], c['output'], c['duration'], 'in'),
+            c['input'], c['output'],
+            float(c['duration']), 'in'),
         'zoom_out':     lambda c: zoom(
-            c['input'], c['output'], c['duration'], 'out'),
+            c['input'], c['output'],
+            float(c['duration']), 'out'),
         'whip_pan':     lambda c: whip_pan(
             c['input'], c['input2'], c['output']),
         'speed_lines':  lambda c: speed_lines(
-            c['input'], c['output'], c['duration']),
+            c['input'], c['output'],
+            float(c['duration'])),
         'emotion':      lambda c: emotion_symbol(
             c['input'], c['output'],
-            c['emotion'], c['duration']),
+            c['emotion'], float(c['duration'])),
         'impact_flash': lambda c: impact_flash(
             c['input'], c['output']),
     }
 
     handler = handlers.get(effect)
     if handler:
-        handler(config)
-        print(json.dumps({'success': True}))
+        try:
+            handler(config)
+            print(json.dumps({'success': True}))
+        except Exception as e:
+            print(json.dumps({'error': str(e)}))
+            sys.exit(1)
     else:
         print(json.dumps({'error': f'Unknown effect: {effect}'}))
         sys.exit(1)
