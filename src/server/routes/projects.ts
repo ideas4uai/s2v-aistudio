@@ -125,6 +125,8 @@ projectsRouter.get('/:id', async (req, res) => {
         duration: s.duration_target || s.duration,
         narration_text: s.narration_text || s.narrationText,
         visual_prompt: s.visuals?.[0]?.prompt || s.visualPrompt,
+        character: s.character || 'NARRATOR',
+        emotion: s.emotion || 'neutral',
         image_path: toUrl(s.visuals?.[0]?.rendered_path || s.preview_path || ''),
         audio_path: toUrl(s.narration_path || ''),
         preview_path: toUrl(s.preview_path || ''),

@@ -21,6 +21,7 @@ interface Scene {
   rendered_path?: string;
   status?: string;
   character?: string;
+  emotion?: string;
 }
 
 interface ProjectSettings {
@@ -108,6 +109,7 @@ export function ProjectEditor() {
   const [isUpdatingNarration, setIsUpdatingNarration] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [scriptText, setScriptText] = useState('');
+  const scriptInitialized = useRef(false);
   const [characterText, setCharacterText] = useState('');
   const [worldEntities, setWorldEntities] = useState<any>({ characters: [], locations: [], objects: [] });
   const [isUpdatingCharacter, setIsUpdatingCharacter] = useState(false);
@@ -168,6 +170,24 @@ export function ProjectEditor() {
     }
   }, [project?.music_track, project?.music_volume]);
 
+  // Auto-save script to DB after 2s of inactivity so it survives fetchProject reloads
+  useEffect(() => {
+    if (!project?.id || !scriptInitialized.current || !scriptText) return;
+    const timer = setTimeout(async () => {
+      try {
+        await authenticatedFetch(`/api/projects/${project.id}/script`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ script: scriptText })
+        });
+        console.log('[Script] Auto-saved to server');
+      } catch (e) {
+        console.warn('[Script] Auto-save failed:', e);
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [scriptText, project?.id]);
+
   const handleMusicSelect = async (filename: string | null) => {
     setSelectedMusic(filename);
     setMusicSaved(false);
@@ -219,7 +239,10 @@ export function ProjectEditor() {
       if (!res.ok) throw new Error('Failed to fetch project');
       const data = await res.json();
       setProject(data);
-      setScriptText(data.script || '');
+      if (!scriptInitialized.current) {
+        setScriptText(data.script || '');
+        scriptInitialized.current = true;
+      }
       setCharacterText(data.character_description || '');
       const savedEntities = data.world_entities || { characters: [], locations: [], objects: [] };
       if (data.universe?.characters?.length > 0 && savedEntities.characters.length === 0) {

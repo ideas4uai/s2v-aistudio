@@ -17,6 +17,14 @@ function detectEmotion(text: string): string {
   return 'neutral';
 }
 
+function detectCharacter(narration: string, chars: any[]): string {
+  const text = narration.toLowerCase();
+  for (const char of chars) {
+    if (text.includes(char.name.toLowerCase())) return char.name.toUpperCase();
+  }
+  return 'NARRATOR';
+}
+
 export const StoryboardAgent = {
   expandVisuals: async (project: Project, plan: DirectorPlan, drafts: any[]): Promise<Scene[]> => {
     const isStoryEpisode = project.projectType === 'story_episode' && !!project.universe;
@@ -148,6 +156,12 @@ Total duration of all frames must equal ${sceneDuration} seconds.`;
       }
     }));
 
+    const featuredChars = (project.universe?.characters as any[] | undefined)
+      ?.filter((c: any) =>
+        !project.featuredCharacterIds?.length ||
+        project.featuredCharacterIds.includes(c.id)
+      ) ?? [];
+
     return expandedResults.map((s: any, idx: number) => {
       let motion = idx === 0 ? 'zoom_in' : 'pan_right';
       if (project.settings?.motionEffect && project.settings.motionEffect !== 'random') {
@@ -158,6 +172,7 @@ Total duration of all frames must equal ${sceneDuration} seconds.`;
       }
 
       const emotion = detectEmotion(s.narration || '');
+      const character = detectCharacter(s.narration || '', featuredChars);
 
       return {
         scene_id: uuidv4(),
@@ -168,6 +183,7 @@ Total duration of all frames must equal ${sceneDuration} seconds.`;
         captions: [],
         caption_chunks: [],
         emotion,
+        character,
         visuals: [{
           visual_id: uuidv4(),
           prompt: s.expandedPrompt,
