@@ -20,6 +20,7 @@ interface Scene {
   image_path?: string;
   rendered_path?: string;
   status?: string;
+  character?: string;
 }
 
 interface ProjectSettings {
@@ -73,6 +74,24 @@ interface Project {
   music_volume?: number;
   thumbnail_path?: string;
   topic?: string;
+  universe?: {
+    projectId?: string;
+    id?: string;
+    title: string;
+    artStyle: string;
+    toneRules: string;
+    characters: {
+      id: string;
+      name: string;
+      role?: string;
+      concept?: string;
+      appearance?: string;
+      imagePrompt?: string;
+      referenceImageUrl?: string;
+    }[];
+  };
+  episodeNumber?: number;
+  featuredCharacterIds?: string[];
 }
 
 export function ProjectEditor() {
@@ -202,7 +221,20 @@ export function ProjectEditor() {
       setProject(data);
       setScriptText(data.script || '');
       setCharacterText(data.character_description || '');
-      setWorldEntities(data.world_entities || { characters: [], locations: [], objects: [] });
+      const savedEntities = data.world_entities || { characters: [], locations: [], objects: [] };
+      if (data.universe?.characters?.length > 0 && savedEntities.characters.length === 0) {
+        const universeChars = (data.universe.characters as any[])
+          .filter((c: any) => !data.featuredCharacterIds?.length || data.featuredCharacterIds.includes(c.id))
+          .map((c: any) => ({
+            name: c.name,
+            description: c.concept || '',
+            prompt: c.imagePrompt || c.appearance || '',
+            referenceImageUrl: c.referenceImageUrl,
+          }));
+        setWorldEntities({ ...savedEntities, characters: universeChars.length > 0 ? universeChars : savedEntities.characters });
+      } else {
+        setWorldEntities(savedEntities);
+      }
       setSettings(data.settings || {
         hookStrategy: 'Curiosity',
         exportMode: 'youtube',
@@ -591,6 +623,25 @@ export function ProjectEditor() {
     }
   };
 
+  const handleUpdateSceneCharacter = async (sceneId: string, character: string) => {
+    const scene = project?.scenes.find(s => (s.id || s.scene_id) === sceneId);
+    setProject(prev => prev ? {
+      ...prev,
+      scenes: prev.scenes.map(s =>
+        (s.id === sceneId || s.scene_id === sceneId) ? { ...s, character } : s
+      )
+    } : prev);
+    try {
+      await authenticatedFetch(`/api/projects/${id}/scenes/${sceneId}/update-narration`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ narrationText: scene?.narration_text || '', character })
+      });
+    } catch (err) {
+      console.error('Failed to save scene character:', err);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -609,6 +660,9 @@ export function ProjectEditor() {
       </div>
     );
   }
+
+  const universe = project.universe;
+  const isUniverseMode = !!universe;
 
   const tabs = [
     { id: 1, name: 'Script', icon: FileText },
@@ -736,6 +790,7 @@ export function ProjectEditor() {
           {activeTab === 1 && (
             <div className="space-y-8">
               {/* IMAGE TO VIDEO DROPZONE */}
+              {!isUniverseMode && (
               <div className="bg-gradient-to-br from-indigo-50 to-violet-50 rounded-2xl p-8 border-2 border-dashed border-indigo-200">
                 <div className="flex flex-col items-center text-center">
                   <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mb-4 text-indigo-600">
@@ -752,6 +807,28 @@ export function ProjectEditor() {
                   </label>
                 </div>
               </div>
+              )}
+
+              {/* UNIVERSE BADGE */}
+              {universe && (
+              <div className="bg-purple-50 border border-purple-200 rounded-2xl p-6 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-purple-700 font-bold text-lg">{universe.title}</span>
+                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-bold">
+                      Episode {project.episodeNumber}
+                    </span>
+                  </div>
+                  <p className="text-sm text-purple-600">{universe.artStyle}</p>
+                </div>
+                <a
+                  href={`/universes/${universe.projectId || universe.id}`}
+                  className="text-xs font-bold text-purple-600 hover:underline border border-purple-200 px-3 py-1.5 rounded-lg hover:bg-purple-100 transition-colors"
+                >
+                  Edit Universe →
+                </a>
+              </div>
+              )}
 
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6">
                 <div className="flex justify-between items-center mb-4">
@@ -838,6 +915,20 @@ export function ProjectEditor() {
                   </div>
                 </div>
 
+                {universe ? (
+                  <div className="bg-purple-50 rounded-2xl border border-purple-200 p-6 space-y-3">
+                    <h3 className="font-bold text-purple-900">Universe Tone Guide</h3>
+                    <p className="text-sm text-purple-700 leading-relaxed">
+                      {universe.toneRules || 'Tone and style rules are defined in your Universe.'}
+                    </p>
+                    <a
+                      href={`/universes/${universe.projectId || universe.id}`}
+                      className="text-xs font-bold text-purple-600 hover:underline"
+                    >
+                      Edit Universe Tone →
+                    </a>
+                  </div>
+                ) : (
                 <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6 space-y-4">
                   <div className="flex justify-between items-center">
                     <h3 className="font-bold text-neutral-900">Hook Options</h3>
@@ -845,7 +936,7 @@ export function ProjectEditor() {
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-neutral-700 mb-2">Hook Strategy</label>
-                    <select 
+                    <select
                       value={settings.hookStrategy || 'Curiosity'}
                       onChange={(e) => setSettings({ ...settings, hookStrategy: e.target.value })}
                       className="w-full p-3 rounded-xl border border-neutral-300 outline-none focus:ring-2 focus:ring-indigo-500"
@@ -859,7 +950,7 @@ export function ProjectEditor() {
 
                   <div>
                     <label className="block text-sm font-bold text-neutral-700 mb-2">Cinematic Effect</label>
-                    <select 
+                    <select
                       value={settings.motionEffect || 'zoom_in'}
                       onChange={(e) => saveSettings({ ...settings, motionEffect: e.target.value })}
                       className="w-full p-3 rounded-xl border border-neutral-300 outline-none focus:ring-2 focus:ring-indigo-500"
@@ -873,6 +964,7 @@ export function ProjectEditor() {
                     </select>
                   </div>
                 </div>
+                )}
               </div>
 
               <div className="flex justify-end">
@@ -970,6 +1062,43 @@ export function ProjectEditor() {
                 
                 <div className="p-8">
                   {/* Global Character Description (Master Visual Anchor) */}
+                  {universe ? (
+                    <div className="bg-purple-50 border border-purple-200 rounded-xl p-6 mb-10">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-purple-700 font-bold text-lg">{universe.title} Universe</span>
+                          <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-bold">
+                            Episode {project.episodeNumber}
+                          </span>
+                        </div>
+                        <a
+                          href={`/universes/${universe.projectId || universe.id}`}
+                          className="text-xs font-bold text-purple-600 hover:underline border border-purple-200 px-3 py-1.5 rounded-lg hover:bg-purple-100 transition-colors"
+                        >
+                          Edit Universe →
+                        </a>
+                      </div>
+                      <p className="text-xs font-bold text-purple-500 uppercase tracking-wider mb-1">Art Style</p>
+                      <p className="text-sm text-gray-700">{universe.artStyle}</p>
+                      <p className="text-xs text-gray-400 mt-3">Art style and character consistency are managed by your Universe.</p>
+                      <div className="flex gap-4 mt-4">
+                        <button
+                          onClick={handleClearQuota}
+                          className="text-xs font-medium text-neutral-500 hover:text-indigo-600 transition-colors flex items-center gap-1 group"
+                        >
+                          <Wand2 className="w-3 h-3 group-hover:rotate-12 transition-transform" /> Reset AI Models
+                        </button>
+                        <button
+                          onClick={handleRetryAssets}
+                          disabled={isResetting}
+                          className="text-xs font-medium text-neutral-500 hover:text-rose-600 transition-colors flex items-center gap-1 group"
+                        >
+                          {isResetting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3 group-hover:rotate-180 transition-transform duration-500" />}
+                          Retry Failed Assets
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
                   <div className="mb-10">
                     <div className="flex justify-between items-center mb-4">
                       <div className="flex flex-col">
@@ -1029,6 +1158,7 @@ export function ProjectEditor() {
                        </div>
                      </div>
                   </div>
+                  )}
 
                   {/* World Entities Grid */}
                   <div className="space-y-8">
@@ -1040,20 +1170,37 @@ export function ProjectEditor() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {worldEntities.characters.map((char: any, idx: number) => (
                           <div key={idx} className="bg-neutral-50 rounded-xl p-4 border border-neutral-100 group">
+                            {char.referenceImageUrl && (
+                              <div className="w-full aspect-video rounded-lg overflow-hidden mb-3 bg-neutral-200">
+                                <img src={char.referenceImageUrl} alt={char.name} className="w-full h-full object-cover" />
+                              </div>
+                            )}
                             <div className="flex justify-between items-start mb-2">
                               <h4 className="font-bold text-neutral-800">{char.name}</h4>
+                              {isUniverseMode && project.featuredCharacterIds?.includes(char.id) && (
+                                <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">Featured</span>
+                              )}
                             </div>
                             <p className="text-xs text-neutral-500 mb-3">{char.description}</p>
-                            <label className="block text-[10px] font-bold text-neutral-400 uppercase mb-1">Visual Prompt Detail</label>
-                            <textarea
-                              value={char.prompt}
-                              onChange={(e) => {
-                                const newChars = [...worldEntities.characters];
-                                newChars[idx].prompt = e.target.value;
-                                setWorldEntities({ ...worldEntities, characters: newChars });
-                              }}
-                              className="w-full text-xs p-2 rounded-lg border border-neutral-200 bg-white min-h-[60px] focus:ring-1 focus:ring-indigo-500 outline-none"
-                            />
+                            {isUniverseMode ? (
+                              <div className="text-xs text-neutral-600 bg-white p-2 rounded-lg border border-neutral-200">
+                                {char.prompt}
+                                <p className="text-[10px] text-purple-500 mt-1.5">Managed by Universe — edit in Universe Editor</p>
+                              </div>
+                            ) : (
+                              <>
+                                <label className="block text-[10px] font-bold text-neutral-400 uppercase mb-1">Visual Prompt Detail</label>
+                                <textarea
+                                  value={char.prompt}
+                                  onChange={(e) => {
+                                    const newChars = [...worldEntities.characters];
+                                    newChars[idx].prompt = e.target.value;
+                                    setWorldEntities({ ...worldEntities, characters: newChars });
+                                  }}
+                                  className="w-full text-xs p-2 rounded-lg border border-neutral-200 bg-white min-h-[60px] focus:ring-1 focus:ring-indigo-500 outline-none"
+                                />
+                              </>
+                            )}
                           </div>
                         ))}
                         {worldEntities.characters.length === 0 && (
@@ -1201,10 +1348,20 @@ export function ProjectEditor() {
                       </div>
                       
                       <div className="flex items-center gap-3 mb-4">
-                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
+                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm shrink-0">
                           {idx + 1}
                         </div>
                         <h3 className="font-bold text-neutral-900">Scene {idx + 1}</h3>
+                        <select
+                          value={scene.character || 'NARRATOR'}
+                          onChange={e => handleUpdateSceneCharacter(sceneId, e.target.value)}
+                          className="ml-auto text-xs border border-neutral-200 rounded-lg px-2 py-1 bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                        >
+                          <option value="NARRATOR">NARRATOR</option>
+                          {(universe?.characters || []).map((c) => (
+                            <option key={c.id} value={c.name.toUpperCase()}>{c.name}</option>
+                          ))}
+                        </select>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

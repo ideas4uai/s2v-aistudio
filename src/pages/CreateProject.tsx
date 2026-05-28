@@ -132,6 +132,13 @@ export function CreateProject() {
         payload.featuredLocationId = episodeData.featuredLocationId;
         if (episodeData.universeId && selectedUniverse) {
           payload.universe = selectedUniverse;
+          payload.universeId = episodeData.universeId;
+          payload.settings = {
+            ...formData.settings,
+            artStyle: selectedUniverse.artStyle,
+            toneRules: selectedUniverse.toneRules,
+            visualStyle: selectedUniverse.artStyle,
+          };
         }
         if (episodeData.episodeConcept) {
           payload.description = episodeData.episodeConcept;
@@ -279,7 +286,7 @@ export function CreateProject() {
           </div>
         )}
 
-        {templates.length > 0 && (
+        {templates.length > 0 && projectType !== 'story_episode' && (
           <div className="p-4 md:p-8 border-b border-neutral-100">
             <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-wider mb-4 flex items-center gap-2">
               <Layout className="w-4 h-4" /> Quick Templates
@@ -314,61 +321,64 @@ export function CreateProject() {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-bold text-neutral-700 mb-2">Description / Idea</label>
-              <textarea
-                className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all h-24 resize-none"
-                placeholder="Briefly describe what this video is about..."
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-bold text-neutral-700 mb-2">Script (Optional)</label>
-              <p className="text-xs text-neutral-500 mb-2">
-                Tip: For a {formData.settings.targetLength} video, aim for approximately {
-                  (formData.settings.targetLength === '30s' ? 75 : 
-                   formData.settings.targetLength === '60s' ? 150 : 
-                   formData.settings.targetLength === '3m' ? 450 : 750)
-                } words.
-              </p>
-              <textarea
-                className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all h-48 font-mono text-sm"
-                placeholder="Paste your full script here, or let AI generate it from your idea..."
-                value={formData.script}
-                onChange={(e) => setFormData({ ...formData, script: e.target.value })}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-bold text-neutral-700 mb-2">Reference Images / Sketches (Optional)</label>
-              <div className="flex flex-wrap gap-4">
-                {formData.referenceImages.map((img, idx) => (
-                  <div key={idx} className="relative w-24 h-24 rounded-lg overflow-hidden border border-neutral-200 group">
-                    <img src={img} alt="Reference" className="w-full h-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(idx)}
-                      className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <span className="sr-only">Remove</span>
-                      ×
-                    </button>
-                  </div>
-                ))}
-                <label className="w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed border-neutral-300 rounded-lg cursor-pointer hover:border-indigo-500 hover:bg-neutral-50 transition-all">
-                  <span className="text-2xl text-neutral-400">+</span>
-                  <span className="text-[10px] text-neutral-500 font-bold uppercase">Upload</span>
-                  <input type="file" multiple accept="image/*" className="hidden" onChange={handleFileChange} />
-                </label>
+            {projectType !== 'story_episode' && (<>
+              <div>
+                <label className="block text-sm font-bold text-neutral-700 mb-2">Description / Idea</label>
+                <textarea
+                  className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all h-24 resize-none"
+                  placeholder="Briefly describe what this video is about..."
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                />
               </div>
-            </div>
+
+              <div>
+                <label className="block text-sm font-bold text-neutral-700 mb-2">Script (Optional)</label>
+                <p className="text-xs text-neutral-500 mb-2">
+                  Tip: For a {formData.settings.targetLength} video, aim for approximately {
+                    (formData.settings.targetLength === '30s' ? 75 :
+                     formData.settings.targetLength === '60s' ? 150 :
+                     formData.settings.targetLength === '3m' ? 450 : 750)
+                  } words.
+                </p>
+                <textarea
+                  className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all h-48 font-mono text-sm"
+                  placeholder="Paste your full script here, or let AI generate it from your idea..."
+                  value={formData.script}
+                  onChange={(e) => setFormData({ ...formData, script: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-neutral-700 mb-2">Reference Images / Sketches (Optional)</label>
+                <div className="flex flex-wrap gap-4">
+                  {formData.referenceImages.map((img, idx) => (
+                    <div key={idx} className="relative w-24 h-24 rounded-lg overflow-hidden border border-neutral-200 group">
+                      <img src={img} alt="Reference" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(idx)}
+                        className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <span className="sr-only">Remove</span>
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <label className="w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed border-neutral-300 rounded-lg cursor-pointer hover:border-indigo-500 hover:bg-neutral-50 transition-all">
+                    <span className="text-2xl text-neutral-400">+</span>
+                    <span className="text-[10px] text-neutral-500 font-bold uppercase">Upload</span>
+                    <input type="file" multiple accept="image/*" className="hidden" onChange={handleFileChange} />
+                  </label>
+                </div>
+              </div>
+            </>)}
           </div>
 
           <div className="border-t border-neutral-200 pt-8">
             <h3 className="text-lg font-bold text-neutral-900 mb-6">Video Settings</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {projectType !== 'story_episode' && (
               <div>
                 <label className="block text-sm font-bold text-neutral-700 mb-2">Hook Strategy</label>
                 <select
@@ -385,6 +395,7 @@ export function CreateProject() {
                   <option value="shocking">Shocking</option>
                 </select>
               </div>
+              )}
 
               <div>
                 <label className="block text-sm font-bold text-neutral-700 mb-2">Pacing</label>
@@ -402,6 +413,7 @@ export function CreateProject() {
                 </select>
               </div>
 
+              {projectType !== 'story_episode' && (
               <div>
                 <label className="block text-sm font-bold text-neutral-700 mb-2">Style Profile</label>
                 <select
@@ -417,6 +429,7 @@ export function CreateProject() {
                   <option value="documentary">Documentary</option>
                 </select>
               </div>
+              )}
               
               <div>
                 <label className="block text-sm font-bold text-neutral-700 mb-2">Language</label>
@@ -540,6 +553,7 @@ export function CreateProject() {
                 </select>
               </div>
 
+              {projectType !== 'story_episode' && (
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-bold text-neutral-700 mb-2">Voice Style</label>
@@ -557,9 +571,9 @@ export function CreateProject() {
                     <option value="custom">Custom Cloned Voice</option>
                   </select>
                 </div>
-                
+
                 {formData.settings.voiceStyle === 'custom' && (
-                  <VoiceCloner 
+                  <VoiceCloner
                     onVoiceCloned={(voiceId, name) => {
                       setFormData(prev => ({
                         ...prev,
@@ -572,7 +586,9 @@ export function CreateProject() {
                   />
                 )}
               </div>
+              )}
 
+              {projectType !== 'story_episode' && (
               <div>
                 <label className="block text-sm font-bold text-neutral-700 mb-2">Visual Style</label>
                 <select
@@ -589,6 +605,7 @@ export function CreateProject() {
                   <option value="cyberpunk">Cyberpunk / Neon</option>
                 </select>
               </div>
+              )}
             </div>
           </div>
 
