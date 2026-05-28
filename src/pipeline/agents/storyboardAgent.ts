@@ -17,32 +17,34 @@ function detectEmotion(text: string): string {
   return 'neutral';
 }
 
-const CHARACTER_KEYWORDS: Record<string, string[]> = {
-  'byte': ['efficiency', 'optimis', 'percent', 'proud', 'recommended', 'calculated', 'routes', 'logged', 'sending'],
-  'nova': ['pattern recognition', 'explains', 'ai is', 'systems trained', 'data', 'observing', 'difference', 'dynamic'],
-  'veer': ['stops walking', 'stares', 'reads', 'wonders', 'deeply unsettling', 'disturbed', 'realises', 'finds this'],
+const SPEAKER_PATTERNS: Record<string, string[]> = {
+  'byte': ['efficiency rating', 'optimis', 'recommended', 'i have optimis', 'sending', 'logged', 'routing', 'very proud'],
+  'nova': ['pattern recognition', 'systems trained', "there's a difference", 'dynamic pricing', "that's a very good question", 'facial recognition'],
+  'veer': ['i never asked', 'i picked', "that's not a compliment", 'i hate this', 'fine'],
 };
 
 function detectCharacter(narration: string, chars: any[]): string {
   const text = narration.toLowerCase();
-  let bestChar = 'NARRATOR';
-  let bestScore = 0;
 
-  for (const char of chars) {
-    const name = char.name.toLowerCase();
-    let score = 0;
-    if (text.includes(name)) score += 3;
-    const keywords = CHARACTER_KEYWORDS[name] || [];
-    for (const kw of keywords) {
-      if (text.includes(kw)) score += 2;
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      bestChar = char.name.toUpperCase();
-    }
-  }
+  const mentionedChars = chars.filter(c => text.includes(c.name.toLowerCase()));
 
-  return bestScore > 0 ? bestChar : 'NARRATOR';
+  // Multiple or zero mentions → third-person narration
+  if (mentionedChars.length !== 1) return 'NARRATOR';
+
+  const singleChar = mentionedChars[0];
+  const name = singleChar.name.toLowerCase();
+
+  // Patterns that indicate the character is being narrated ABOUT, not speaking
+  const narratedPatterns = [
+    `${name} stops`, `${name} opens`, `${name} stares`, `${name} reads`,
+    `${name} finds`, `${name} realises`, `${name} wonders`, `${name} is eating`,
+    `${name} was`, `${name} has`, `${name}'s`,
+  ];
+  if (narratedPatterns.some(p => text.includes(p))) return 'NARRATOR';
+
+  // Only assign character when they are clearly the speaker
+  const speakerPatterns = SPEAKER_PATTERNS[name] || [];
+  return speakerPatterns.some(p => text.includes(p)) ? singleChar.name.toUpperCase() : 'NARRATOR';
 }
 
 export const StoryboardAgent = {
