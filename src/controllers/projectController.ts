@@ -146,12 +146,27 @@ export async function generateScenes(req: Request, res: Response) {
       if (directScenes.length > 0) {
         const featuredCharsForDetection = ((project.universe as any)?.characters as any[] | undefined)
           ?.filter((c: any) => !project.featuredCharacterIds?.length || project.featuredCharacterIds.includes(c.id)) ?? [];
+
+        const FAST_PATH_SPEAKER_PATTERNS: Record<string, string[]> = {
+          'byte': ['efficiency rating', 'optimis', 'recommended', 'i have optimis', 'sending', 'logged', 'routing', 'very proud'],
+          'nova': ['pattern recognition', 'systems trained', "there's a difference", 'dynamic pricing', "that's a very good question", 'facial recognition'],
+          'veer': ['i never asked', 'i picked', "that's not a compliment", 'i hate this', 'fine'],
+        };
+
         const detectChar = (narration: string): string => {
           const text = narration.toLowerCase();
-          for (const char of featuredCharsForDetection) {
-            if (text.includes(char.name.toLowerCase())) return char.name.toUpperCase();
-          }
-          return 'NARRATOR';
+          const mentioned = featuredCharsForDetection.filter((c: any) => text.includes(c.name.toLowerCase()));
+          if (mentioned.length !== 1) return 'NARRATOR';
+          const char = mentioned[0];
+          const name = char.name.toLowerCase();
+          const narratedPatterns = [
+            `${name} stops`, `${name} opens`, `${name} stares`, `${name} reads`,
+            `${name} finds`, `${name} realises`, `${name} wonders`, `${name} is eating`,
+            `${name} was`, `${name} has`, `${name}'s`,
+          ];
+          if (narratedPatterns.some((p: string) => text.includes(p))) return 'NARRATOR';
+          const speakerPatterns = FAST_PATH_SPEAKER_PATTERNS[name] || [];
+          return speakerPatterns.some((p: string) => text.includes(p)) ? char.name.toUpperCase() : 'NARRATOR';
         };
 
         project.scenes = directScenes.map((s: any, idx: number) => ({
