@@ -329,7 +329,21 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
     console.log('[Orchestrator] Project status from DB:', project.status);
     if (signal.aborted) throw new Error('PIPELINE_CANCELLED');
 
-    // Status Transitions
+    // If the project already has scenes with narration + visual prompts, skip AI scripting entirely
+    const hasExistingScenes = (project.scenes || []).length > 0
+      && project.scenes.every((s: any) => s.narration_text && s.visuals?.[0]?.prompt);
+
+    if (
+      hasExistingScenes &&
+      (project.status === 'draft' || project.status === 'pending' ||
+       project.status === 'scripting' || project.status === 'scene_parsing')
+    ) {
+      console.log(`[Orchestrator] ${project.scenes.length} existing scenes with visual prompts — skipping scripting and scene_parsing, jumping to generating_assets`);
+      project.status = 'generating_assets';
+      await guardedSaveProjectState(project);
+    }
+
+    // Status Transitions (only reached when no existing scenes)
     if (project.status === 'draft' || project.status === 'pending') {
       project.status = 'scripting';
       await guardedSaveProjectState(project);
