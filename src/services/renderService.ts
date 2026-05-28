@@ -34,6 +34,30 @@ async function guardedExec(command: string, signal?: AbortSignal) {
   });
 }
 
+async function callAnimator(
+  config: Record<string, any>
+): Promise<string> {
+  const { execFile } = await import('child_process');
+  const { promisify } = await import('util');
+  const execFileAsync = promisify(execFile);
+
+  const pythonCmd = process.platform === 'win32'
+    ? 'python' : 'python3';
+  const scriptPath = path.join(
+    process.cwd(), 'src', 'scripts', 'animator.py'
+  );
+
+  const { stdout } = await execFileAsync(
+    pythonCmd,
+    [scriptPath, JSON.stringify(config)],
+    { timeout: 120000 }
+  );
+
+  const result = JSON.parse(stdout.trim());
+  if (result.error) throw new Error(result.error);
+  return config.output;
+}
+
 async function renderMultiFrameVisual(visual: any, project: any, signal?: AbortSignal): Promise<string> {
   const tmpDir = path.join(os.tmpdir(), 'ais-renderer');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
@@ -68,7 +92,7 @@ async function renderMultiFrameVisual(visual: any, project: any, signal?: AbortS
   return outputPath;
 }
 
-export const renderVisualClip = async (visual: any, project: any, signal?: AbortSignal) => {
+export const renderVisualClip = async (visual: any, project: any, signal?: AbortSignal, scene?: any) => {
   if (visual.frames && visual.frames.length > 1) {
     return renderMultiFrameVisual(visual, project, signal);
   }
@@ -97,6 +121,49 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           // If the asset is already a video
           if (imagePath.endsWith('.mp4')) {
              return imagePath; // We can use it directly or re-encode it? For now, assume it's good.
+          }
+
+          const emotion = (visual as any).emotion || 'neutral';
+          const isTalking = scene?.narration_text?.length > 0;
+          const isAction = ['excited', 'angry', 'surprised'].includes(emotion);
+          const animatedPath = path.join(tmpDir, `${visual.visual_id}_animated.mp4`);
+          const audioPath = scene?.narration_path;
+          const localAudioPath = audioPath;
+
+          if (isTalking && audioPath) {
+            await callAnimator({
+              effect: 'talking',
+              input: imagePath,
+              audio: localAudioPath,
+              output: animatedPath,
+              duration: duration
+            });
+          } else {
+            await callAnimator({
+              effect: 'breathing',
+              input: imagePath,
+              output: animatedPath,
+              duration: duration
+            });
+          }
+
+          if (emotion !== 'neutral' && emotion !== 'informative') {
+            await callAnimator({
+              effect: 'emotion',
+              input: imagePath,
+              output: path.join(tmpDir, `${visual.visual_id}_sym.png`),
+              emotion: emotion,
+              duration: duration
+            });
+          }
+
+          if (isAction) {
+            await callAnimator({
+              effect: 'speed_lines',
+              input: imagePath,
+              output: path.join(tmpDir, `${visual.visual_id}_action.mp4`),
+              duration: 1.5
+            });
           }
 
           // Create video from image!
@@ -140,7 +207,8 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           const storedPreset = project?.settings?.exportPreset;
           const preset = isPreview ? 'ultrafast' : (storedPreset || 'fast');
           const qualityFlags = isPreview ? '' : is4k ? '-crf 18 -b:v 8M' : '-crf 20 -b:v 4M';
-          await guardedExec(`"${ffmpeg}" -loop 1 -i "${imagePath}" -c:v libx264 -preset ${preset} ${qualityFlags} -r 30 -t ${duration} -pix_fmt yuv420p -vf "${filter}" -y "${outputPath}"`, signal);
+          await guardedExec(`"${ffmpeg}" -i "${animatedPath}" -c:v libx264 -preset ${preset} ${qualityFlags} -r 30 -t ${duration} -pix_fmt yuv420p -vf "${filter}" -y "${outputPath}"`, signal);
+          fs.promises.unlink(animatedPath).catch(() => {});
         } else {
            const fallbackRes = project?.settings?.aspectRatio === '9:16' ? '1080x1920' : '1920x1080';
            await guardedExec(`"${ffmpeg}" -f lavfi -i color=c=blue:s=${fallbackRes}:d=${duration} -y -c:v libx264 -pix_fmt yuv420p "${outputPath}"`, signal);
