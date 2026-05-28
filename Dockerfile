@@ -17,8 +17,11 @@ RUN mkdir -p /usr/local/share/piper-voices && \
     https://huggingface.co/rhasspy/piper-voices/resolve/main/te/te_IN/maya/medium/te_IN-maya-medium.onnx \
     https://huggingface.co/rhasspy/piper-voices/resolve/main/te/te_IN/maya/medium/te_IN-maya-medium.onnx.json
 
-RUN apt-get update && apt-get install -y ffmpeg \
+RUN apt-get update && apt-get install -y ffmpeg python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+RUN pip install opencv-python-headless Pillow librosa numpy soundfile --break-system-packages
 
 WORKDIR /app
 COPY package*.json ./
