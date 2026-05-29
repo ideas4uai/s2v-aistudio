@@ -524,6 +524,19 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
 
   console.log('[Orchestrator] Scene character:', (scene as any).character, 'visual referenceUrl:', scene.visuals?.[0]?.referenceImageUrl ? 'SET' : 'NOT SET');
 
+  // Derive referenceImageUrl from universe if missing on visuals
+  if (project.universe && (scene as any).character) {
+    const charName = (scene as any).character as string;
+    const matchedChar = (project.universe as any).characters
+      ?.find((c: any) => c.name.toUpperCase() === charName.toUpperCase());
+    if (matchedChar?.referenceImageUrl) {
+      scene.visuals.forEach((v: any) => {
+        if (!v.referenceImageUrl) v.referenceImageUrl = matchedChar.referenceImageUrl;
+      });
+      console.log('[Orchestrator] Reference image injected for character:', charName);
+    }
+  }
+
   const visualsPromise = Promise.all(scene.visuals.map(async (visual, i) => {
      if (visual.status === 'completed') return;
      visual.status = 'processing';
