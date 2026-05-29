@@ -531,7 +531,10 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
       ?.find((c: any) => c.name.toUpperCase() === charName.toUpperCase());
     if (matchedChar?.referenceImageUrl) {
       scene.visuals.forEach((v: any) => {
-        if (!v.referenceImageUrl) v.referenceImageUrl = matchedChar.referenceImageUrl;
+        if (!v.referenceImageUrl) {
+          v.referenceImageUrl = matchedChar.referenceImageUrl;
+          v.cache_key = ''; // force hash recompute so new reference produces fresh image
+        }
       });
       console.log('[Orchestrator] Reference image injected for character:', charName);
     }
@@ -542,7 +545,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
      visual.status = 'processing';
 
      if (!visual.cache_key) {
-        visual.cache_key = generateVisualHash(visual.prompt, visual.asset_type, visual.duration_target, visual.motion_instruction || 'none', project.mode, project.style_profile);
+        visual.cache_key = generateVisualHash(visual.prompt, visual.asset_type, visual.duration_target, visual.motion_instruction || 'none', project.mode, project.style_profile, (visual as any).referenceImageUrl || '');
      }
 
      if (visual.frames && visual.frames.length > 1) {
@@ -556,7 +559,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
            duration_target: frame.duration,
            motion_instruction: frame.motion,
            status: 'pending',
-           cache_key: generateAssetHash(frame.prompt, visual.asset_type, project.style_profile),
+           cache_key: generateAssetHash(frame.prompt, visual.asset_type, project.style_profile, (visual as any).referenceImageUrl || ''),
            ...(visual.referenceImageUrl ? { referenceImageUrl: visual.referenceImageUrl } : {}),
          };
          const localAsset = await withRetry(() => generateAsset(frameVisual, frameVisual.cache_key, project.mode, project), { retries: 2 });
