@@ -18,7 +18,7 @@ export function hashString(str: string): string {
 }
 
 export const generateHash = hashString;
-export const generateAudioHash = (text: string, preset: string) => hashString(text + preset);
+export const generateAudioHash = (text: string, preset: string, character?: string) => hashString(text + preset + (character || 'NARRATOR'));
 export const generateVisualHash = (...args: any[]) => hashString(JSON.stringify(args));
 export const generateSceneHash = (...args: any[]) => hashString(JSON.stringify(args));
 export const generateAssetHash = (...args: any[]) => hashString(JSON.stringify(args));

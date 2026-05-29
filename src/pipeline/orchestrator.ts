@@ -499,7 +499,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
 
   scene.stage = 'audio_and_visuals';
-  if (!scene.audio_hash) scene.audio_hash = generateAudioHash(scene.narration_text, voicePreset);
+  if (!scene.audio_hash) scene.audio_hash = generateAudioHash(scene.narration_text, voicePreset, (scene as any).character);
   
   const audioPromise = (async () => {
      if (!scene.narration_path || !scene.narration_path.startsWith('http')) {
@@ -521,6 +521,8 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
         }
      }
   })();
+
+  console.log('[Orchestrator] Scene character:', (scene as any).character, 'visual referenceUrl:', scene.visuals?.[0]?.referenceImageUrl ? 'SET' : 'NOT SET');
 
   const visualsPromise = Promise.all(scene.visuals.map(async (visual, i) => {
      if (visual.status === 'completed') return;

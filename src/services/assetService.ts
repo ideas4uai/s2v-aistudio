@@ -74,6 +74,7 @@ export async function generateAsset(visual: Visual, assetHash: string, mode: str
   }
 
   console.log(`[Asset Engine] Generating ${visual.asset_type}... Hash: ${assetHash}`);
+  console.log('[AssetEngine] referenceImageUrl:', visual.referenceImageUrl ? 'present' : 'MISSING', 'character:', (visual as any)?.character);
   const ext = visual.asset_type === 'ai_image' || visual.asset_type === 'stock' ? '.jpg' : '.png';
   const tempFile = path.join(process.cwd(), 'temp', `${assetHash}${ext}`);
   

@@ -60,6 +60,8 @@ export async function generateNarration(
         modelName = settings.voice_clone_url || settings.user_voice_clone;
       }
 
+      console.log('[TTS] Scene character:', settings?.character, 'Voice model selected:', modelName);
+
       const modelPath = path.join(voicesDir, `${modelName}.onnx`);
       const modelFile = path.basename(modelPath);
       const piperDir = path.dirname(piperBin);
