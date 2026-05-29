@@ -48,8 +48,23 @@ async function callAnimator(
   try {
     await fs.promises.writeFile(configPath, JSON.stringify(config));
 
-    const pythonCmd = process.platform === 'win32'
-      ? 'python' : 'python3';
+    const pythonCandidates = process.platform === 'win32'
+      ? ['py', 'python', 'python3']
+      : ['python3', 'python'];
+
+    let pythonCmd = pythonCandidates[0];
+    for (const candidate of pythonCandidates) {
+      try {
+        const { execFileSync } = await import('child_process');
+        execFileSync(candidate, ['-c', 'import cv2'], { timeout: 5000 });
+        pythonCmd = candidate;
+        break;
+      } catch {
+        continue;
+      }
+    }
+    console.log('[Animator] Using Python:', pythonCmd);
+
     const scriptPath = path.join(
       process.cwd(), 'src', 'scripts', 'animator.py'
     );
