@@ -49,7 +49,7 @@ async function simulateAssetCreation(filePath: string, assetType: string, visual
 export async function generateAsset(visual: Visual, assetHash: string, mode: string, project?: any): Promise<string> {
   const cachedPath = await getFromCache(assetHash);
   
-  if (cachedPath) {
+  if (cachedPath && !visual.referenceImageUrl) {
     const ext = path.extname(cachedPath).toLowerCase();
     if (['.jpg', '.png', '.mp4'].includes(ext)) {
       try {
