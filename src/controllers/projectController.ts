@@ -439,6 +439,7 @@ export async function generateSceneImage(req: Request, res: Response) {
     try {
       const base64Data = await AIService.generateImageBase64(prompt, {
         aspectRatio: project.settings?.aspectRatio === '16:9' ? '16:9' : '9:16',
+        isStoryEpisode: !!(project as any).universe,
         referenceImageUrl,
       });
       buffer = Buffer.from(base64Data, 'base64');

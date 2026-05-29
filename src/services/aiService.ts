@@ -122,7 +122,8 @@ export const AIService = {
     }
   },
   generateImageBase64: async (prompt: string, options?: any): Promise<string> => {
-    const isLandscape = options?.aspectRatio === '16:9';
+    const isStoryEpisode = options?.isStoryEpisode;
+    const isLandscape = !isStoryEpisode && options?.aspectRatio === '16:9';
     const aspectRatio = isLandscape ? '16:9' : '9:16';
     const qualityPrompt = prompt.includes('photorealistic')
       ? prompt

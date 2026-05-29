@@ -6,8 +6,9 @@ import { AIService } from './aiService.js';
 import { hashCode } from '../utils/hash.js';
 
 async function generateImageFromGemini(prompt: string, outputPath: string, project?: any, referenceImageUrl?: string): Promise<string> {
+  const isStoryEpisode = !!project?.universe || project?.projectType === 'story_episode';
   const aspectRatio = project?.settings?.aspectRatio === '16:9' ? '16:9' : '9:16';
-  const base64Data = await AIService.generateImageBase64(prompt, { task: 'image', aspectRatio, referenceImageUrl });
+  const base64Data = await AIService.generateImageBase64(prompt, { task: 'image', aspectRatio, isStoryEpisode, referenceImageUrl });
 
   const buffer = Buffer.from(base64Data, 'base64');
   const dir = path.dirname(outputPath);

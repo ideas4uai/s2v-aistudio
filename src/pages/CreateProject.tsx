@@ -103,6 +103,15 @@ export function CreateProject() {
   const selectedUniverse = universes.find(u => u.id === episodeData.universeId);
 
   useEffect(() => {
+    if (projectType === 'story_episode') {
+      setFormData(prev => ({
+        ...prev,
+        settings: { ...prev.settings, exportResolution: '1080p' },
+      }));
+    }
+  }, [projectType]);
+
+  useEffect(() => {
     if (projectType === 'story_episode' && selectedUniverse && episodeData.episodeConcept.trim()) {
       const episodeLabel = episodeData.episodeNumber ? `Episode ${episodeData.episodeNumber}: ` : '';
       setFormData(prev => ({
@@ -519,6 +528,9 @@ export function CreateProject() {
                   <option value="1080p">1080p (Full HD)</option>
                   <option value="4k">4K (Ultra HD)</option>
                 </select>
+                {projectType === 'story_episode' && (
+                  <p className="text-xs text-amber-600 mt-1">Recommended: 1080p for YouTube Shorts. 4K creates very large files.</p>
+                )}
               </div>
 
               <div>
