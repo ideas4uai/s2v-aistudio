@@ -332,7 +332,7 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
     : '-c:a aac';
 
   try {
-     await guardedExec(`"${ffmpeg}" -stream_loop -1 -i "${visualPath}" ${audioInputArg} -vf setpts=PTS-STARTPTS -af asetpts=PTS-STARTPTS -c:v libx264 -preset fast -crf 20 ${audioOutputOpts} -t ${outputDuration} -shortest -y "${outputPath}"`, signal);
+     await guardedExec(`"${ffmpeg}" -stream_loop -1 -i "${visualPath}" ${audioInputArg} -vf setpts=PTS-STARTPTS -af asetpts=PTS-STARTPTS -c:v libx264 -preset fast -crf 20 ${audioOutputOpts} -t ${outputDuration} -y "${outputPath}"`, signal);
      return outputPath;
   } catch(e: any) {
      if (e.message === 'PIPELINE_CANCELLED') throw e;
@@ -418,7 +418,7 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
   fs.writeFileSync(listFile, listContent);
   
   try {
-     await guardedExec(`"${ffmpeg}" -fflags +genpts -f concat -safe 0 -i "${listFile}" -map 0:v -map 0:a -c:v copy -c:a copy -y "${outputPath}"`, signal);
+     await guardedExec(`"${ffmpeg}" -fflags +genpts -f concat -safe 0 -i "${listFile}" -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS" -af asetpts=PTS-STARTPTS -c:v libx264 -preset fast -crf 20 -c:a aac -ar 44100 -ac 2 -b:a 192k -y "${outputPath}"`, signal);
 
      if (project?.music_track) {
        const musicDir = process.env.MUSIC_DIR || path.join(process.cwd(), 'music');
