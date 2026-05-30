@@ -349,7 +349,7 @@ export const renderCaptions = async (scene: any, signal?: AbortSignal) => {
   fs.writeFileSync(srtPath, srt);
 
   const escSrt = (p: string) => p.replace(/\\/g, '/').replace(/:/g, '\\:');
-  const style = 'FontSize=22,FontName=Arial,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=4,Shadow=2,Alignment=2,MarginV=200';
+  const style = 'FontName=Arial,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,Bold=1,Outline=2,Shadow=1,Alignment=2,MarginL=60,MarginR=60,MarginV=120';
   const subtitleFilter = `subtitles='${escSrt(srtPath)}':force_style='${style}'`;
 
   try {
