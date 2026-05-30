@@ -204,9 +204,14 @@ async function startServer() {
         sad:      `${base}, shoulders slumped, looking down, downcast expression, hands in pockets, plain background, full body shot, 9:16 vertical portrait`,
       };
 
+      const { poseNames } = req.body as { poseNames?: string[] };
+      const entriesToGenerate = poseNames?.length
+        ? Object.entries(posePrompts).filter(([name]) => poseNames.includes(name))
+        : Object.entries(posePrompts);
+
       const { AIService } = await import('./src/services/aiService.js');
       const results: Record<string, string> = {};
-      for (const [poseName, posePrompt] of Object.entries(posePrompts)) {
+      for (const [poseName, posePrompt] of entriesToGenerate) {
         const base64 = await AIService.generateImageBase64(posePrompt, {
           aspectRatio: '9:16',
           isStoryEpisode: true,

@@ -66,8 +66,13 @@ export function UniverseEditor() {
   const [generatingImage, setGeneratingImage] = useState<string | null>(null);
   const [generatingLocationImage, setGeneratingLocationImage] = useState<string | null>(null);
   const [generatingPoses, setGeneratingPoses] = useState<string | null>(null);
+  const [posesExpanded, setPosesExpanded] = useState<Record<string, boolean>>({});
   const [lightboxChar, setLightboxChar] = useState<StoryCharacter | null>(null);
   const [locationLightbox, setLocationLightbox] = useState<StoryLocation | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
+  const togglePosesExpanded = (charId: string) =>
+    setPosesExpanded(prev => ({ ...prev, [charId]: !prev[charId] }));
 
   useEffect(() => {
     if (isNew) {
@@ -143,6 +148,35 @@ export function UniverseEditor() {
       }
     } catch (e) {
       console.error('Pose generation failed:', e);
+    } finally {
+      setGeneratingPoses(null);
+    }
+  };
+
+  const handleRegeneratePose = async (char: StoryCharacter, poseName: string) => {
+    setGeneratingPoses(char.id);
+    try {
+      const res = await authenticatedFetch(`/api/universes/${id}/characters/${char.id}/poses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ poseNames: [poseName] }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      if (data.poses) {
+        const charName = char.name.toUpperCase();
+        const existingPoses = universe.characterPoses?.[charName] || {};
+        const updatedPoses = { ...(universe.characterPoses || {}), [charName]: { ...existingPoses, ...data.poses } };
+        const updated = { ...universe, characterPoses: updatedPoses };
+        await authenticatedFetch(`/api/universes/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updated),
+        });
+        setUniverse(updated);
+      }
+    } catch (e) {
+      console.error('Pose regeneration failed:', e);
     } finally {
       setGeneratingPoses(null);
     }
@@ -629,6 +663,44 @@ export function UniverseEditor() {
                           </div>
                         )}
                       </div>
+                      {(() => {
+                        const charPoses = universe.characterPoses?.[char.name.toUpperCase()] || {};
+                        const poseEntries = Object.entries(charPoses);
+                        if (poseEntries.length === 0) return null;
+                        return (
+                          <div className="mt-3">
+                            <button
+                              onClick={() => togglePosesExpanded(char.id)}
+                              className="text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center gap-1"
+                            >
+                              {posesExpanded[char.id] ? '▼' : '▶'} View {poseEntries.length} poses
+                            </button>
+                            {posesExpanded[char.id] && (
+                              <div className="grid grid-cols-3 gap-2 mt-2">
+                                {poseEntries.map(([poseName, poseUrl]) => (
+                                  <div key={poseName} className="relative group">
+                                    <img
+                                      src={poseUrl as string}
+                                      alt={poseName}
+                                      className="w-full aspect-[9/16] object-cover rounded-lg border border-purple-200 cursor-pointer hover:border-purple-500 transition-all"
+                                      onClick={() => setLightboxImage(poseUrl as string)}
+                                    />
+                                    <p className="text-xs text-center text-gray-500 mt-1 capitalize">{poseName}</p>
+                                    <button
+                                      onClick={() => handleRegeneratePose(char, poseName)}
+                                      disabled={generatingPoses === char.id}
+                                      className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 bg-white rounded-full p-1 text-xs shadow-sm transition-opacity disabled:opacity-50"
+                                      title="Regenerate this pose"
+                                    >
+                                      🔄
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -803,6 +875,21 @@ export function UniverseEditor() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-[400px] w-full" onClick={e => e.stopPropagation()}>
+            <img src={lightboxImage} className="max-h-[90vh] w-full rounded-xl object-contain" />
+            <button
+              className="absolute top-2 right-2 text-white text-2xl bg-black/50 rounded-full w-8 h-8 flex items-center justify-center hover:bg-black/80 transition-colors"
+              onClick={() => setLightboxImage(null)}
+            >✕</button>
           </div>
         </div>
       )}
