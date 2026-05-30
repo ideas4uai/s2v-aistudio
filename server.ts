@@ -187,25 +187,35 @@ async function startServer() {
     }
   });
   app.post('/api/universes/:id/characters/:charId/poses', async (req, res) => {
-    const { prompt } = req.body;
-    const POSES: Record<string, string> = {
-      idle:     'standing relaxed, neutral expression, arms at sides',
-      talking:  'mouth slightly open, mid-speech, subtle expressive hand gesture',
-      thinking: 'hand on chin, thoughtful expression, eyes angled upward',
-      excited:  'leaning forward, wide eyes, energetic open posture',
-    };
+    const { charId } = req.params;
     try {
+      const universe = await FirestoreService.getDocument('universes', req.params.id);
+      if (!universe) return res.status(404).json({ error: 'Universe not found' });
+      const character = (universe as any).characters?.find((c: any) => c.id === charId);
+      if (!character) return res.status(404).json({ error: 'Character not found' });
+
+      const base = character.imagePrompt || character.appearance || '';
+      const posePrompts: Record<string, string> = {
+        idle:     `${base}, standing relaxed, hands at sides, neutral expression, plain background for compositing, full body shot, 9:16 vertical portrait`,
+        talking:  `${base}, mid-sentence expression, one hand raised gesturing, mouth slightly open, engaged expression, plain background, full body shot, 9:16 vertical`,
+        thinking: `${base}, hand on chin, looking upward slightly, thoughtful expression, weight on one leg, plain background, full body shot, 9:16 vertical portrait`,
+        excited:  `${base}, both arms raised or wide gesture, big smile, energetic pose, leaning forward slightly, plain background, full body shot, 9:16 vertical portrait`,
+        confused: `${base}, head tilted, one eyebrow raised, slight frown, arms crossed or shrug gesture, plain background, full body shot, 9:16 vertical portrait`,
+        sad:      `${base}, shoulders slumped, looking down, downcast expression, hands in pockets, plain background, full body shot, 9:16 vertical portrait`,
+      };
+
       const { AIService } = await import('./src/services/aiService.js');
       const results: Record<string, string> = {};
-      for (const [poseName, poseDesc] of Object.entries(POSES)) {
-        const base64 = await AIService.generateImageBase64(
-          `${prompt}, ${poseDesc}, ultra high quality, 4K, highly detailed`,
-          { aspectRatio: '9:16', quality: '4k', isStoryEpisode: true }
-        );
+      for (const [poseName, posePrompt] of Object.entries(posePrompts)) {
+        const base64 = await AIService.generateImageBase64(posePrompt, {
+          aspectRatio: '9:16',
+          isStoryEpisode: true,
+          referenceImageUrl: character.referenceImageUrl,
+        });
         const buffer = Buffer.from(base64, 'base64');
         const url = await FirestoreService.uploadAsset(
           req.params.id,
-          `characters/${req.params.charId}_pose_${poseName}.jpg`,
+          `characters/${charId}_pose_${poseName}.jpg`,
           buffer,
           'image/jpeg'
         );
