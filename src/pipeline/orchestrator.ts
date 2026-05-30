@@ -524,36 +524,44 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
 
   console.log('[Orchestrator] Scene character:', (scene as any).character, 'visual referenceUrl:', scene.visuals?.[0]?.referenceImageUrl ? 'SET' : 'NOT SET');
 
-  // Character scene handling: pose library → reference image → LoRA → Imagen 4
+  // Character scene: replace visuals array entirely so the completed status
+  // is on the exact object the Promise.all will iterate — no mutation ambiguity
   const charName = (scene as any).character as string | undefined;
-  const matchedChar = project.universe?.characters
-    ?.find((c: any) => c.name.toUpperCase() === charName?.toUpperCase());
+  if (charName && charName !== 'NARRATOR') {
+    const matchedChar = project.universe?.characters
+      ?.find((c: any) => c.name.toUpperCase() === charName.toUpperCase());
+    if (matchedChar) {
+      const emotion = (scene as any).emotion || 'idle';
+      const poseUrl =
+        (project.universe as any)?.characterPoses?.[charName]?.[emotion] ||
+        (project.universe as any)?.characterPoses?.[charName]?.['idle'];
+      const imageUrl = poseUrl || matchedChar.referenceImageUrl;
 
-  if (matchedChar && charName && charName !== 'NARRATOR') {
-    const emotion = (scene as any).emotion || 'idle';
-    const poseUrl = (project.universe as any)?.characterPoses?.[charName]?.[emotion]
-      ?? (project.universe as any)?.characterPoses?.[charName]?.['idle'];
-    const imageUrl = poseUrl || matchedChar.referenceImageUrl;
-
-    if (imageUrl && scene.visuals[0]) {
-      (scene.visuals[0] as any).asset_path = imageUrl;
-      (scene.visuals[0] as any).url = imageUrl;
-      scene.visuals[0].status = 'completed';
-      console.log('[Orchestrator] Character scene:', charName, '→', poseUrl ? 'pose library' : 'reference image');
-    } else if (matchedChar.useLoRA && matchedChar.loraModelUrl) {
-      // No pose or reference yet — use LoRA for generation
-      scene.visuals.forEach((v: any) => {
-        v.loraModelUrl = matchedChar.loraModelUrl;
-        v.loraTriggerWord = matchedChar.loraTriggerWord;
-        v.cache_key = '';
-      });
-      console.log('[Orchestrator] LoRA injected for character:', charName);
+      if (imageUrl) {
+        scene.visuals = [{
+          ...(scene.visuals[0] || {}),
+          prompt: scene.visuals[0]?.prompt || '',
+          asset_type: 'ai_image' as any,
+          status: 'completed' as any,
+          url: imageUrl,
+          asset_path: imageUrl,
+        }] as any;
+        console.log('[Orchestrator] Character scene:', charName, '→', poseUrl ? 'pose' : 'reference', imageUrl.slice(-40));
+      } else if (matchedChar.useLoRA && matchedChar.loraModelUrl) {
+        // No pose or reference yet — fall through to generation with LoRA
+        scene.visuals.forEach((v: any) => {
+          v.loraModelUrl = matchedChar.loraModelUrl;
+          v.loraTriggerWord = matchedChar.loraTriggerWord;
+          v.cache_key = '';
+        });
+        console.log('[Orchestrator] LoRA injected for character:', charName);
+      }
     }
   }
 
-  // Art style injection for NARRATOR/background scenes only (skip if already resolved)
+  // Art style injection for NARRATOR/background scenes only
   const universeStyle = (project.universe as any)?.artStyle || '';
-  if (universeStyle && scene.visuals[0] && scene.visuals[0].status !== 'completed') {
+  if (universeStyle && scene.visuals[0] && (scene.visuals[0] as any).status !== 'completed') {
     const currentPrompt = scene.visuals[0].prompt || '';
     if (!currentPrompt.includes(universeStyle.slice(0, 15))) {
       scene.visuals[0].prompt = currentPrompt + ', ' + universeStyle + ', 9:16 vertical portrait';
