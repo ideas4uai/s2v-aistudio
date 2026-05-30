@@ -186,6 +186,37 @@ async function startServer() {
       res.status(500).json({ error: err.message });
     }
   });
+  app.post('/api/universes/:id/characters/:charId/poses', async (req, res) => {
+    const { prompt } = req.body;
+    const POSES: Record<string, string> = {
+      idle:     'standing relaxed, neutral expression, arms at sides',
+      talking:  'mouth slightly open, mid-speech, subtle expressive hand gesture',
+      thinking: 'hand on chin, thoughtful expression, eyes angled upward',
+      excited:  'leaning forward, wide eyes, energetic open posture',
+    };
+    try {
+      const { AIService } = await import('./src/services/aiService.js');
+      const results: Record<string, string> = {};
+      for (const [poseName, poseDesc] of Object.entries(POSES)) {
+        const base64 = await AIService.generateImageBase64(
+          `${prompt}, ${poseDesc}, ultra high quality, 4K, highly detailed`,
+          { aspectRatio: '9:16', quality: '4k', isStoryEpisode: true }
+        );
+        const buffer = Buffer.from(base64, 'base64');
+        const url = await FirestoreService.uploadAsset(
+          req.params.id,
+          `characters/${req.params.charId}_pose_${poseName}.jpg`,
+          buffer,
+          'image/jpeg'
+        );
+        results[poseName] = url;
+      }
+      res.json({ poses: results });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post('/api/universes/:id/characters/:charId/image/upload', async (req, res) => {
     const { base64, mimeType } = req.body;
     try {

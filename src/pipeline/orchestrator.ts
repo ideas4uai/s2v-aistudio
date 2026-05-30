@@ -540,6 +540,25 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
     }
   }
 
+  // Append universe art style to visual prompt for style consistency
+  const universeStyle = (project.universe as any)?.artStyle || '';
+  if (universeStyle && scene.visuals[0]) {
+    const currentPrompt = scene.visuals[0].prompt;
+    if (!currentPrompt.includes(universeStyle.slice(0, 20))) {
+      scene.visuals[0].prompt = currentPrompt + ', ' + universeStyle + ', 9:16 vertical portrait';
+    }
+  }
+
+  // Check character pose library before calling Imagen 4
+  const scenePoseChar = (scene as any).character as string | undefined;
+  const scenePoseEmotion = (scene as any).emotion || 'idle';
+  const poseUrl = (project.universe as any)?.characterPoses?.[scenePoseChar ?? '']?.[scenePoseEmotion];
+  if (poseUrl && scene.visuals[0]) {
+    (scene.visuals[0] as any).asset_path = poseUrl;
+    scene.visuals[0].status = 'completed';
+    console.log('[Orchestrator] Using pose library for:', scenePoseChar, scenePoseEmotion);
+  }
+
   const visualsPromise = Promise.all(scene.visuals.map(async (visual, i) => {
      if (visual.status === 'completed') return;
      visual.status = 'processing';

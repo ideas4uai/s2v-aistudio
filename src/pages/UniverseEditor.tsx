@@ -65,6 +65,7 @@ export function UniverseEditor() {
   const [expandedLoc, setExpandedLoc] = useState<string | null>(null);
   const [generatingImage, setGeneratingImage] = useState<string | null>(null);
   const [generatingLocationImage, setGeneratingLocationImage] = useState<string | null>(null);
+  const [generatingPoses, setGeneratingPoses] = useState<string | null>(null);
   const [lightboxChar, setLightboxChar] = useState<StoryCharacter | null>(null);
   const [locationLightbox, setLocationLightbox] = useState<StoryLocation | null>(null);
 
@@ -114,6 +115,36 @@ export function UniverseEditor() {
       console.error('Save failed:', e);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const generateCharacterPoses = async (char: StoryCharacter) => {
+    if (!char.imagePrompt) return;
+    setGeneratingPoses(char.id);
+    try {
+      const res = await authenticatedFetch(`/api/universes/${id}/characters/${char.id}/poses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: char.imagePrompt }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      if (data.poses) {
+        const charName = char.name.toUpperCase();
+        const updatedPoses = { ...(universe.characterPoses || {}), [charName]: data.poses };
+        const updated = { ...universe, characterPoses: updatedPoses };
+        await authenticatedFetch(`/api/universes/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updated),
+        });
+        setUniverse(updated);
+        console.log('[Universe] Character poses generated:', charName, Object.keys(data.poses));
+      }
+    } catch (e) {
+      console.error('Pose generation failed:', e);
+    } finally {
+      setGeneratingPoses(null);
     }
   };
 
@@ -558,6 +589,20 @@ export function UniverseEditor() {
                           {generatingImage === char.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
                           Generate with AI
                         </button>
+                        <button
+                          onClick={() => generateCharacterPoses(char)}
+                          disabled={!char.imagePrompt || generatingPoses === char.id || !isSaved}
+                          title={!isSaved ? 'Save the universe first' : 'Generate idle, talking, thinking, excited poses'}
+                          className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {generatingPoses === char.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                          Generate Poses
+                        </button>
+                        {universe.characterPoses?.[char.name.toUpperCase()] && (
+                          <span className="text-xs text-purple-600 font-medium">
+                            ✓ {Object.keys(universe.characterPoses[char.name.toUpperCase()]).length} poses ready
+                          </span>
+                        )}
                         <button
                           onClick={() => document.getElementById(`upload-${char.id}`)?.click()}
                           disabled={generatingImage === char.id || !isSaved}

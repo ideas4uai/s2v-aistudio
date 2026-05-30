@@ -34,6 +34,7 @@ export interface Universe {
   recurringElements: string;
   characters: StoryCharacter[];
   locations: StoryLocation[];
+  characterPoses?: Record<string, Record<string, string>>; // charName (uppercase) → pose → url
 }
 
 export interface Project {

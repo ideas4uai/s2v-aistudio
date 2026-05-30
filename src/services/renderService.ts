@@ -199,7 +199,9 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           const frames = Math.ceil(duration * fps);
           const isPreview = project?.quality === 'draft' || project?.preview_mode || false;
           const is4k = project?.settings?.exportResolution === '4k' && !isPreview;
-          const isShorts = project?.settings?.aspectRatio === '9:16';
+          const isShorts = project?.settings?.aspectRatio === '9:16'
+            || !!project?.universe
+            || project?.projectType === 'story_episode';
 
           const w = isPreview ? (isShorts ? 720  : 1280)
                   : is4k      ? (isShorts ? 2160 : 3840)
