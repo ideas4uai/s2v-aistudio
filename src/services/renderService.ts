@@ -334,25 +334,40 @@ export const renderCaptions = async (scene: any, signal?: AbortSignal) => {
   const outputPath = inputPath.replace('_segment.mp4', '_captioned.mp4');
   if (fs.existsSync(outputPath)) return outputPath;
 
-  const formatTime = (seconds: number) => {
+  const toAssTime = (seconds: number): string => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.floor(seconds % 60);
-    const ms = Math.floor((seconds % 1) * 1000);
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+    const cs = Math.floor((seconds % 1) * 100);
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
   };
 
-  let srt = '';
-  scene.caption_chunks.forEach((chunk: any, index: number) => {
-    srt += `${index + 1}\n${formatTime(chunk.start)} --> ${formatTime(chunk.end)}\n${chunk.text}\n\n`;
-  });
+  const assHeader = `[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
 
-  const srtPath = inputPath.replace('_segment.mp4', '_captions.srt');
-  fs.writeFileSync(srtPath, srt);
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: Default,Arial,22,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,1,2,80,80,160,1
 
-  const escSrt = (p: string) => p.replace(/\\/g, '/').replace(/:/g, '\\:');
-  const style = 'Name=Default,FontName=Arial,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,Bold=1,Italic=0,Underline=0,StrikeOut=0,ScaleX=100,ScaleY=100,Spacing=0,Angle=0,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginL=80,MarginR=80,MarginV=160,Encoding=1';
-  const subtitleFilter = `subtitles='${escSrt(srtPath)}':force_style='${style}'`;
+[Events]
+Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+`;
+
+  const assEvents = scene.caption_chunks.map((chunk: any) => {
+    const start = toAssTime(chunk.start);
+    const end = toAssTime(chunk.end);
+    const text = String(chunk.text).replace(/\n/g, '\\N');
+    return `Dialogue: 0,${start},${end},Default,,0,0,0,,${text}`;
+  }).join('\n');
+
+  const assPath = inputPath.replace('_segment.mp4', '_captions.ass');
+  fs.writeFileSync(assPath, assHeader + assEvents, 'utf8');
+
+  const escapedAss = assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+  const subtitleFilter = `ass='${escapedAss}'`;
 
   try {
     const isPreview = scene.quality === 'draft' || scene.preview_mode || false;

@@ -546,6 +546,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
           url: imageUrl,
           asset_path: imageUrl,
         }] as any;
+        console.log('[Orchestrator] BYPASS: character scene', charName, 'using', poseUrl ? 'pose library' : 'reference image', '— Imagen 4 SKIPPED');
         console.log('[Orchestrator] Character scene:', charName, '→', poseUrl ? 'pose' : 'reference', imageUrl.slice(-40));
       } else if (matchedChar.useLoRA && matchedChar.loraModelUrl) {
         // No pose or reference yet — fall through to generation with LoRA
@@ -569,7 +570,10 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   }
 
   const visualsPromise = Promise.all(scene.visuals.map(async (visual, i) => {
-     if (visual.status === 'completed') return;
+     if (visual.status === 'completed') {
+       console.log('[Orchestrator] Visual already resolved, skipping generation');
+       return;
+     }
      visual.status = 'processing';
 
      if (!visual.cache_key) {
