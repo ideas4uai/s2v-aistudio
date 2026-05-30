@@ -572,6 +572,11 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   const visualsPromise = Promise.all(scene.visuals.map(async (visual, i) => {
      if (visual.status === 'completed') {
        console.log('[Orchestrator] Visual already resolved, skipping generation');
+       // Still need to render the visual clip into an MP4 for assembleSceneSegment
+       if (!(visual as any).rendered_path && (visual as any).asset_path) {
+         const renderedLocal = await renderVisualClip(visual, project, signal, scene);
+         if (renderedLocal) (visual as any).rendered_path = renderedLocal;
+       }
        return;
      }
      visual.status = 'processing';

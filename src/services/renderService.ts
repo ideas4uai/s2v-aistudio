@@ -120,6 +120,25 @@ async function renderMultiFrameVisual(visual: any, project: any, signal?: AbortS
   return outputPath;
 }
 
+async function ensureLocalImage(
+  imagePath: string,
+  tempDir: string,
+  uniqueId: string,
+  signal?: AbortSignal
+): Promise<string> {
+  if (!imagePath.startsWith('http')) return imagePath;
+  const ext = imagePath.includes('.png') ? '.png' : '.jpg';
+  const localPath = path.join(tempDir, `${uniqueId}_ref${ext}`);
+  if (fs.existsSync(localPath)) return localPath;
+  console.log('[RenderService] Downloading reference image to local temp:', imagePath.slice(-40));
+  const response = await fetch(imagePath, signal ? { signal: signal as any } : {});
+  if (!response.ok) throw new Error(`Failed to download image: ${response.status}`);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  fs.writeFileSync(localPath, buffer);
+  console.log('[RenderService] Downloaded:', localPath, buffer.length, 'bytes');
+  return localPath;
+}
+
 export const renderVisualClip = async (visual: any, project: any, signal?: AbortSignal, scene?: any) => {
   if (visual.frames && visual.frames.length > 1) {
     return renderMultiFrameVisual(visual, project, signal);
@@ -127,23 +146,17 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
 
   const tmpDir = path.join(os.tmpdir(), 'ais-renderer');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-  
+
   const outputPath = path.join(tmpDir, `${project.project_id}_visual_${visual.visual_id}.mp4`);
   if (fs.existsSync(outputPath)) return outputPath;
 
   const duration = visual.duration_target || 5;
   let imagePath = visual.asset_path;
-  
+
   try {
      if (imagePath) {
-        if (imagePath.startsWith('http')) {
-            const dlPath = path.join(tmpDir, `dl_${visual.visual_id}.png`);
-            if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
-            const res = await fetch(imagePath, { signal: signal as any });
-            const buf = await res.arrayBuffer();
-            fs.writeFileSync(dlPath, Buffer.from(buf));
-            imagePath = dlPath;
-        }
+        if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
+        imagePath = await ensureLocalImage(imagePath, tmpDir, visual.visual_id, signal);
 
         if (fs.existsSync(imagePath)) {
           // If the asset is already a video
@@ -311,12 +324,15 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
     console.warn(`[RenderService] Audio invalid or missing for scene ${scene.scene_id} — using generated silence`);
   }
 
-  const audioInput = audioValid
-    ? `-i "${audioPath}" -c:a aac -ar 44100 -ac 2 -b:a 192k`
-    : `-f lavfi -i anullsrc=r=44100:cl=stereo -c:a aac`;
+  const audioInputArg = audioValid
+    ? `-i "${audioPath}"`
+    : `-f lavfi -i anullsrc=r=44100:cl=stereo`;
+  const audioOutputOpts = audioValid
+    ? '-c:a aac -ar 44100 -ac 2 -b:a 192k'
+    : '-c:a aac';
 
   try {
-     await guardedExec(`"${ffmpeg}" -stream_loop -1 -i "${visualPath}" ${audioInput} -c:v copy -t ${outputDuration} -shortest -y "${outputPath}"`, signal);
+     await guardedExec(`"${ffmpeg}" -stream_loop -1 -i "${visualPath}" ${audioInputArg} -vf setpts=PTS-STARTPTS -af asetpts=PTS-STARTPTS -c:v libx264 -preset fast -crf 20 ${audioOutputOpts} -t ${outputDuration} -shortest -y "${outputPath}"`, signal);
      return outputPath;
   } catch(e: any) {
      if (e.message === 'PIPELINE_CANCELLED') throw e;
@@ -402,7 +418,7 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
   fs.writeFileSync(listFile, listContent);
   
   try {
-     await guardedExec(`"${ffmpeg}" -f concat -safe 0 -i "${listFile}" -map 0:v -map 0:a -c:v copy -c:a copy -y "${outputPath}"`, signal);
+     await guardedExec(`"${ffmpeg}" -fflags +genpts -f concat -safe 0 -i "${listFile}" -map 0:v -map 0:a -c:v copy -c:a copy -y "${outputPath}"`, signal);
 
      if (project?.music_track) {
        const musicDir = process.env.MUSIC_DIR || path.join(process.cwd(), 'music');
