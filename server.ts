@@ -186,6 +186,103 @@ async function startServer() {
       res.status(500).json({ error: err.message });
     }
   });
+  app.post('/api/universes/:id/characters/:charId/train-lora', async (req, res) => {
+    const { charId } = req.params;
+    const replicateToken = process.env.REPLICATE_API_TOKEN;
+    const replicateUsername = process.env.REPLICATE_USERNAME;
+    if (!replicateToken) return res.status(500).json({ error: 'REPLICATE_API_TOKEN not configured' });
+    if (!replicateUsername) return res.status(500).json({ error: 'REPLICATE_USERNAME not configured' });
+    try {
+      const universe = await FirestoreService.getDocument('universes', req.params.id);
+      if (!universe) return res.status(404).json({ error: 'Universe not found' });
+      const character = (universe as any).characters?.find((c: any) => c.id === charId);
+      if (!character) return res.status(404).json({ error: 'Character not found' });
+
+      const charName = character.name.toUpperCase();
+      const characterPoses = (universe as any).characterPoses?.[charName] || {};
+      const trainingImages: string[] = [
+        character.referenceImageUrl,
+        ...Object.values(characterPoses) as string[],
+      ].filter(Boolean);
+
+      if (trainingImages.length < 2) {
+        return res.status(400).json({ error: 'Need at least 2 training images. Generate character poses first.' });
+      }
+
+      const triggerWord = character.name.toUpperCase().replace(/\s+/g, '_') + '_CHARACTER';
+      const modelSlug = character.name.toLowerCase().replace(/\s+/g, '-') + '-lora';
+      const destination = `${replicateUsername}/${modelSlug}` as `${string}/${string}`;
+
+      // Version: ostris/flux-dev-lora-trainer — check https://replicate.com/ostris/flux-dev-lora-trainer for latest
+      const trainerVersion = process.env.REPLICATE_LORA_TRAINER_VERSION || 'e440909d3512c31646ee2e0c7d6f6f4923224863a6a10c494606e79fb5844497';
+
+      const { default: Replicate } = await import('replicate');
+      const replicate = new Replicate({ auth: replicateToken });
+      const training = await (replicate.trainings as any).create(
+        'ostris',
+        'flux-dev-lora-trainer',
+        trainerVersion,
+        {
+          destination,
+          input: {
+            input_images: trainingImages,
+            trigger_word: triggerWord,
+            steps: 1000,
+            lora_rank: 16,
+            learning_rate: 0.0004,
+          },
+        }
+      );
+
+      const updatedChars = (universe as any).characters.map((c: any) =>
+        c.id === charId
+          ? { ...c, loraTrainingId: training.id, loraStatus: 'training', loraTriggerWord: triggerWord, loraDestination: destination }
+          : c
+      );
+      await FirestoreService.saveDocument('universes', req.params.id, { ...(universe as any), characters: updatedChars });
+      console.log(`[LoRA] Training started for ${character.name}: ${training.id}`);
+      res.json({ trainingId: training.id, status: 'training', triggerWord });
+    } catch (err: any) {
+      console.error('[LoRA] Training error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/universes/:id/characters/:charId/lora-status', async (req, res) => {
+    const { charId } = req.params;
+    const replicateToken = process.env.REPLICATE_API_TOKEN;
+    if (!replicateToken) return res.status(500).json({ error: 'REPLICATE_API_TOKEN not configured' });
+    try {
+      const universe = await FirestoreService.getDocument('universes', req.params.id);
+      if (!universe) return res.status(404).json({ error: 'Universe not found' });
+      const character = (universe as any).characters?.find((c: any) => c.id === charId);
+      if (!character?.loraTrainingId) return res.json({ status: 'none' });
+
+      const { default: Replicate } = await import('replicate');
+      const replicate = new Replicate({ auth: replicateToken });
+      const training = await replicate.trainings.get(character.loraTrainingId);
+
+      if (training.status === 'succeeded') {
+        const loraModelUrl = (training.output as any)?.weights || character.loraDestination;
+        const updatedChars = (universe as any).characters.map((c: any) =>
+          c.id === charId ? { ...c, loraModelUrl, loraStatus: 'ready' } : c
+        );
+        await FirestoreService.saveDocument('universes', req.params.id, { ...(universe as any), characters: updatedChars });
+        return res.json({ status: 'ready', loraModelUrl });
+      }
+      if (training.status === 'failed' || training.status === 'canceled') {
+        const updatedChars = (universe as any).characters.map((c: any) =>
+          c.id === charId ? { ...c, loraStatus: 'failed' } : c
+        );
+        await FirestoreService.saveDocument('universes', req.params.id, { ...(universe as any), characters: updatedChars });
+        return res.json({ status: 'failed' });
+      }
+      res.json({ status: 'training', trainingId: character.loraTrainingId });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post('/api/universes/:id/characters/:charId/poses', async (req, res) => {
     const { charId } = req.params;
     try {

@@ -533,10 +533,18 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
       scene.visuals.forEach((v: any) => {
         if (!v.referenceImageUrl) {
           v.referenceImageUrl = matchedChar.referenceImageUrl;
-          v.cache_key = ''; // force hash recompute so new reference produces fresh image
+          v.cache_key = '';
         }
       });
       console.log('[Orchestrator] Reference image injected for character:', charName);
+    }
+    if (matchedChar?.useLoRA && matchedChar?.loraModelUrl) {
+      scene.visuals.forEach((v: any) => {
+        v.loraModelUrl = matchedChar.loraModelUrl;
+        v.loraTriggerWord = matchedChar.loraTriggerWord;
+        v.cache_key = '';
+      });
+      console.log('[Orchestrator] LoRA injected for character:', charName, matchedChar.loraModelUrl);
     }
   }
 

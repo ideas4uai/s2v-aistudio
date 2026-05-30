@@ -5,10 +5,10 @@ import { getFromCache, saveToCache } from './cacheService.js';
 import { AIService } from './aiService.js';
 import { hashCode } from '../utils/hash.js';
 
-async function generateImageFromGemini(prompt: string, outputPath: string, project?: any, referenceImageUrl?: string): Promise<string> {
+async function generateImageFromGemini(prompt: string, outputPath: string, project?: any, referenceImageUrl?: string, loraModelUrl?: string, loraTriggerWord?: string): Promise<string> {
   const isStoryEpisode = !!project?.universe || project?.projectType === 'story_episode';
   const aspectRatio = project?.settings?.aspectRatio === '16:9' ? '16:9' : '9:16';
-  const base64Data = await AIService.generateImageBase64(prompt, { task: 'image', aspectRatio, isStoryEpisode, referenceImageUrl });
+  const base64Data = await AIService.generateImageBase64(prompt, { task: 'image', aspectRatio, isStoryEpisode, referenceImageUrl, loraModelUrl, loraTriggerWord });
 
   const buffer = Buffer.from(base64Data, 'base64');
   const dir = path.dirname(outputPath);
@@ -49,7 +49,7 @@ async function simulateAssetCreation(filePath: string, assetType: string, visual
 export async function generateAsset(visual: Visual, assetHash: string, mode: string, project?: any): Promise<string> {
   const cachedPath = await getFromCache(assetHash);
   
-  if (cachedPath && !visual.referenceImageUrl) {
+  if (cachedPath && !visual.referenceImageUrl && !(visual as any).loraModelUrl) {
     const ext = path.extname(cachedPath).toLowerCase();
     if (['.jpg', '.png', '.mp4'].includes(ext)) {
       try {
@@ -81,7 +81,7 @@ export async function generateAsset(visual: Visual, assetHash: string, mode: str
   if (visual.asset_type === 'ai_image') {
     try {
       console.log(`[Asset Engine] Attempting Gemini image generation for: ${visual.visual_id}`);
-      await generateImageFromGemini(visual.prompt, tempFile, project, visual.referenceImageUrl);
+      await generateImageFromGemini(visual.prompt, tempFile, project, visual.referenceImageUrl, (visual as any).loraModelUrl, (visual as any).loraTriggerWord);
       console.log(`[Asset Engine] Gemini image generation successful for: ${visual.visual_id}`);
     } catch (error) {
       console.warn(`[Asset Engine] Gemini image generation failed for ${visual.visual_id}, falling back to simulation: ${error instanceof Error ? error.message : String(error)}`);

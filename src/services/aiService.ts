@@ -131,6 +131,38 @@ export const AIService = {
     const orientationHint = isLandscape ? 'Horizontal 16:9 landscape orientation.' : 'Vertical 9:16 portrait orientation.';
     const finalPrompt = `${qualityPrompt}. ${orientationHint}`;
 
+    // Provider 0: Replicate LoRA (when character has trained LoRA and useLoRA is enabled)
+    if (options?.loraModelUrl && process.env.REPLICATE_API_TOKEN) {
+      try {
+        const triggerWord = (options.loraTriggerWord as string | undefined) || 'CHARACTER';
+        const { default: Replicate } = await import('replicate');
+        const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
+        const output = await replicate.run(
+          'black-forest-labs/flux-dev-lora' as `${string}/${string}:${string}`,
+          {
+            input: {
+              prompt: `${triggerWord} ${prompt}`,
+              hf_lora: options.loraModelUrl as string,
+              lora_scale: 0.85,
+              num_inference_steps: 28,
+              aspect_ratio: aspectRatio,
+            },
+          }
+        );
+        const imageUrl = Array.isArray(output) ? String(output[0]) : String(output);
+        if (imageUrl) {
+          const loraRes = await fetch(imageUrl);
+          if (loraRes.ok) {
+            const base64 = Buffer.from(await loraRes.arrayBuffer()).toString('base64');
+            console.log('[ImageGen] Replicate LoRA success!');
+            return base64;
+          }
+        }
+      } catch (e: any) {
+        console.warn('[ImageGen] Replicate LoRA failed:', e.message, '— falling through to Imagen');
+      }
+    }
+
     const referenceImageUrl = options?.referenceImageUrl as string | undefined;
     let referenceImageBytes: string | undefined;
     if (referenceImageUrl) {

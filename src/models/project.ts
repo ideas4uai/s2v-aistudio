@@ -11,6 +11,11 @@ export interface StoryCharacter {
   voiceStyle: string;
   imagePrompt: string;
   referenceImageUrl?: string;
+  loraTrainingId?: string;
+  loraStatus?: 'training' | 'ready' | 'failed';
+  loraModelUrl?: string;
+  loraTriggerWord?: string;
+  useLoRA?: boolean;
 }
 
 export interface StoryLocation {

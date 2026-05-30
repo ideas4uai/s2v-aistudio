@@ -67,6 +67,7 @@ export function UniverseEditor() {
   const [generatingLocationImage, setGeneratingLocationImage] = useState<string | null>(null);
   const [generatingPoses, setGeneratingPoses] = useState<string | null>(null);
   const [posesExpanded, setPosesExpanded] = useState<Record<string, boolean>>({});
+  const [trainingLora, setTrainingLora] = useState<string | null>(null);
   const [lightboxChar, setLightboxChar] = useState<StoryCharacter | null>(null);
   const [locationLightbox, setLocationLightbox] = useState<StoryLocation | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -151,6 +152,75 @@ export function UniverseEditor() {
     } finally {
       setGeneratingPoses(null);
     }
+  };
+
+  // Poll Replicate training status every 30s for characters currently training
+  const trainingCharIds = (universe.characters || [])
+    .filter((c: any) => c.loraStatus === 'training')
+    .map((c: any) => c.id)
+    .join(',');
+  useEffect(() => {
+    if (!trainingCharIds || !id || id === 'new') return;
+    const timer = setInterval(async () => {
+      for (const char of (universe.characters || []).filter((c: any) => c.loraStatus === 'training')) {
+        try {
+          const res = await authenticatedFetch(`/api/universes/${id}/characters/${char.id}/lora-status`);
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (data.status === 'ready' || data.status === 'failed') {
+            setUniverse((prev: any) => ({
+              ...prev,
+              characters: (prev.characters || []).map((c: any) =>
+                c.id === char.id
+                  ? { ...c, loraStatus: data.status, ...(data.loraModelUrl ? { loraModelUrl: data.loraModelUrl } : {}) }
+                  : c
+              ),
+            }));
+          }
+        } catch { /* ignore */ }
+      }
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [trainingCharIds]);
+
+  const handleTrainLoRA = async (char: StoryCharacter) => {
+    setTrainingLora(char.id);
+    try {
+      const res = await authenticatedFetch(`/api/universes/${id}/characters/${char.id}/train-lora`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setUniverse((prev: any) => ({
+        ...prev,
+        characters: (prev.characters || []).map((c: any) =>
+          c.id === char.id
+            ? { ...c, loraTrainingId: data.trainingId, loraStatus: 'training', loraTriggerWord: data.triggerWord }
+            : c
+        ),
+      }));
+    } catch (e: any) {
+      alert('LoRA training failed to start: ' + e.message);
+    } finally {
+      setTrainingLora(null);
+    }
+  };
+
+  const toggleUseLoRA = async (char: StoryCharacter) => {
+    const updated = {
+      ...universe,
+      characters: (universe.characters || []).map((c: any) =>
+        c.id === char.id ? { ...c, useLoRA: !c.useLoRA } : c
+      ),
+    };
+    setUniverse(updated);
+    await authenticatedFetch(`/api/universes/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    });
   };
 
   const handleRegeneratePose = async (char: StoryCharacter, poseName: string) => {
@@ -636,6 +706,36 @@ export function UniverseEditor() {
                           <span className="text-xs text-purple-600 font-medium">
                             ✓ {Object.keys(universe.characterPoses[char.name.toUpperCase()]).length} poses ready
                           </span>
+                        )}
+                        {(char as any).loraStatus === 'ready' ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-green-600 font-medium">✓ LoRA Ready</span>
+                            <label className="flex items-center gap-1 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={(char as any).useLoRA || false}
+                                onChange={() => toggleUseLoRA(char)}
+                                className="w-3 h-3 accent-green-600"
+                              />
+                              <span className="text-xs text-neutral-600">Use LoRA</span>
+                            </label>
+                          </div>
+                        ) : (char as any).loraStatus === 'training' ? (
+                          <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Training... ~20min
+                          </span>
+                        ) : (char as any).loraStatus === 'failed' ? (
+                          <span className="text-xs text-red-500 font-medium">✗ Training failed</span>
+                        ) : (
+                          <button
+                            onClick={() => handleTrainLoRA(char)}
+                            disabled={!(char as any).referenceImageUrl || trainingLora === char.id || !isSaved}
+                            title={!isSaved ? 'Save first' : !(char as any).referenceImageUrl ? 'Generate reference image first' : 'Train a FLUX LoRA for consistent character generation (~20min)'}
+                            className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-green-700 border border-green-200 rounded-lg hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {trainingLora === char.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                            Train LoRA
+                          </button>
                         )}
                         <button
                           onClick={() => document.getElementById(`upload-${char.id}`)?.click()}
