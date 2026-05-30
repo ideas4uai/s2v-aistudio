@@ -194,14 +194,12 @@ async function startServer() {
       const character = (universe as any).characters?.find((c: any) => c.id === charId);
       if (!character) return res.status(404).json({ error: 'Character not found' });
 
-      const base = character.imagePrompt || character.appearance || '';
       const posePrompts: Record<string, string> = {
-        idle:     `${base}, standing relaxed, hands at sides, neutral expression, plain background for compositing, full body shot, 9:16 vertical portrait`,
-        talking:  `${base}, mid-sentence expression, one hand raised gesturing, mouth slightly open, engaged expression, plain background, full body shot, 9:16 vertical`,
-        thinking: `${base}, hand on chin, looking upward slightly, thoughtful expression, weight on one leg, plain background, full body shot, 9:16 vertical portrait`,
-        excited:  `${base}, both arms raised or wide gesture, big smile, energetic pose, leaning forward slightly, plain background, full body shot, 9:16 vertical portrait`,
-        confused: `${base}, head tilted, one eyebrow raised, slight frown, arms crossed or shrug gesture, plain background, full body shot, 9:16 vertical portrait`,
-        sad:      `${base}, shoulders slumped, looking down, downcast expression, hands in pockets, plain background, full body shot, 9:16 vertical portrait`,
+        talking:  `EXACT same character as reference image. Same face, same outfit, same character design. Pose: mid-sentence, one hand raised palm-up, mouth open speaking, engaged expression. IMPORTANT: Do not change face, outfit, or character design. Only change the pose and expression. transparent or plain background, full body shot, 9:16 vertical`,
+        thinking: `EXACT same character as reference image. Same face, same outfit, same character design. Pose: right hand on chin, eyes looking up-left, thoughtful expression, slight smile. IMPORTANT: Do not change face, outfit, or character design. transparent or plain background, full body shot, 9:16 vertical`,
+        excited:  `EXACT same character as reference image. Same face, same outfit, same character design. Pose: both hands raised, big genuine smile, eyes wide open, leaning slightly forward. IMPORTANT: Do not change face, outfit, or character design. transparent or plain background, full body shot, 9:16 vertical`,
+        confused: `EXACT same character as reference image. Same face, same outfit, same character design. Pose: head tilted right, one eyebrow raised, arms slightly out to sides in shrug. IMPORTANT: Do not change face, outfit, or character design. transparent or plain background, full body shot, 9:16 vertical`,
+        sad:      `EXACT same character as reference image. Same face, same outfit, same character design. Pose: shoulders slumped, looking down, hands in pockets, quiet defeated expression. IMPORTANT: Do not change face, outfit, or character design. transparent or plain background, full body shot, 9:16 vertical`,
       };
 
       const { poseNames } = req.body as { poseNames?: string[] };
@@ -211,6 +209,14 @@ async function startServer() {
 
       const { AIService } = await import('./src/services/aiService.js');
       const results: Record<string, string> = {};
+
+      // idle — use reference image directly, no Imagen call
+      const generateIdle = !poseNames?.length || poseNames.includes('idle');
+      if (generateIdle && character.referenceImageUrl) {
+        results['idle'] = character.referenceImageUrl;
+        console.log('[Poses] Using reference image for idle pose');
+      }
+
       for (const [poseName, posePrompt] of entriesToGenerate) {
         const base64 = await AIService.generateImageBase64(posePrompt, {
           aspectRatio: '9:16',
