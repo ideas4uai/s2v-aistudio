@@ -502,22 +502,13 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   if (!scene.audio_hash) scene.audio_hash = generateAudioHash(scene.narration_text, voicePreset, (scene as any).character);
   
   const audioPromise = (async () => {
-     if (!scene.narration_path || !scene.narration_path.startsWith('http')) {
+     const audioExists = scene.narration_path && !scene.narration_path.startsWith('http') && fs.existsSync(scene.narration_path);
+     if (!audioExists) {
         console.log(`[Orchestrator] Generating audio for scene ${scene.scene_id}`);
         const audioLocal = await withRetry(() => generateSceneAudio(scene, voicePreset, scene.audio_hash!, project.settings), { retries: 2 });
         console.log(`[Orchestrator] Audio complete for scene ${scene.scene_id}: ${audioLocal ? 'ok' : 'null'}`);
         if (audioLocal) {
-           // Upload audio to GCS
-           try {
-              const fileData = await fs.promises.readFile(audioLocal);
-              const extension = path.extname(audioLocal).toLowerCase() || '.mp3';
-              const mimeType = extension === '.wav' ? 'audio/wav' : 'audio/mpeg';
-              scene.narration_path = await FirestoreService.uploadAsset(project.project_id!, `${scene.scene_id}_audio${extension}`, fileData, mimeType);
-              // Keep local for ffmpeg stitching, but store URL in db
-           } catch(e) {
-              console.log(`Failed to upload audio to GCS for ${scene.scene_id}:`, e);
-              scene.narration_path = audioLocal;
-           }
+           scene.narration_path = audioLocal;
         }
      }
   })();
@@ -601,13 +592,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
          };
          const localAsset = await withRetry(() => generateAsset(frameVisual, frameVisual.cache_key, project.mode, project), { retries: 2 });
          if (localAsset) {
-           try {
-             const fileData = await fs.promises.readFile(localAsset);
-             const remoteUrl = await FirestoreService.uploadAsset(project.project_id!, `${frame.frame_id}.png`, fileData, 'image/png');
-             frame.asset_path = remoteUrl;
-           } catch(e) {
-             frame.asset_path = localAsset;
-           }
+           frame.asset_path = localAsset;
          }
        }));
        if (i === 0 && visual.frames[0]?.asset_path) scene.image_path = visual.frames[0].asset_path;
@@ -617,16 +602,8 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
        let localAsset = await withRetry(() => generateAsset(visual, visual.cache_key, project.mode, project), { retries: 2 });
        console.log(`[Orchestrator] Image complete for scene ${scene.scene_id}, visual ${i}: ${localAsset ? 'ok' : 'null'}`);
        if (localAsset) {
-          try {
-             const isVideo = localAsset.endsWith('.mp4');
-             const fileData = await fs.promises.readFile(localAsset);
-             const remoteUrl = await FirestoreService.uploadAsset(project.project_id!, `${visual.visual_id}${isVideo ? '.mp4' : '.png'}`, fileData, isVideo ? 'video/mp4' : 'image/png');
-             visual.asset_path = remoteUrl;
-             if (i === 0 && !isVideo) scene.image_path = remoteUrl;
-          } catch(e) {
-             visual.asset_path = localAsset;
-             if (i === 0 && !localAsset.endsWith('.mp4')) scene.image_path = localAsset;
-          }
+          visual.asset_path = localAsset;
+          if (i === 0 && !localAsset.endsWith('.mp4')) scene.image_path = localAsset;
        }
      }
 
@@ -648,49 +625,21 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   // 3. Assembly
   scene.stage = 'render';
   if (scene.narration_path) {
-     // download URL into local if it's http
-     let localAudio = scene.narration_path;
-     if (localAudio.startsWith('http')) {
-         const res = await fetch(localAudio);
-         const buffer = await res.arrayBuffer();
-         localAudio = path.join(os.tmpdir(), `${scene.scene_id}_audio_dl.mp3`);
-         await fs.promises.writeFile(localAudio, Buffer.from(buffer));
-     }
+     const localAudio = scene.narration_path; // always local — pipeline no longer uploads intermediates
 
      const sceneRenderedPath = await withRetry(() => assembleSceneSegment(scene, localAudio, scene.cache_key, signal), { retries: 2 });
      if (sceneRenderedPath) {
         scene.segment_path = sceneRenderedPath;
-        
-        // --- ADDED CAPTIONING LOGIC ---
+
         if (scene.caption_text) {
            const { chunks } = await generateCaptions(scene, localAudio, 'default');
            scene.caption_chunks = chunks;
            const captionedLocal = await renderCaptions(scene, signal);
            scene.captioned_path = captionedLocal;
-           scene.rendered_path = captionedLocal; // Final captioned version
+           scene.rendered_path = captionedLocal;
         } else {
            scene.rendered_path = sceneRenderedPath;
         }
-
-        // Upload to GCS
-        try {
-           const finalFileToUpload = scene.rendered_path || sceneRenderedPath;
-           const fileData = await fs.promises.readFile(finalFileToUpload);
-           const remoteUrl = await FirestoreService.uploadAsset(project.project_id!, `${scene.scene_id}_segment.mp4`, fileData, 'video/mp4');
-           scene.rendered_path = remoteUrl;
-           // Keep captioned_path in sync — local file will be deleted, so point to the HTTP URL
-           if (scene.captioned_path) scene.captioned_path = remoteUrl;
-
-           // Cleanup local files
-           if (finalFileToUpload.startsWith(os.tmpdir())) fs.promises.unlink(finalFileToUpload).catch(() => {});
-           if (sceneRenderedPath.startsWith(os.tmpdir()) && sceneRenderedPath !== finalFileToUpload) fs.promises.unlink(sceneRenderedPath).catch(() => {});
-        } catch(e) {
-           scene.rendered_path = scene.rendered_path || sceneRenderedPath;
-        }
-     }
-     
-     if (localAudio.startsWith(os.tmpdir())) {
-        fs.promises.unlink(localAudio).catch(() => {});
      }
   }
 
@@ -703,24 +652,9 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   // --------------------------------------------------------------------------
 export async function cleanupAssets(project: Project) {
   if (project.status !== 'completed') return;
-  console.log(`[Orchestrator] Cleaning up intermediate assets for project ${project.project_id}`);
-
-  const shouldDelete = (path: string) =>
-    path.includes('_audio.wav') ||
-    path.includes('_segment.mp4');
-
-  for (const scene of project.scenes || []) {
-     try {
-       if (scene.narration_path?.startsWith('http') && shouldDelete(scene.narration_path)) {
-          await FirestoreService.deleteAssetByUrl(scene.narration_path);
-       }
-       if (scene.rendered_path?.startsWith('http') && shouldDelete(scene.rendered_path)) {
-          await FirestoreService.deleteAssetByUrl(scene.rendered_path);
-       }
-     } catch(e) {
-       console.warn(`[Orchestrator] Failed to cleanup scene ${scene.scene_id}:`, e);
-     }
-  }
+  // All intermediate assets are local — no Supabase cleanup needed.
+  // Local temp files under os.tmpdir() will be cleared by the OS.
+  console.log(`[Orchestrator] Pipeline complete — local temp assets will be garbage-collected by OS for project ${project.project_id}`);
 }
 
 export async function validateProjectAssets(project: Project, signal?: AbortSignal) {
