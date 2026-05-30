@@ -301,6 +301,14 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       project.error_log = null;
     }
 
+    // Clear stale Supabase URLs from previous runs — all intermediates are now local
+    for (const scene of project.scenes || []) {
+      if ((scene as any).rendered_path?.startsWith('http')) (scene as any).rendered_path = undefined;
+      if ((scene as any).segment_path?.startsWith('http')) (scene as any).segment_path = undefined;
+      if ((scene as any).captioned_path?.startsWith('http')) (scene as any).captioned_path = undefined;
+      if ((scene as any).narration_path?.startsWith('http')) (scene as any).narration_path = undefined;
+    }
+
     // Reset cancellation if starting fresh
     project.is_cancelled = false;
     project.logs = [];
@@ -703,42 +711,30 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
     for (const scene of sortedScenes) {
       if (scene.status !== 'completed' && scene.status !== 'degraded') continue;
 
-      // rendered_path is the authoritative final output (may be a remote URL after upload)
+      // Prefer segment_path (local assembled segment) then rendered_path, then captioned_path
       let videoPath: string | undefined = isPreview
         ? scene.preview_path
-        : (scene.captioned_path || scene.rendered_path || scene.segment_path);
+        : ((scene as any).segment_path || (scene as any).rendered_path || (scene as any).captioned_path);
 
-      // If captioned_path is a stale local path (deleted after upload), fall back to rendered_path
-      if (videoPath && !videoPath.startsWith('http') && !fs.existsSync(videoPath)) {
-        console.warn(`[Stitch] captioned_path not found locally for ${scene.scene_id}, falling back to rendered_path`);
-        videoPath = scene.rendered_path || scene.segment_path;
+      if (!videoPath) {
+        console.log(`[Stitch] Skipping scene ${scene.scene_id} — no local segment`);
+        continue;
       }
 
-      if (!videoPath) continue;
-
-      // If the path is a remote URL, download it locally for FFmpeg
       if (videoPath.startsWith('http')) {
-        try {
-          const res = await fetch(videoPath);
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const buf = await res.arrayBuffer();
-          const localDl = path.join(os.tmpdir(), 'ais-renderer', `${scene.scene_id}_dl.mp4`);
-          fs.mkdirSync(path.dirname(localDl), { recursive: true });
-          fs.writeFileSync(localDl, Buffer.from(buf));
-          downloadedPaths.push(localDl);
-          videoPath = localDl;
-        } catch (dlErr) {
-          console.warn(`[Orchestrator] Failed to download scene ${scene.scene_id} for stitching:`, dlErr);
-          continue;
-        }
+        console.log(`[Stitch] Skipping scene ${scene.scene_id} — stale http URL, no local segment available`);
+        continue;
       }
 
-      if (fs.existsSync(videoPath) && fs.statSync(videoPath).size > 0) {
-        finalScenes.push({
-          video_path: videoPath,
-          duration: scene.duration_actual || 0
-        });
+      if (!fs.existsSync(videoPath) || fs.statSync(videoPath).size === 0) {
+        console.log(`[Stitch] Segment file missing or empty: ${videoPath}`);
+        continue;
       }
+
+      finalScenes.push({
+        video_path: videoPath,
+        duration: scene.duration_actual || 0
+      });
     }
 
     if (finalScenes.length > 0) {
