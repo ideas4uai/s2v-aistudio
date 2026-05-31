@@ -301,12 +301,20 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       project.error_log = null;
     }
 
-    // Clear stale Supabase URLs from previous runs — all intermediates are now local
+    // Clear stale paths from previous runs — HTTP URLs and local files that no longer exist
     for (const scene of project.scenes || []) {
       if ((scene as any).rendered_path?.startsWith('http')) (scene as any).rendered_path = undefined;
       if ((scene as any).segment_path?.startsWith('http')) (scene as any).segment_path = undefined;
       if ((scene as any).captioned_path?.startsWith('http')) (scene as any).captioned_path = undefined;
       if ((scene as any).narration_path?.startsWith('http')) (scene as any).narration_path = undefined;
+      // Clear local paths whose files were lost (OS temp cleared between runs)
+      if ((scene as any).segment_path && !fs.existsSync((scene as any).segment_path)) {
+        console.log('[Orchestrator] Clearing stale segment path:', ((scene as any).segment_path as string).slice(-40));
+        (scene as any).segment_path = undefined;
+      }
+      if ((scene as any).rendered_path && !fs.existsSync((scene as any).rendered_path)) {
+        (scene as any).rendered_path = undefined;
+      }
     }
 
     // Reset cancellation if starting fresh

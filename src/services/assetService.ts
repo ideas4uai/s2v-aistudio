@@ -75,10 +75,11 @@ export async function generateAsset(visual: Visual, assetHash: string, mode: str
 
   console.log(`[Asset Engine] Generating ${visual.asset_type}... Hash: ${assetHash}`);
   console.log('[AssetEngine] referenceImageUrl:', visual.referenceImageUrl ? 'present' : 'MISSING', 'character:', (visual as any)?.character);
-  const ext = visual.asset_type === 'ai_image' || visual.asset_type === 'stock' ? '.jpg' : '.png';
+  const isAiImage = visual.asset_type === 'ai_image' || visual.asset_type === 'image' || !visual.asset_type;
+  const ext = isAiImage || visual.asset_type === 'stock' ? '.jpg' : '.png';
   const tempFile = path.join(process.cwd(), 'temp', `${assetHash}${ext}`);
-  
-  if (visual.asset_type === 'ai_image') {
+
+  if (isAiImage) {
     try {
       console.log(`[Asset Engine] Attempting Gemini image generation for: ${visual.visual_id}`);
       await generateImageFromGemini(visual.prompt, tempFile, project, visual.referenceImageUrl, (visual as any).loraModelUrl, (visual as any).loraTriggerWord);
