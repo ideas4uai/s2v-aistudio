@@ -344,6 +344,7 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
 };
 
 export const renderCaptions = async (scene: any, signal?: AbortSignal) => {
+  console.log('[Captions] Starting for scene:', scene.scene_id, 'chunks:', scene.caption_chunks?.length ?? 0, 'segment_path:', scene.segment_path?.slice(-40));
   if (!scene.segment_path || !scene.caption_chunks || scene.caption_chunks.length === 0) {
     return scene.segment_path;
   }
@@ -391,6 +392,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     const isPreview = scene.quality === 'draft' || scene.preview_mode || false;
     const preset = isPreview ? 'ultrafast' : 'fast';
     await guardedExec(`"${ffmpeg}" -i "${inputPath}" -vf "${subtitleFilter}" -c:v libx264 -preset ${preset} -crf 18 -b:v 4M -c:a copy -y "${outputPath}"`, signal);
+    console.log('[Captions] Output file exists:', fs.existsSync(outputPath), outputPath.slice(-40));
     return outputPath;
   } catch(e: any) {
     if (e.message === 'PIPELINE_CANCELLED') throw e;
@@ -422,11 +424,15 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
   try {
      await guardedExec(`"${ffmpeg}" -fflags +genpts -f concat -safe 0 -i "${listFile}" -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS" -af asetpts=PTS-STARTPTS -c:v libx264 -preset fast -crf 20 -c:a aac -ar 44100 -ac 2 -b:a 192k -y "${outputPath}"`, signal);
 
-     if (project?.music_track) {
+     const musicTrack = project?.settings?.musicTrack || project?.music_track;
+     const musicVolume = project?.settings?.musicVolume ?? project?.music_volume ?? 0.08;
+     console.log('[Music] Track:', musicTrack, 'Volume:', musicVolume);
+     if (musicTrack) {
        const musicDir = process.env.MUSIC_DIR || path.join(process.cwd(), 'music');
-       const musicPath = path.join(musicDir, project.music_track);
+       const musicPath = path.join(musicDir, musicTrack);
+       console.log('[Music] File exists:', fs.existsSync(musicPath), musicPath);
        if (fs.existsSync(musicPath)) {
-         const volume = Number(project.music_volume ?? 0.08).toFixed(2);
+         const volume = Number(musicVolume).toFixed(2);
          const outputWithMusic = path.join(tmpDir, `final_music_${Date.now()}.mp4`);
          try {
            await guardedExec(

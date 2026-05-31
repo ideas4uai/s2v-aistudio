@@ -574,6 +574,8 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
     if (!currentPrompt.includes(universeStyle.slice(0, 15))) {
       scene.visuals[0].prompt = currentPrompt + ', ' + universeStyle + ', 9:16 vertical portrait';
     }
+    console.log('[Orchestrator] Art style injected:', universeStyle?.slice(0, 50));
+    console.log('[Orchestrator] Final prompt:', scene.visuals[0]?.prompt?.slice(0, 100));
   }
 
   const visualsPromise = Promise.all(scene.visuals.map(async (visual, i) => {

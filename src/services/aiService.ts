@@ -125,11 +125,15 @@ export const AIService = {
     const isStoryEpisode = options?.isStoryEpisode;
     const isLandscape = !isStoryEpisode && options?.aspectRatio === '16:9';
     const aspectRatio = isLandscape ? '16:9' : '9:16';
-    const qualityPrompt = prompt.includes('photorealistic')
+    const isAnime = prompt.includes('anime') || prompt.includes('Trigger Studio') || prompt.includes('flat colour');
+    const qualityPrompt = (prompt.includes('photorealistic') || isAnime)
       ? prompt
       : `${prompt}, photorealistic, cinematic lighting, sharp focus`;
     const orientationHint = isLandscape ? 'Horizontal 16:9 landscape orientation.' : 'Vertical 9:16 portrait orientation.';
     const finalPrompt = `${qualityPrompt}. ${orientationHint}`;
+    const styledPrompt = finalPrompt.includes('anime')
+      ? finalPrompt
+      : `${finalPrompt}, semi-realistic anime style, flat colour shading, bold clean outlines`;
 
     // Provider 0: Replicate LoRA (when character has trained LoRA and useLoRA is enabled)
     if (options?.loraModelUrl && process.env.REPLICATE_API_TOKEN) {
@@ -186,7 +190,7 @@ export const AIService = {
         const imagenAI = new GoogleGenAI({ apiKey: imagenApiKey });
         const imagenResponse = await imagenAI.models.generateImages({
           model: imagenModel,
-          prompt: finalPrompt,
+          prompt: styledPrompt,
           config: {
             numberOfImages: 1,
             aspectRatio,
