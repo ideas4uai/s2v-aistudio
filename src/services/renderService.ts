@@ -300,9 +300,11 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
 
   const outputPath = path.join(tmpDir, `${scene.scene_id}_segment.mp4`);
   
-  if (!scene.visuals || !scene.visuals[0] || !scene.visuals[0].rendered_path) return audioPath;
-
-  const visualPath = scene.visuals[0].rendered_path;
+  const visualPath = (scene.visuals?.[0] as any)?.rendered_path;
+  if (!visualPath || !fs.existsSync(visualPath)) {
+    console.error('[RenderService] No rendered visual for scene:', scene.scene_id, 'visual path:', visualPath);
+    return '';
+  }
 
   const audioValid = (() => {
     try { return audioPath && fs.existsSync(audioPath) && fs.statSync(audioPath).size > 1000; }

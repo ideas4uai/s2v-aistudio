@@ -635,6 +635,14 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   if (scene.narration_path) {
      const localAudio = scene.narration_path; // always local — pipeline no longer uploads intermediates
 
+     const visual = scene.visuals?.[0] as any;
+     const visualRenderedPath = visual?.rendered_path;
+     if (!visualRenderedPath || !fs.existsSync(visualRenderedPath)) {
+       console.error('[Orchestrator] Visual not rendered for scene:', scene.scene_id, 'rendered_path:', visualRenderedPath);
+       scene.status = 'failed';
+       return;
+     }
+
      const sceneRenderedPath = await withRetry(() => assembleSceneSegment(scene, localAudio, scene.cache_key, signal), { retries: 2 });
      if (sceneRenderedPath) {
         scene.segment_path = sceneRenderedPath;
@@ -711,28 +719,33 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
     for (const scene of sortedScenes) {
       if (scene.status !== 'completed' && scene.status !== 'degraded') continue;
 
-      // Prefer segment_path (local assembled segment) then rendered_path, then captioned_path
-      let videoPath: string | undefined = isPreview
+      const segPath: string | undefined = isPreview
         ? scene.preview_path
-        : ((scene as any).segment_path || (scene as any).rendered_path || (scene as any).captioned_path);
+        : (scene as any).segment_path;
 
-      if (!videoPath) {
-        console.log(`[Stitch] Skipping scene ${scene.scene_id} — no local segment`);
+      if (!segPath) {
+        console.log(`[Stitch] Skipping scene ${scene.scene_id} — no segment_path`);
         continue;
       }
 
-      if (videoPath.startsWith('http')) {
-        console.log(`[Stitch] Skipping scene ${scene.scene_id} — stale http URL, no local segment available`);
+      if (segPath.startsWith('http')) {
+        console.log(`[Stitch] Skipping scene ${scene.scene_id} — stale http URL`);
         continue;
       }
 
-      if (!fs.existsSync(videoPath) || fs.statSync(videoPath).size === 0) {
-        console.log(`[Stitch] Segment file missing or empty: ${videoPath}`);
+      if (!fs.existsSync(segPath) || fs.statSync(segPath).size === 0) {
+        console.log(`[Stitch] Segment file missing or empty: ${segPath}`);
         continue;
       }
 
+      if (segPath.endsWith('.wav') || segPath.endsWith('.mp3') || segPath.endsWith('.aac')) {
+        console.error('[Stitch] Rejecting audio file as segment:', segPath);
+        continue;
+      }
+
+      console.log('[Stitch] Adding segment:', segPath.slice(-50));
       finalScenes.push({
-        video_path: videoPath,
+        video_path: segPath,
         duration: scene.duration_actual || 0
       });
     }
