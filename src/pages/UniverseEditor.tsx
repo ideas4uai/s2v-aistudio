@@ -330,7 +330,8 @@ export function UniverseEditor() {
       if (!res.ok) throw new Error(data.error || 'Upload failed');
 
       if (data.imageUrl) {
-        updateCharacter(char.id, { referenceImageUrl: data.imageUrl });
+        const bustUrl = `${data.imageUrl}?t=${Date.now()}`;
+        updateCharacter(char.id, { referenceImageUrl: bustUrl });
         const updatedChars = universe.characters.map((c: StoryCharacter) =>
           c.id === char.id ? { ...c, referenceImageUrl: data.imageUrl } : c
         );
@@ -339,7 +340,7 @@ export function UniverseEditor() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...universe, characters: updatedChars }),
         });
-        console.log('[Universe] Character image uploaded:', char.name, data.imageUrl);
+        console.log('[Universe] Character image uploaded:', char.name, bustUrl);
       }
     } catch (err: any) {
       alert('Upload failed: ' + err.message);
@@ -648,7 +649,7 @@ export function UniverseEditor() {
                     <div className="flex items-center gap-3">
                       {char.referenceImageUrl ? (
                         <img
-                          src={char.referenceImageUrl}
+                          src={char.referenceImageUrl.includes('?t=') ? char.referenceImageUrl : `${char.referenceImageUrl}?t=${Date.now()}`}
                           alt={char.name}
                           className="w-8 h-8 rounded-full object-cover border border-neutral-200 cursor-pointer hover:opacity-80 transition-opacity"
                           onClick={e => { e.stopPropagation(); setLightboxChar(char); }}
@@ -787,7 +788,7 @@ export function UniverseEditor() {
                         {char.referenceImageUrl && (
                           <div className="flex items-center gap-2">
                             <img
-                              src={char.referenceImageUrl}
+                              src={char.referenceImageUrl.includes('?t=') ? char.referenceImageUrl : `${char.referenceImageUrl}?t=${Date.now()}`}
                               alt="Reference"
                               className="w-12 h-12 rounded-lg object-cover border border-neutral-200 cursor-pointer hover:opacity-80 transition-opacity"
                               onClick={() => setLightboxChar(char)}
