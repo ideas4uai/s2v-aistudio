@@ -315,6 +315,11 @@ async function startServer() {
       }
 
       for (const [poseName, posePrompt] of entriesToGenerate) {
+        console.log('[Poses] Generating:', poseName, 'referenceImageUrl:', character.referenceImageUrl ? character.referenceImageUrl.slice(-30) : 'MISSING');
+        if (!character.referenceImageUrl) {
+          console.error('[Poses] Skipping pose — no referenceImageUrl on character:', character.name, '— upload a reference image first');
+          continue;
+        }
         const base64 = await AIService.generateImageBase64(posePrompt, {
           aspectRatio: '9:16',
           isStoryEpisode: true,
