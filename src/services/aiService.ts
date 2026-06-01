@@ -36,6 +36,53 @@ const TASK_KEY_MAP: Record<string, KeyTask> = {
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
+async function generateImageWithGeminiNative(
+  prompt: string,
+  referenceImageUrl?: string
+): Promise<string | null> {
+  try {
+    let geminiKey = '';
+    try { geminiKey = getKeyForTask('image'); } catch { return null; }
+    if (!geminiKey) return null;
+
+    const { GoogleGenAI: GGenAI } = await import('@google/genai');
+    const ai = new GGenAI({ apiKey: geminiKey });
+
+    const parts: any[] = [];
+
+    if (referenceImageUrl) {
+      const imgResponse = await fetch(referenceImageUrl);
+      if (!imgResponse.ok) throw new Error(`Reference fetch failed: ${imgResponse.status}`);
+      const imgBuffer = await imgResponse.arrayBuffer();
+      const base64ref = Buffer.from(imgBuffer).toString('base64');
+      const mimeType = referenceImageUrl.includes('.png') ? 'image/png' : 'image/jpeg';
+      parts.push({ inlineData: { data: base64ref, mimeType } });
+      parts.push({
+        text: `This is the character reference. ${prompt}. Keep the exact same character face, outfit, and art style.`
+      });
+    } else {
+      parts.push({ text: prompt });
+    }
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash-preview-image-generation',
+      contents: [{ role: 'user', parts }],
+      config: { responseModalities: ['IMAGE', 'TEXT'] } as any,
+    });
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if ((part as any).inlineData?.mimeType?.startsWith('image/')) {
+        console.log('[Gemini Native] Success!');
+        return (part as any).inlineData.data as string;
+      }
+    }
+    return null;
+  } catch (err: any) {
+    console.warn('[Gemini Native] Failed:', err.message?.slice(0, 100));
+    return null;
+  }
+}
+
 export const AIService = {
   generateText: async (prompt: string, options?: any) => {
     const task = options?.task;
@@ -212,6 +259,12 @@ export const AIService = {
       }
     }
 
+    // Provider 1.5: Gemini 2.0 Flash Native (reference-image-aware, better character identity)
+    if (options?.referenceImageUrl) {
+      const nativeResult = await generateImageWithGeminiNative(styledPrompt, options.referenceImageUrl);
+      if (nativeResult) return nativeResult;
+    }
+
     // Provider 2: Fal.ai FLUX.1 schnell
     if (process.env.FAL_API_KEY) {
       try {
@@ -301,5 +354,6 @@ export const AIService = {
     // Provider 5: Picsum (always works)
     throw new Error('All AI providers failed - use Picsum fallback');
   },
+  generateImageWithNative: generateImageWithGeminiNative,
   clearQuotaFlags: () => {}
 };

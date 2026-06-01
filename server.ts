@@ -320,11 +320,16 @@ async function startServer() {
           console.error('[Poses] Skipping pose — no referenceImageUrl on character:', character.name, '— upload a reference image first');
           continue;
         }
-        const base64 = await AIService.generateImageBase64(posePrompt, {
-          aspectRatio: '9:16',
-          isStoryEpisode: true,
-          referenceImageUrl: character.referenceImageUrl,
-        });
+        // Gemini Native first — multimodal reference gives better character identity
+        let base64 = await AIService.generateImageWithNative(posePrompt, character.referenceImageUrl);
+        if (!base64) {
+          console.log('[Poses] Gemini Native failed, falling back to Imagen 4 for:', poseName);
+          base64 = await AIService.generateImageBase64(posePrompt, {
+            aspectRatio: '9:16',
+            isStoryEpisode: true,
+            referenceImageUrl: character.referenceImageUrl,
+          });
+        }
         const buffer = Buffer.from(base64, 'base64');
         const url = await FirestoreService.uploadAsset(
           req.params.id,
