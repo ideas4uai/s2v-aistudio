@@ -4,6 +4,7 @@ import { createServer as createViteServer } from 'vite';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { projectsRouter } from './src/server/routes/projects.js';
@@ -158,6 +159,25 @@ async function startServer() {
     }
     next();
   });
+  async function createTrainingZip(imageUrls: string[], projectId: string): Promise<string> {
+    const { default: JSZip } = await import('jszip');
+    const zip = new JSZip();
+    for (let i = 0; i < imageUrls.length; i++) {
+      const url = imageUrls[i];
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Failed to fetch training image: ${url}`);
+      const buffer = await response.arrayBuffer();
+      const ext = url.includes('.png') ? 'png' : 'jpg';
+      zip.file(`image_${i}.${ext}`, buffer);
+    }
+    const zipBuffer: Buffer = await zip.generateAsync({ type: 'nodebuffer' });
+    const zipPath = path.join(os.tmpdir(), `lora_training_${projectId}.zip`);
+    fs.writeFileSync(zipPath, zipBuffer);
+    const zipUrl = await FirestoreService.uploadAsset(projectId, `lora/${projectId}_training.zip`, zipBuffer, 'application/zip');
+    fs.promises.unlink(zipPath).catch(() => {});
+    return zipUrl;
+  }
+
   app.use('/api/projects', projectsRouter);
   app.use('/v1/projects', projectsRouter);
   app.post('/api/universes', universeController.save);
@@ -254,17 +274,22 @@ async function startServer() {
         || 'b6af14a06a1f4b7e01659d5d1cdb40fa5c1dfbf4de76bfc48666a2cdfb99b367';
       console.log('[LoRA] Latest trainer version:', latestVersion);
 
-      // Start training via POST /v1/trainings with explicit version
+      // Create zip of training images — Replicate requires a single zip URL
+      console.log('[LoRA] Creating training zip from', trainingImages.length, 'images');
+      const zipUrl = await createTrainingZip(trainingImages, `${replicateUsername}-${modelSlug}`);
+      console.log('[LoRA] Training zip uploaded:', zipUrl.slice(-50));
+
+      // Start training via POST /v1/trainings with explicit version hash
       const trainingRes = await fetch(
         'https://api.replicate.com/v1/trainings',
         {
           method: 'POST',
           headers: { ...replicateHeaders, 'Prefer': 'wait' },
           body: JSON.stringify({
-            version: `ostris/flux-dev-lora-trainer:${latestVersion}`,
+            version: latestVersion,
             destination: `${replicateUsername}/${modelSlug}`,
             input: {
-              input_images: trainingImages,
+              input_images: zipUrl,
               trigger_word: triggerWord,
               steps: 1000,
               lora_rank: 16,
