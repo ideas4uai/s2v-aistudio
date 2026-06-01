@@ -267,6 +267,7 @@ export function UniverseEditor() {
       body: JSON.stringify(updated),
     });
     setUniverse(updated);
+    setPosesExpanded(prev => ({ ...prev, [char.id]: false }));
     console.log('[Poses] Deleted all poses for:', char.name);
   };
 
