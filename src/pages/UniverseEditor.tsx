@@ -252,6 +252,43 @@ export function UniverseEditor() {
     }
   };
 
+  const handleDeletePoses = async (char: any) => {
+    if (!confirm(`Delete all poses for ${char.name}?`)) return;
+    const updated = {
+      ...universe,
+      characterPoses: {
+        ...(universe.characterPoses || {}),
+        [char.name.toUpperCase()]: {}
+      }
+    };
+    await authenticatedFetch(`/api/universes/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    });
+    setUniverse(updated);
+    console.log('[Poses] Deleted all poses for:', char.name);
+  };
+
+  const handleDeleteSinglePose = async (char: any, poseName: string) => {
+    const charKey = char.name.toUpperCase();
+    const currentPoses = (universe.characterPoses as any)?.[charKey] || {};
+    const { [poseName]: _, ...remaining } = currentPoses;
+    const updated = {
+      ...universe,
+      characterPoses: {
+        ...(universe.characterPoses || {}),
+        [charKey]: remaining
+      }
+    };
+    await authenticatedFetch(`/api/universes/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    });
+    setUniverse(updated);
+  };
+
   const handleDownloadCharacterImage = async (char: StoryCharacter) => {
     if (!char.referenceImageUrl) return;
     try {
@@ -769,12 +806,22 @@ export function UniverseEditor() {
                         if (poseEntries.length === 0) return null;
                         return (
                           <div className="mt-3">
-                            <button
-                              onClick={() => togglePosesExpanded(char.id)}
-                              className="text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center gap-1"
-                            >
-                              {posesExpanded[char.id] ? '▼' : '▶'} View {poseEntries.length} poses
-                            </button>
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => togglePosesExpanded(char.id)}
+                                className="text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center gap-1"
+                              >
+                                {posesExpanded[char.id] ? '▼' : '▶'} View {poseEntries.length} poses
+                              </button>
+                              {poseEntries.length > 0 && (
+                                <button
+                                  onClick={() => handleDeletePoses(char)}
+                                  className="text-xs text-red-500 hover:text-red-700 font-medium mt-0"
+                                >
+                                  🗑️ Delete all poses
+                                </button>
+                              )}
+                            </div>
                             {posesExpanded[char.id] && (
                               <div className="grid grid-cols-3 gap-2 mt-2">
                                 {poseEntries.map(([poseName, poseUrl]) => (
@@ -793,6 +840,13 @@ export function UniverseEditor() {
                                       title="Regenerate this pose"
                                     >
                                       🔄
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteSinglePose(char, poseName)}
+                                      className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 bg-white rounded-full p-1 text-xs shadow-sm transition-opacity text-red-500"
+                                      title="Delete this pose"
+                                    >
+                                      🗑️
                                     </button>
                                   </div>
                                 ))}
