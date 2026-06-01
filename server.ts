@@ -232,7 +232,7 @@ async function startServer() {
             owner: replicateUsername,
             name: modelSlug,
             visibility: 'private',
-            hardware: 'gpu-a40-large',
+            hardware: 'gpu-l40s',
             description: `Signal Squad - ${character.name} LoRA`,
           }),
         });
@@ -244,13 +244,24 @@ async function startServer() {
         }
       }
 
-      // Start training via HTTP API (automatically uses latest trainer version)
+      // Resolve latest trainer version
+      const versionRes = await fetch(
+        'https://api.replicate.com/v1/models/ostris/flux-dev-lora-trainer/versions',
+        { headers: { 'Authorization': `Bearer ${replicateToken}` } }
+      );
+      const versionData = await versionRes.json();
+      const latestVersion: string = versionData.results?.[0]?.id
+        || 'b6af14a06a1f4b7e01659d5d1cdb40fa5c1dfbf4de76bfc48666a2cdfb99b367';
+      console.log('[LoRA] Latest trainer version:', latestVersion);
+
+      // Start training via POST /v1/trainings with explicit version
       const trainingRes = await fetch(
-        'https://api.replicate.com/v1/models/ostris/flux-dev-lora-trainer/trainings',
+        'https://api.replicate.com/v1/trainings',
         {
           method: 'POST',
-          headers: replicateHeaders,
+          headers: { ...replicateHeaders, 'Prefer': 'wait' },
           body: JSON.stringify({
+            version: `ostris/flux-dev-lora-trainer:${latestVersion}`,
             destination: `${replicateUsername}/${modelSlug}`,
             input: {
               input_images: trainingImages,
