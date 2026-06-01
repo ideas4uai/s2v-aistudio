@@ -214,15 +214,31 @@ async function startServer() {
       const modelSlug = character.name.toLowerCase().replace(/\s+/g, '-') + '-lora';
       const destination = `${replicateUsername}/${modelSlug}` as `${string}/${string}`;
 
-      // Version: ostris/flux-dev-lora-trainer — check https://replicate.com/ostris/flux-dev-lora-trainer for latest
-      const trainerVersion = process.env.REPLICATE_LORA_TRAINER_VERSION || 'e440909d3512c31646ee2e0c7d6f6f4923224863a6a10c494606e79fb5844497';
-
       const { default: Replicate } = await import('replicate');
       const replicate = new Replicate({ auth: replicateToken });
+
+      // Auto-create destination model if it doesn't exist
+      try {
+        await (replicate.models as any).create(
+          replicateUsername,
+          modelSlug,
+          {
+            visibility: 'private',
+            hardware: 'gpu-a40-large',
+            description: `LoRA for ${character.name} - Signal Squad`,
+          }
+        );
+        console.log('[LoRA] Created model:', modelSlug);
+      } catch (e: any) {
+        if (!e.message?.includes('already exists')) {
+          console.warn('[LoRA] Model creation:', e.message);
+        }
+      }
+
       const training = await (replicate.trainings as any).create(
         'ostris',
         'flux-dev-lora-trainer',
-        trainerVersion,
+        'latest',
         {
           destination,
           input: {
