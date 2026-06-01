@@ -205,8 +205,9 @@ async function startServer() {
         ...Object.values(characterPoses) as string[],
       ].filter(Boolean);
 
-      if (trainingImages.length < 2) {
-        return res.status(400).json({ error: 'Need at least 2 training images. Generate character poses first.' });
+      console.log('[LoRA] Training images:', trainingImages.length, trainingImages.map((u: string) => u.slice(-30)));
+      if (trainingImages.length < 1) {
+        return res.status(400).json({ error: 'Need at least 1 training image. Upload a reference image first.' });
       }
 
       const triggerWord = character.name.toUpperCase().replace(/\s+/g, '_') + '_CHARACTER';
