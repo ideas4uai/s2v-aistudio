@@ -214,42 +214,59 @@ async function startServer() {
       const modelSlug = character.name.toLowerCase().replace(/\s+/g, '-') + '-lora';
       const destination = `${replicateUsername}/${modelSlug}` as `${string}/${string}`;
 
-      const { default: Replicate } = await import('replicate');
-      const replicate = new Replicate({ auth: replicateToken });
+      const replicateHeaders = {
+        'Authorization': `Bearer ${replicateToken}`,
+        'Content-Type': 'application/json',
+      };
 
-      // Auto-create destination model if it doesn't exist
-      try {
-        await (replicate.models as any).create(
-          replicateUsername,
-          modelSlug,
-          {
+      // Check/create destination model via HTTP API
+      const modelCheck = await fetch(
+        `https://api.replicate.com/v1/models/${replicateUsername}/${modelSlug}`,
+        { headers: { 'Authorization': `Bearer ${replicateToken}` } }
+      );
+      if (!modelCheck.ok) {
+        const createRes = await fetch('https://api.replicate.com/v1/models', {
+          method: 'POST',
+          headers: replicateHeaders,
+          body: JSON.stringify({
+            owner: replicateUsername,
+            name: modelSlug,
             visibility: 'private',
             hardware: 'gpu-a40-large',
-            description: `LoRA for ${character.name} - Signal Squad`,
-          }
-        );
-        console.log('[LoRA] Created model:', modelSlug);
-      } catch (e: any) {
-        if (!e.message?.includes('already exists')) {
-          console.warn('[LoRA] Model creation:', e.message);
+            description: `Signal Squad - ${character.name} LoRA`,
+          }),
+        });
+        if (!createRes.ok) {
+          const createErr = await createRes.json();
+          console.warn('[LoRA] Model creation failed:', JSON.stringify(createErr));
+        } else {
+          console.log('[LoRA] Created destination model:', modelSlug);
         }
       }
 
-      const training = await (replicate.trainings as any).create(
-        'ostris',
-        'flux-dev-lora-trainer',
-        'latest',
+      // Start training via HTTP API (automatically uses latest trainer version)
+      const trainingRes = await fetch(
+        'https://api.replicate.com/v1/models/ostris/flux-dev-lora-trainer/trainings',
         {
-          destination,
-          input: {
-            input_images: trainingImages,
-            trigger_word: triggerWord,
-            steps: 1000,
-            lora_rank: 16,
-            learning_rate: 0.0004,
-          },
+          method: 'POST',
+          headers: replicateHeaders,
+          body: JSON.stringify({
+            destination: `${replicateUsername}/${modelSlug}`,
+            input: {
+              input_images: trainingImages,
+              trigger_word: triggerWord,
+              steps: 1000,
+              lora_rank: 16,
+              learning_rate: 0.0004,
+            },
+          }),
         }
       );
+      const training = await trainingRes.json();
+      if (!trainingRes.ok) {
+        throw new Error(`Replicate training request failed: ${JSON.stringify(training)}`);
+      }
+      console.log('[LoRA] Training started:', training.id);
 
       const updatedChars = (universe as any).characters.map((c: any) =>
         c.id === charId
