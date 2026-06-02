@@ -318,6 +318,12 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       if ((scene as any).captioned_path && !(scene as any).captioned_path.startsWith('http')) {
         (scene as any).captioned_path = undefined;
       }
+      // Reset status so batch filter includes this scene in processing.
+      // Internal caches (narration_path, visual.status='completed') still prevent
+      // re-generation of expensive audio and images.
+      if (scene.status === 'completed') {
+        scene.status = 'pending';
+      }
     }
     console.log('[Orchestrator] Cleared local render paths — will re-render all visual clips');
 
