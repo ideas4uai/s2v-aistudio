@@ -307,15 +307,19 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       if ((scene as any).segment_path?.startsWith('http')) (scene as any).segment_path = undefined;
       if ((scene as any).captioned_path?.startsWith('http')) (scene as any).captioned_path = undefined;
       if ((scene as any).narration_path?.startsWith('http')) (scene as any).narration_path = undefined;
-      // Clear local paths whose files were lost (OS temp cleared between runs)
-      if ((scene as any).segment_path && !fs.existsSync((scene as any).segment_path)) {
-        console.log('[Orchestrator] Clearing stale segment path:', ((scene as any).segment_path as string).slice(-40));
+      // Always clear local render paths so animator reruns with correct audio duration.
+      // Cached TTS audio (narration_path) and generated images (asset_path) are kept.
+      if ((scene as any).segment_path && !(scene as any).segment_path.startsWith('http')) {
         (scene as any).segment_path = undefined;
       }
-      if ((scene as any).rendered_path && !fs.existsSync((scene as any).rendered_path)) {
+      if ((scene as any).rendered_path && !(scene as any).rendered_path.startsWith('http')) {
         (scene as any).rendered_path = undefined;
       }
+      if ((scene as any).captioned_path && !(scene as any).captioned_path.startsWith('http')) {
+        (scene as any).captioned_path = undefined;
+      }
     }
+    console.log('[Orchestrator] Cleared local render paths — will re-render all visual clips');
 
     // Reset cancellation if starting fresh
     project.is_cancelled = false;
