@@ -173,24 +173,14 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
 
           console.log('[RenderVisual] animatedPath:', animatedPath.slice(-50));
           console.log('[RenderVisual] isTalking:', isTalking, 'audioPath:', audioPath ? audioPath.slice(-40) : 'NONE');
-          if (isTalking && audioPath) {
-            console.log('[RenderVisual] Calling callAnimator — effect: talking');
-            await callAnimator({
-              effect: 'talking',
-              input: imagePath,
-              audio: localAudioPath,
-              output: animatedPath,
-              duration: animatorDuration
-            });
-          } else {
-            console.log('[RenderVisual] Calling callAnimator — effect: breathing');
-            await callAnimator({
-              effect: 'breathing',
-              input: imagePath,
-              output: animatedPath,
-              duration: animatorDuration
-            });
-          }
+          // Always use breathing — talking effect assumes close-up face, not full-body character images
+          console.log('[RenderVisual] Calling callAnimator — effect: breathing');
+          await callAnimator({
+            effect: 'breathing',
+            input: imagePath,
+            output: animatedPath,
+            duration: animatorDuration
+          });
 
           if (emotion !== 'neutral' && emotion !== 'informative') {
             await callAnimator({
@@ -438,6 +428,13 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
   for (const scene of scenes) {
     const scenePath = scene.rendered_path || scene.video_path;
     if (scenePath) {
+      try {
+        const { stdout } = await execAsync(`ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${scenePath}"`, { timeout: 10000 });
+        const dur = parseFloat(stdout.trim());
+        console.log('[Stitch] Segment duration:', isNaN(dur) ? '?' : dur.toFixed(2) + 's', 'path:', scenePath.slice(-40));
+      } catch {
+        console.log('[Stitch] Could not probe:', scenePath.slice(-40));
+      }
       listContent += `file '${scenePath.replace(/'/g, "'\\''")}'\n`;
     }
   }
