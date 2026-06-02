@@ -247,16 +247,20 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           }
           const filter = `${scaleFilter},zoompan=${zoompanExpr}:d=${frames}:s=${w}x${h}:fps=30,trim=duration=${duration}`;
 
-          const storedPreset = project?.settings?.exportPreset;
-          const preset = isPreview ? 'ultrafast' : (storedPreset || 'fast');
-          const qualityFlags = isPreview ? '' : is4k ? '-crf 18 -b:v 8M' : '-crf 20 -b:v 4M';
           const animatorSucceeded = fs.existsSync(animatedPath);
-          console.log('[RenderVisual] animatorSucceeded:', animatorSucceeded, '— using', animatorSucceeded ? 'animated input' : 'Ken Burns fallback');
-          const kenburnInput = animatorSucceeded
-            ? `-i "${animatedPath}"`
-            : `-loop 1 -i "${imagePath}"`;
-          await guardedExec(`"${ffmpeg}" ${kenburnInput} -c:v libx264 -preset ${preset} ${qualityFlags} -r 30 -t ${duration} -pix_fmt yuv420p -vf "${filter}" -y "${outputPath}"`, signal);
-          if (animatorSucceeded) fs.promises.unlink(animatedPath).catch(() => {});
+          console.log('[RenderVisual] animatorSucceeded:', animatorSucceeded, '— using', animatorSucceeded ? 'animator output directly' : 'Ken Burns fallback');
+
+          if (animatorSucceeded) {
+            fs.copyFileSync(animatedPath, outputPath);
+            console.log('[RenderVisual] Using animator output directly — Ken Burns skipped');
+            fs.promises.unlink(animatedPath).catch(() => {});
+          } else {
+            console.log('[RenderVisual] Animator not used — applying Ken Burns fallback');
+            const storedPreset = project?.settings?.exportPreset;
+            const preset = isPreview ? 'ultrafast' : (storedPreset || 'fast');
+            const qualityFlags = isPreview ? '' : is4k ? '-crf 18 -b:v 8M' : '-crf 20 -b:v 4M';
+            await guardedExec(`"${ffmpeg}" -loop 1 -i "${imagePath}" -c:v libx264 -preset ${preset} ${qualityFlags} -r 30 -t ${duration} -pix_fmt yuv420p -vf "${filter}" -y "${outputPath}"`, signal);
+          }
         } else {
            const fallbackRes = project?.settings?.aspectRatio === '9:16' ? '1080x1920' : '1920x1080';
            await guardedExec(`"${ffmpeg}" -f lavfi -i color=c=blue:s=${fallbackRes}:d=${duration} -y -c:v libx264 -pix_fmt yuv420p "${outputPath}"`, signal);

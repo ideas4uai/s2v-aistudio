@@ -38,14 +38,14 @@ def write_frames_to_mp4(frames_fn, output_path, w, h, fps=12):
     proc.wait()
 
 # ─── EFFECT 1: BREATHING ─────────────────────────────────
-def breathing(img_path, output_path, duration=4.0, fps=12):
+def breathing(img_path, output_path, duration=4.0, fps=24):
     img = load_image(img_path)
     w, h = img.size
     frames = int(duration * fps)
 
     def write_frames(stdin):
         for i in range(frames):
-            scale = 1.0 + 0.018 * np.sin(
+            scale = 1.0 + 0.035 * np.sin(
                 2 * np.pi * i / (fps * 2)
             )
             nw, nh = int(w * scale), int(h * scale)
