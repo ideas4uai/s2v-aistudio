@@ -252,16 +252,19 @@ async function startServer() {
             owner: replicateUsername,
             name: modelSlug,
             visibility: 'private',
-            hardware: 'gpu-l40s',
+            hardware: 'gpu-t4',
             description: `Signal Squad - ${character.name} LoRA`,
           }),
         });
-        if (!createRes.ok) {
-          const createErr = await createRes.json();
-          console.warn('[LoRA] Model creation failed:', JSON.stringify(createErr));
-        } else {
-          console.log('[LoRA] Created destination model:', modelSlug);
+        const createData = await createRes.json();
+        console.log('[LoRA] Model create status:', createRes.status);
+        console.log('[LoRA] Model create response:', JSON.stringify(createData).slice(0, 200));
+        if (!createRes.ok && !JSON.stringify(createData).includes('already')) {
+          throw new Error(`Model creation failed: ${JSON.stringify(createData)}`);
         }
+        console.log('[LoRA] Created destination model:', modelSlug);
+      } else {
+        console.log('[LoRA] Destination model already exists:', modelSlug);
       }
 
       // Resolve latest trainer version
@@ -282,22 +285,20 @@ async function startServer() {
       const zipUrl = await createTrainingZip(trainingImages, `${replicateUsername}-${modelSlug}`);
       console.log('[LoRA] Training zip uploaded:', zipUrl.slice(-50));
 
-      // Start training via POST /v1/trainings with explicit version hash
+      // Start training via model-specific versioned endpoint
       console.log('[LoRA] Version being used:', latestVersion);
       console.log('[LoRA] Destination:', `${replicateUsername}/${modelSlug}`);
       console.log('[LoRA] Zip URL:', zipUrl);
       console.log('[LoRA] Full request body:', JSON.stringify({
-        version: latestVersion,
         destination: `${replicateUsername}/${modelSlug}`,
         input: { input_images: zipUrl, trigger_word: triggerWord, steps: 1000 },
       }, null, 2));
       const trainingRes = await fetch(
-        'https://api.replicate.com/v1/trainings',
+        `https://api.replicate.com/v1/models/ostris/flux-dev-lora-trainer/versions/${latestVersion}/trainings`,
         {
           method: 'POST',
           headers: { ...replicateHeaders, 'Prefer': 'wait' },
           body: JSON.stringify({
-            version: latestVersion,
             destination: `${replicateUsername}/${modelSlug}`,
             input: {
               input_images: zipUrl,
