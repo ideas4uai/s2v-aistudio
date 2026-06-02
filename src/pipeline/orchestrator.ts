@@ -662,6 +662,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
            scene.caption_chunks = chunks;
            const captionedLocal = await renderCaptions(scene, signal);
            scene.captioned_path = captionedLocal;
+           scene.segment_path = captionedLocal;
            scene.rendered_path = captionedLocal;
         } else {
            scene.rendered_path = sceneRenderedPath;
