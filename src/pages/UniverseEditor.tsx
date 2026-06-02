@@ -68,6 +68,7 @@ export function UniverseEditor() {
   const [generatingPoses, setGeneratingPoses] = useState<string | null>(null);
   const [posesExpanded, setPosesExpanded] = useState<Record<string, boolean>>({});
   const [trainingLora, setTrainingLora] = useState<string | null>(null);
+  const [checkingLoraStatus, setCheckingLoraStatus] = useState<string | null>(null);
   const [lightboxChar, setLightboxChar] = useState<StoryCharacter | null>(null);
   const [locationLightbox, setLocationLightbox] = useState<StoryLocation | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -182,6 +183,27 @@ export function UniverseEditor() {
     }, 30000);
     return () => clearInterval(timer);
   }, [trainingCharIds]);
+
+  const handleCheckLoraStatus = async (char: StoryCharacter) => {
+    setCheckingLoraStatus(char.id);
+    try {
+      const res = await authenticatedFetch(`/api/universes/${id}/characters/${char.id}/lora-status`);
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setUniverse((prev: any) => ({
+        ...prev,
+        characters: (prev.characters || []).map((c: any) =>
+          c.id === char.id
+            ? { ...c, loraStatus: data.status, ...(data.loraModelUrl ? { loraModelUrl: data.loraModelUrl } : {}), ...(data.loraTriggerWord ? { loraTriggerWord: data.loraTriggerWord } : {}), ...(data.useLoRA !== undefined ? { useLoRA: data.useLoRA } : {}) }
+            : c
+        ),
+      }));
+    } catch (e: any) {
+      alert('LoRA status check failed: ' + e.message);
+    } finally {
+      setCheckingLoraStatus(null);
+    }
+  };
 
   const handleTrainLoRA = async (char: StoryCharacter) => {
     setTrainingLora(char.id);
@@ -760,21 +782,43 @@ export function UniverseEditor() {
                             </label>
                           </div>
                         ) : (char as any).loraStatus === 'training' ? (
-                          <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
-                            <Loader2 className="w-3 h-3 animate-spin" /> Training... ~20min
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
+                              <Loader2 className="w-3 h-3 animate-spin" /> Training... ~20min
+                            </span>
+                            <button
+                              onClick={() => handleCheckLoraStatus(char)}
+                              disabled={checkingLoraStatus === char.id}
+                              className="flex items-center gap-1 px-2 py-1 text-xs text-amber-700 border border-amber-200 rounded hover:bg-amber-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            >
+                              {checkingLoraStatus === char.id ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                              Check Status
+                            </button>
+                          </div>
                         ) : (char as any).loraStatus === 'failed' ? (
                           <span className="text-xs text-red-500 font-medium">✗ Training failed</span>
                         ) : (
-                          <button
-                            onClick={() => handleTrainLoRA(char)}
-                            disabled={!(char as any).referenceImageUrl || trainingLora === char.id || !isSaved}
-                            title={!isSaved ? 'Save first' : !(char as any).referenceImageUrl ? 'Generate reference image first' : 'Train a FLUX LoRA for consistent character generation (~20min)'}
-                            className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-green-700 border border-green-200 rounded-lg hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                          >
-                            {trainingLora === char.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                            Train LoRA
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleTrainLoRA(char)}
+                              disabled={!(char as any).referenceImageUrl || trainingLora === char.id || !isSaved}
+                              title={!isSaved ? 'Save first' : !(char as any).referenceImageUrl ? 'Generate reference image first' : 'Train a FLUX LoRA for consistent character generation (~20min)'}
+                              className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-green-700 border border-green-200 rounded-lg hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            >
+                              {trainingLora === char.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                              Train LoRA
+                            </button>
+                            {(char as any).loraTrainingId && (
+                              <button
+                                onClick={() => handleCheckLoraStatus(char)}
+                                disabled={checkingLoraStatus === char.id}
+                                className="flex items-center gap-1 px-2 py-1 text-xs text-neutral-600 border border-neutral-200 rounded hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                              >
+                                {checkingLoraStatus === char.id ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                                Check Status
+                              </button>
+                            )}
+                          </div>
                         )}
                         <button
                           onClick={() => document.getElementById(`upload-${char.id}`)?.click()}
