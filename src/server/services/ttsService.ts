@@ -45,6 +45,15 @@ export async function generateNarration(
         'NOVA':     'en_GB-alba-medium',
         'NARRATOR': 'en_US-lessac-medium',
       };
+      const VOICE_STYLE: Record<string, { speed: number; noise: number }> = {
+        'NARRATOR': { speed: 0.95, noise: 0.2 },
+        'VEER':     { speed: 0.9,  noise: 0.1 },
+        'BYTE':     { speed: 1.15, noise: 0.4 },
+        'NOVA':     { speed: 0.85, noise: 0.1 },
+        'MIRA':     { speed: 0.88, noise: 0.2 },
+        'BIAS':     { speed: 0.92, noise: 0.15 },
+        'NULL':     { speed: 0.75, noise: 0.05 },
+      };
 
       let modelName = VOICE_MAP[
         (settings?.character as string | undefined)?.toUpperCase() ?? ''
@@ -60,18 +69,24 @@ export async function generateNarration(
         modelName = settings.voice_clone_url || settings.user_voice_clone;
       }
 
-      console.log('[TTS] Scene character:', settings?.character, 'Voice model selected:', modelName);
+      const charKey = (settings?.character as string | undefined)?.toUpperCase() ?? 'NARRATOR';
+      const style = VOICE_STYLE[charKey] ?? VOICE_STYLE['NARRATOR'];
+      const lengthScale = (1 / style.speed).toFixed(3);
+      const noiseScale = style.noise.toFixed(3);
+      const noiseW = (style.noise * 0.5).toFixed(3);
+      console.log('[TTS] Scene character:', settings?.character, 'Voice model selected:', modelName, `speed=${style.speed} length_scale=${lengthScale} noise=${noiseScale}`);
 
       const modelPath = path.join(voicesDir, `${modelName}.onnx`);
       const modelFile = path.basename(modelPath);
       const piperDir = path.dirname(piperBin);
+      const styleFlags = `--length_scale ${lengthScale} --noise_scale ${noiseScale} --noise_w ${noiseW}`;
 
       const isWindows = process.platform === 'win32';
       let piperCmd: string;
       if (isWindows) {
-        piperCmd = `cmd /c "type "${textFilePath}" | "${piperBin}" --model "${modelFile}" --output_file "${outputPath}""`;
+        piperCmd = `cmd /c "type "${textFilePath}" | "${piperBin}" --model "${modelFile}" ${styleFlags} --output_file "${outputPath}""`;
       } else {
-        piperCmd = `cat "${textFilePath}" | "${piperBin}" --model "${modelFile}" --output_file "${outputPath}"`;
+        piperCmd = `cat "${textFilePath}" | "${piperBin}" --model "${modelFile}" ${styleFlags} --output_file "${outputPath}"`;
       }
 
       await execAsync(piperCmd, { timeout: 60000, cwd: piperDir });
