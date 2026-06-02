@@ -369,16 +369,27 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: Default,Arial,22,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,1,2,80,80,160,1
+Style: Default,Arial,28,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,2,80,80,120,1
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 `;
 
-  const assEvents = scene.caption_chunks.map((chunk: any) => {
+  // Split long chunks into 2-3 word groups for mobile readability
+  const wordChunks: { start: number; end: number; text: string }[] = [];
+  for (const chunk of scene.caption_chunks) {
+    const words = String(chunk.text).trim().split(/\s+/);
+    if (words.length <= 3) { wordChunks.push(chunk); continue; }
+    const groups: string[] = [];
+    for (let i = 0; i < words.length; i += 3) groups.push(words.slice(i, i + 3).join(' '));
+    const groupDur = (chunk.end - chunk.start) / groups.length;
+    groups.forEach((text, i) => wordChunks.push({ start: chunk.start + i * groupDur, end: chunk.start + (i + 1) * groupDur, text }));
+  }
+
+  const assEvents = wordChunks.map((chunk) => {
     const start = toAssTime(chunk.start);
     const end = toAssTime(chunk.end);
-    const text = String(chunk.text).replace(/\n/g, '\\N');
+    const text = chunk.text.replace(/\n/g, '\\N');
     return `Dialogue: 0,${start},${end},Default,,0,0,0,,${text}`;
   }).join('\n');
 
