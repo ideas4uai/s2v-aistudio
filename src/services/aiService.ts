@@ -36,6 +36,54 @@ const TASK_KEY_MAP: Record<string, KeyTask> = {
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
+async function generateImageWithLoRA(
+  prompt: string,
+  loraModelUrl: string,
+  triggerWord: string,
+  aspectRatio: string
+): Promise<string | null> {
+  try {
+    const replicateToken = process.env.REPLICATE_API_TOKEN;
+    if (!replicateToken) return null;
+
+    const version = loraModelUrl.includes(':') ? loraModelUrl.split(':')[1] : loraModelUrl;
+    const startRes = await fetch('https://api.replicate.com/v1/predictions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${replicateToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        version,
+        input: { prompt: `${triggerWord} ${prompt}`, num_inference_steps: 28, guidance_scale: 3.5, aspect_ratio: aspectRatio, output_format: 'jpg' },
+      }),
+    });
+    if (!startRes.ok) {
+      console.warn('[LoRA Gen] Start failed:', (await startRes.text()).slice(0, 200));
+      return null;
+    }
+    let result = await startRes.json();
+    console.log('[LoRA Gen] Started:', result.id);
+
+    while (result.status !== 'succeeded' && result.status !== 'failed') {
+      await new Promise(r => setTimeout(r, 2000));
+      const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${result.id}`, {
+        headers: { 'Authorization': `Bearer ${replicateToken}` },
+      });
+      result = await pollRes.json();
+      console.log('[LoRA Gen] Status:', result.status);
+    }
+
+    if (result.status === 'failed') { console.error('[LoRA Gen] Failed:', result.error); return null; }
+    const imageUrl = Array.isArray(result.output) ? result.output[0] : result.output;
+    if (!imageUrl) return null;
+    const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) return null;
+    console.log('[LoRA Gen] Success!');
+    return Buffer.from(await imgRes.arrayBuffer()).toString('base64');
+  } catch (err: any) {
+    console.error('[LoRA Gen] Error:', err.message);
+    return null;
+  }
+}
+
 async function generateImageWithGeminiNative(
   prompt: string,
   referenceImageUrl?: string
@@ -182,36 +230,13 @@ export const AIService = {
       ? finalPrompt
       : `${finalPrompt}, semi-realistic anime style, flat colour shading, bold clean outlines`;
 
-    // Provider 0: Replicate LoRA (when character has trained LoRA and useLoRA is enabled)
+    // Provider 0: Replicate LoRA (trained character model — highest identity fidelity)
     if (options?.loraModelUrl && process.env.REPLICATE_API_TOKEN) {
-      try {
-        const triggerWord = (options.loraTriggerWord as string | undefined) || 'CHARACTER';
-        const { default: Replicate } = await import('replicate');
-        const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
-        const output = await replicate.run(
-          'black-forest-labs/flux-dev-lora' as `${string}/${string}:${string}`,
-          {
-            input: {
-              prompt: `${triggerWord} ${prompt}`,
-              hf_lora: options.loraModelUrl as string,
-              lora_scale: 0.85,
-              num_inference_steps: 28,
-              aspect_ratio: aspectRatio,
-            },
-          }
-        );
-        const imageUrl = Array.isArray(output) ? String(output[0]) : String(output);
-        if (imageUrl) {
-          const loraRes = await fetch(imageUrl);
-          if (loraRes.ok) {
-            const base64 = Buffer.from(await loraRes.arrayBuffer()).toString('base64');
-            console.log('[ImageGen] Replicate LoRA success!');
-            return base64;
-          }
-        }
-      } catch (e: any) {
-        console.warn('[ImageGen] Replicate LoRA failed:', e.message, '— falling through to Imagen');
-      }
+      const triggerWord = (options.loraTriggerWord as string | undefined) || 'CHARACTER';
+      console.log('[ImageGen] Using LoRA model:', (options.loraModelUrl as string).slice(-40));
+      const loraResult = await generateImageWithLoRA(prompt, options.loraModelUrl as string, triggerWord, aspectRatio);
+      if (loraResult) return loraResult;
+      console.log('[ImageGen] LoRA failed, falling back to Imagen 4');
     }
 
     const referenceImageUrl = options?.referenceImageUrl as string | undefined;

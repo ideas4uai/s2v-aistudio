@@ -172,7 +172,7 @@ export function UniverseEditor() {
               ...prev,
               characters: (prev.characters || []).map((c: any) =>
                 c.id === char.id
-                  ? { ...c, loraStatus: data.status, ...(data.loraModelUrl ? { loraModelUrl: data.loraModelUrl } : {}) }
+                  ? { ...c, loraStatus: data.status, ...(data.loraModelUrl ? { loraModelUrl: data.loraModelUrl } : {}), ...(data.loraTriggerWord ? { loraTriggerWord: data.loraTriggerWord } : {}), ...(data.useLoRA !== undefined ? { useLoRA: data.useLoRA } : {}) }
                   : c
               ),
             }));

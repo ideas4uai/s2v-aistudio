@@ -348,12 +348,27 @@ async function startServer() {
       const training = await replicate.trainings.get(character.loraTrainingId);
 
       if (training.status === 'succeeded') {
-        const loraModelUrl = (training.output as any)?.weights || character.loraDestination;
+        // Resolve version hash from destination model so loraModelUrl is owner/name:hash
+        let loraModelUrl: string = character.loraModelUrl || '';
+        if (!loraModelUrl.includes(':')) {
+          const destination: string = character.loraDestination || `${replicateUsername}/${character.name.toLowerCase().replace(/\s+/g, '-')}-lora`;
+          const verRes = await fetch(
+            `https://api.replicate.com/v1/models/${destination}/versions`,
+            { headers: { 'Authorization': `Bearer ${replicateToken}` } }
+          );
+          if (verRes.ok) {
+            const verData = await verRes.json();
+            const latestId: string | undefined = verData.results?.[0]?.id;
+            if (latestId) loraModelUrl = `${destination}:${latestId}`;
+          }
+          if (!loraModelUrl) loraModelUrl = character.loraDestination || '';
+        }
+        const loraTriggerWord: string = character.loraTriggerWord || character.name.toUpperCase().replace(/\s+/g, '_') + '_CHARACTER';
         const updatedChars = (universe as any).characters.map((c: any) =>
-          c.id === charId ? { ...c, loraModelUrl, loraStatus: 'ready' } : c
+          c.id === charId ? { ...c, loraModelUrl, loraStatus: 'ready', loraTriggerWord, useLoRA: true } : c
         );
         await FirestoreService.saveDocument('universes', req.params.id, { ...(universe as any), characters: updatedChars });
-        return res.json({ status: 'ready', loraModelUrl });
+        return res.json({ status: 'ready', loraModelUrl, loraTriggerWord, useLoRA: true });
       }
       if (training.status === 'failed' || training.status === 'canceled') {
         const updatedChars = (universe as any).characters.map((c: any) =>
