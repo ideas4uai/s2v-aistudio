@@ -265,11 +265,14 @@ async function startServer() {
       }
 
       // Resolve latest trainer version
+      console.log('[LoRA] Fetching versions from:', 'https://api.replicate.com/v1/models/ostris/flux-dev-lora-trainer/versions');
       const versionRes = await fetch(
         'https://api.replicate.com/v1/models/ostris/flux-dev-lora-trainer/versions',
         { headers: { 'Authorization': `Bearer ${replicateToken}` } }
       );
       const versionData = await versionRes.json();
+      console.log('[LoRA] Version fetch status:', versionRes.status);
+      console.log('[LoRA] Version data:', JSON.stringify(versionData).slice(0, 200));
       const latestVersion: string = versionData.results?.[0]?.id
         || 'b6af14a06a1f4b7e01659d5d1cdb40fa5c1dfbf4de76bfc48666a2cdfb99b367';
       console.log('[LoRA] Latest trainer version:', latestVersion);
@@ -280,6 +283,14 @@ async function startServer() {
       console.log('[LoRA] Training zip uploaded:', zipUrl.slice(-50));
 
       // Start training via POST /v1/trainings with explicit version hash
+      console.log('[LoRA] Version being used:', latestVersion);
+      console.log('[LoRA] Destination:', `${replicateUsername}/${modelSlug}`);
+      console.log('[LoRA] Zip URL:', zipUrl);
+      console.log('[LoRA] Full request body:', JSON.stringify({
+        version: latestVersion,
+        destination: `${replicateUsername}/${modelSlug}`,
+        input: { input_images: zipUrl, trigger_word: triggerWord, steps: 1000 },
+      }, null, 2));
       const trainingRes = await fetch(
         'https://api.replicate.com/v1/trainings',
         {
@@ -298,7 +309,10 @@ async function startServer() {
           }),
         }
       );
-      const training = await trainingRes.json();
+      console.log('[LoRA] Response status:', trainingRes.status);
+      const responseText = await trainingRes.text();
+      console.log('[LoRA] Response body:', responseText);
+      const training = JSON.parse(responseText);
       if (!trainingRes.ok) {
         throw new Error(`Replicate training request failed: ${JSON.stringify(training)}`);
       }
