@@ -426,7 +426,7 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
   
   let listContent = '';
   for (const scene of scenes) {
-    const scenePath = scene.rendered_path || scene.video_path;
+    const scenePath = (scene as any).segment_path || scene.rendered_path || scene.video_path;
     if (scenePath) {
       try {
         const { stdout } = await execAsync(`ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${scenePath}"`, { timeout: 10000 });

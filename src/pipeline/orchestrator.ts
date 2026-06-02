@@ -289,13 +289,8 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
     if (!loadedProject) throw new Error(`Project ${project_id} not found`);
     project = loadedProject;
 
-    if (project.status === 'completed') {
-      console.log(`[Orchestrator] Project ${project.project_id} already completed.`);
-      return;
-    }
-
-    // Allow re-runs from cancelled or failed state
-    if (project.status === 'cancelled' || project.status === 'failed') {
+    // Allow re-runs from any terminal state — reset to draft so path-clearing runs
+    if (project.status === 'completed' || project.status === 'cancelled' || project.status === 'failed') {
       console.log(`[Orchestrator] Resetting project ${project.project_id} from '${project.status}' to 'draft' for re-run.`);
       project.status = 'draft';
       project.error_log = null;
@@ -426,7 +421,13 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
     if (project.status === 'generating_assets') {
       await updateProgress(project, 'Generating AI assets (Images & Audio)...', 40);
       
-      const scenesToProcess = project.scenes.filter(s => s.status !== 'completed' && s.status !== 'degraded');
+      const scenesToProcess = project.scenes.filter(s => {
+        if (s.status === 'degraded') return false;
+        if (s.status !== 'completed') return true;
+        // Completed but segment missing or file gone — must re-process
+        const seg = (s as any).segment_path;
+        return !seg || !fs.existsSync(seg);
+      });
       
       // Process in small batches to preserve CPU and respect rate limits
       const batchSize = 3; 
@@ -660,20 +661,24 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
        return;
      }
 
-     const sceneRenderedPath = await withRetry(() => assembleSceneSegment(scene, localAudio, scene.cache_key, signal), { retries: 2 });
-     if (sceneRenderedPath) {
-        scene.segment_path = sceneRenderedPath;
+     if (scene.segment_path && fs.existsSync(scene.segment_path)) {
+       console.log('[Orchestrator] Reusing segment:', scene.segment_path.slice(-40));
+     } else {
+       const sceneRenderedPath = await withRetry(() => assembleSceneSegment(scene, localAudio, scene.cache_key, signal), { retries: 2 });
+       if (sceneRenderedPath) {
+          scene.segment_path = sceneRenderedPath;
 
-        if (scene.caption_text) {
-           const { chunks } = await generateCaptions(scene, localAudio, 'default');
-           scene.caption_chunks = chunks;
-           const captionedLocal = await renderCaptions(scene, signal);
-           scene.captioned_path = captionedLocal;
-           scene.segment_path = captionedLocal;
-           scene.rendered_path = captionedLocal;
-        } else {
-           scene.rendered_path = sceneRenderedPath;
-        }
+          if (scene.caption_text) {
+             const { chunks } = await generateCaptions(scene, localAudio, 'default');
+             scene.caption_chunks = chunks;
+             const captionedLocal = await renderCaptions(scene, signal);
+             scene.captioned_path = captionedLocal;
+             scene.segment_path = captionedLocal;
+             scene.rendered_path = captionedLocal;
+          } else {
+             scene.rendered_path = sceneRenderedPath;
+          }
+       }
      }
   }
 
