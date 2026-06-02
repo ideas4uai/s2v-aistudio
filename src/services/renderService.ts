@@ -45,11 +45,13 @@ async function callAnimator(
     os.tmpdir(),
     `animator_config_${Date.now()}.json`
   );
+  console.log('[Animator] callAnimator called');
+  console.log('[Animator] config:', JSON.stringify(config).slice(0, 100));
   try {
     await fs.promises.writeFile(configPath, JSON.stringify(config));
 
     const pythonCmd = process.platform === 'win32' ? 'py' : 'python3';
-    console.log('[Animator] Using Python command:', pythonCmd);
+    console.log('[Animator] pythonCmd:', pythonCmd);
     try {
       const { execFileSync } = await import('child_process');
       execFileSync(pythonCmd, ['-c', 'import cv2'], { timeout: 5000 });
@@ -61,6 +63,7 @@ async function callAnimator(
     const scriptPath = path.join(
       process.cwd(), 'src', 'scripts', 'animator.py'
     );
+    console.log('[Animator] scriptPath exists:', fs.existsSync(scriptPath), scriptPath);
 
     const { stdout } = await execFileAsync(
       pythonCmd,
@@ -164,7 +167,10 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           const audioPath = scene?.narration_path;
           const localAudioPath = audioPath;
 
+          console.log('[RenderVisual] animatedPath:', animatedPath.slice(-50));
+          console.log('[RenderVisual] isTalking:', isTalking, 'audioPath:', audioPath ? audioPath.slice(-40) : 'NONE');
           if (isTalking && audioPath) {
+            console.log('[RenderVisual] Calling callAnimator — effect: talking');
             await callAnimator({
               effect: 'talking',
               input: imagePath,
@@ -173,6 +179,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
               duration: duration
             });
           } else {
+            console.log('[RenderVisual] Calling callAnimator — effect: breathing');
             await callAnimator({
               effect: 'breathing',
               input: imagePath,
@@ -244,6 +251,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           const preset = isPreview ? 'ultrafast' : (storedPreset || 'fast');
           const qualityFlags = isPreview ? '' : is4k ? '-crf 18 -b:v 8M' : '-crf 20 -b:v 4M';
           const animatorSucceeded = fs.existsSync(animatedPath);
+          console.log('[RenderVisual] animatorSucceeded:', animatorSucceeded, '— using', animatorSucceeded ? 'animated input' : 'Ken Burns fallback');
           const kenburnInput = animatorSucceeded
             ? `-i "${animatedPath}"`
             : `-loop 1 -i "${imagePath}"`;
