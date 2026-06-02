@@ -45,8 +45,8 @@ def breathing(img_path, output_path, duration=4.0, fps=24):
 
     def write_frames(stdin):
         for i in range(frames):
-            scale = 1.0 + 0.035 * np.sin(
-                2 * np.pi * i / (fps * 2)
+            scale = 1.0 + 0.012 * np.sin(
+                2 * np.pi * i / (fps * 3)
             )
             nw, nh = int(w * scale), int(h * scale)
             resized = img.resize((nw, nh), Image.LANCZOS)

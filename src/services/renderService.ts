@@ -247,7 +247,10 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           }
           const filter = `${scaleFilter},zoompan=${zoompanExpr}:d=${frames}:s=${w}x${h}:fps=30,trim=duration=${duration}`;
 
-          const animatorSucceeded = fs.existsSync(animatedPath);
+          let animatorSucceeded = fs.existsSync(animatedPath) && fs.statSync(animatedPath).size >= 1000;
+          if (fs.existsSync(animatedPath) && !animatorSucceeded) {
+            console.warn('[RenderVisual] Animator output missing or empty — falling back to Ken Burns');
+          }
           console.log('[RenderVisual] animatorSucceeded:', animatorSucceeded, '— using', animatorSucceeded ? 'animator output directly' : 'Ken Burns fallback');
 
           if (animatorSucceeded) {
