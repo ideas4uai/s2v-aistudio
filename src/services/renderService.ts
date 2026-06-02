@@ -167,6 +167,16 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           const audioPath = scene?.narration_path;
           const localAudioPath = audioPath;
 
+          // Use actual audio duration so animator clip matches narration exactly
+          let animatorDuration = duration;
+          if (audioPath && fs.existsSync(audioPath)) {
+            const probedDur = await getAudioDuration(audioPath);
+            if (probedDur > 0) {
+              animatorDuration = probedDur;
+              console.log('[RenderVisual] Audio duration probed:', probedDur.toFixed(3), 's — overrides duration_target:', duration);
+            }
+          }
+
           console.log('[RenderVisual] animatedPath:', animatedPath.slice(-50));
           console.log('[RenderVisual] isTalking:', isTalking, 'audioPath:', audioPath ? audioPath.slice(-40) : 'NONE');
           if (isTalking && audioPath) {
@@ -176,7 +186,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
               input: imagePath,
               audio: localAudioPath,
               output: animatedPath,
-              duration: duration
+              duration: animatorDuration
             });
           } else {
             console.log('[RenderVisual] Calling callAnimator — effect: breathing');
@@ -184,7 +194,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
               effect: 'breathing',
               input: imagePath,
               output: animatedPath,
-              duration: duration
+              duration: animatorDuration
             });
           }
 
