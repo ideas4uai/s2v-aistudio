@@ -17,7 +17,7 @@ import { fallbackHook, fallbackScript, fallbackSceneGraph } from './fallbacks.js
 import { generateSceneAudio } from '../services/voiceService.js';
 import { generateCaptions } from '../services/captionService.js';
 import { generateAsset } from '../services/assetService.js';
-import { renderVisualClip, validateVisualClip, assembleSceneSegment, renderCaptions, stitchScenes } from '../services/renderService.js';
+import { renderVisualClip, validateVisualClip, assembleSceneSegment, renderCaptions, stitchScenes, getAudioDuration } from '../services/renderService.js';
 import { generateHash, generateAudioHash, generateVisualHash, generateSceneHash, generateAssetHash } from '../utils/hash.js';
 import { getScenesToRender } from '../utils/diff.js';
 import { getFromCache } from '../services/cacheService.js';
@@ -581,12 +581,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   const visualsPromise = Promise.all(scene.visuals.map(async (visual, i) => {
      if (visual.status === 'completed') {
        console.log('[Orchestrator] Visual already resolved, skipping generation');
-       // Still need to render the visual clip into an MP4 for assembleSceneSegment
-       if (!(visual as any).rendered_path && (visual as any).asset_path) {
-         const renderedLocal = await renderVisualClip(visual, project, signal, scene);
-         if (renderedLocal) (visual as any).rendered_path = renderedLocal;
-       }
-       return;
+       return; // rendering happens after Promise.all with known audio duration
      }
      visual.status = 'processing';
 
@@ -624,21 +619,23 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
           if (i === 0 && !localAsset.endsWith('.mp4')) scene.image_path = localAsset;
        }
      }
-
-     // Render visual clip — handles both single and multi-frame internally
-     const renderedLocal = await renderVisualClip(visual, project, signal);
-
-     // Quick cancellation check after render
-     if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
-
-     if (renderedLocal) {
-        visual.rendered_path = renderedLocal;
-     }
-     visual.status = 'completed';
+     visual.status = 'completed'; // image ready; clip rendered after audio finishes
   }));
 
   // Wait for both Audio and Visuals to finish concurrently
   await Promise.all([audioPromise, visualsPromise]);
+
+  // Render visual clips now that audio duration is known
+  const audioDur = (scene.narration_path && fs.existsSync(scene.narration_path))
+    ? await getAudioDuration(scene.narration_path) : 0;
+  console.log('[Orchestrator] Rendering visuals with audio duration:', audioDur > 0 ? audioDur.toFixed(3) + 's' : 'unknown (using duration_target)');
+  for (const visual of scene.visuals) {
+    if (!(visual as any).rendered_path && (visual as any).asset_path) {
+      if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
+      const renderedLocal = await renderVisualClip(visual, project, signal, scene, audioDur > 0 ? audioDur : undefined);
+      if (renderedLocal) (visual as any).rendered_path = renderedLocal;
+    }
+  }
 
   // 3. Assembly
   scene.stage = 'render';

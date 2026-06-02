@@ -135,7 +135,7 @@ async function ensureLocalImage(
   return localPath;
 }
 
-export const renderVisualClip = async (visual: any, project: any, signal?: AbortSignal, scene?: any) => {
+export const renderVisualClip = async (visual: any, project: any, signal?: AbortSignal, scene?: any, audioDuration?: number) => {
   if (visual.frames && visual.frames.length > 1) {
     return renderMultiFrameVisual(visual, project, signal);
   }
@@ -167,15 +167,9 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           const audioPath = scene?.narration_path;
           const localAudioPath = audioPath;
 
-          // Use actual audio duration so animator clip matches narration exactly
-          let animatorDuration = duration;
-          if (audioPath && fs.existsSync(audioPath)) {
-            const probedDur = await getAudioDuration(audioPath);
-            if (probedDur > 0) {
-              animatorDuration = probedDur;
-              console.log('[RenderVisual] Audio duration probed:', probedDur.toFixed(3), 's — overrides duration_target:', duration);
-            }
-          }
+          // Use passed-in audio duration (probed by orchestrator after TTS completes)
+          const animatorDuration = (audioDuration && audioDuration > 0) ? audioDuration : duration;
+          console.log('[RenderVisual] Animator duration:', animatorDuration, 'source:', audioDuration ? 'audio probe' : 'duration_target');
 
           console.log('[RenderVisual] animatedPath:', animatedPath.slice(-50));
           console.log('[RenderVisual] isTalking:', isTalking, 'audioPath:', audioPath ? audioPath.slice(-40) : 'NONE');
@@ -292,7 +286,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
 
 export const validateVisualClip = async (visual: any) => {};
 
-async function getAudioDuration(audioPath: string): Promise<number> {
+export async function getAudioDuration(audioPath: string): Promise<number> {
   try {
     const { stdout } = await execAsync(
       `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${audioPath}"`,
