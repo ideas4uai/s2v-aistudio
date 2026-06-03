@@ -440,9 +440,16 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
   }
   
   fs.writeFileSync(listFile, listContent);
-  
+  console.log('[Stitch] Concat list contents:\n', fs.readFileSync(listFile, 'utf8'));
+
   try {
-     await guardedExec(`"${ffmpeg}" -fflags +genpts -f concat -safe 0 -i "${listFile}" -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" -c:v libx264 -preset fast -crf 20 -c:a aac -ar 44100 -ac 2 -b:a 192k -y "${outputPath}"`, signal);
+     const stitchCmd = `"${ffmpeg}" -fflags +genpts -f concat -safe 0 -i "${listFile}" -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" -c:v libx264 -preset fast -crf 20 -c:a aac -ar 44100 -ac 2 -b:a 192k -y "${outputPath}"`;
+     console.log('[Stitch] FFmpeg command:', stitchCmd);
+     await guardedExec(stitchCmd, signal);
+     try {
+       const { stdout: probeDur } = await execAsync(`ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${outputPath}"`, { timeout: 10000 });
+       console.log('[Stitch] Output duration:', probeDur.trim(), 'seconds');
+     } catch { console.warn('[Stitch] Could not probe output duration'); }
 
      const musicTrack = project?.settings?.musicTrack || project?.music_track;
      const musicVolume = project?.settings?.musicVolume ?? project?.music_volume ?? 0.08;
