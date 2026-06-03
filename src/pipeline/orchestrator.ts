@@ -555,7 +555,16 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
         (project.universe as any)?.characterPoses?.[charName]?.['idle'];
       const imageUrl = poseUrl || matchedChar.referenceImageUrl;
 
-      if (imageUrl) {
+      if (matchedChar.useLoRA && matchedChar.loraModelUrl) {
+        // LoRA takes priority over reference image — generate scene-specific image with trained model
+        const triggerWord = matchedChar.loraTriggerWord || 'VEER_CHARACTER';
+        const v = scene.visuals[0] as any;
+        v.loraModelUrl = matchedChar.loraModelUrl;
+        v.loraTriggerWord = triggerWord;
+        v.prompt = `${triggerWord} ` + (v.prompt || '');
+        v.cache_key = '';
+        console.log('[Orchestrator] LoRA generation for:', charName, 'model:', matchedChar.loraModelUrl.slice(-40));
+      } else if (imageUrl) {
         scene.visuals = [{
           ...(scene.visuals[0] || {}),
           prompt: scene.visuals[0]?.prompt || '',
@@ -566,14 +575,6 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
         }] as any;
         console.log('[Orchestrator] BYPASS: character scene', charName, 'using', poseUrl ? 'pose library' : 'reference image', '— Imagen 4 SKIPPED');
         console.log('[Orchestrator] Character scene:', charName, '→', poseUrl ? 'pose' : 'reference', imageUrl.slice(-40));
-      } else if (matchedChar.useLoRA && matchedChar.loraModelUrl) {
-        // No pose or reference yet — fall through to generation with LoRA
-        scene.visuals.forEach((v: any) => {
-          v.loraModelUrl = matchedChar.loraModelUrl;
-          v.loraTriggerWord = matchedChar.loraTriggerWord;
-          v.cache_key = '';
-        });
-        console.log('[Orchestrator] LoRA injected for character:', charName);
       }
     }
   }
