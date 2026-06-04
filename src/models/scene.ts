@@ -92,6 +92,11 @@ export interface Scene {
   emotion?: string;
   character?: string;
 
+  // Stage 2: separate background layer
+  background_prompt?: string;
+  background_path?: string;
+  background_url?: string;
+
   // Source-aware generation metadata
   primarySubject?: string;
   location?: string;

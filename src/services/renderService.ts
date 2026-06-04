@@ -149,6 +149,10 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
   const duration = visual.duration_target || 5;
   let imagePath = visual.asset_path;
 
+  if ((scene as any)?.background_path) {
+    console.log('[RenderVisual] Background found — will composite in Stage 2:', (scene as any).background_path.slice(-40));
+  }
+
   try {
      if (imagePath) {
         if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');

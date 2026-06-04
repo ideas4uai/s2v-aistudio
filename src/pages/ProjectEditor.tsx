@@ -22,6 +22,7 @@ interface Scene {
   status?: string;
   character?: string;
   emotion?: string;
+  background_prompt?: string;
 }
 
 interface ProjectSettings {
@@ -1549,6 +1550,27 @@ export function ProjectEditor() {
                           <p className="text-sm text-neutral-700 bg-neutral-50 p-3 rounded-lg border border-neutral-100 min-h-[80px]">
                             {scene.visual_prompt}
                           </p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Background Scene</label>
+                          <textarea
+                            defaultValue={scene.background_prompt || ''}
+                            placeholder="Nexus City street at night, neon lights, wet pavement, 2031"
+                            rows={2}
+                            className="w-full text-sm text-neutral-700 bg-neutral-50 p-3 rounded-lg border border-neutral-200 focus:border-indigo-400 focus:outline-none resize-none"
+                            onBlur={async (e) => {
+                              const val = e.target.value.trim();
+                              try {
+                                await authenticatedFetch(`/api/projects/${id}/scenes/${sceneId}`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ background_prompt: val }),
+                                });
+                              } catch (err) {
+                                console.warn('Failed to save background_prompt:', err);
+                              }
+                            }}
+                          />
                         </div>
                       </div>
 

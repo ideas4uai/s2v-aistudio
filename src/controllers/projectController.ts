@@ -638,7 +638,7 @@ export async function updateSceneNarration(req: Request, res: Response) {
 
 export async function updateSceneFields(req: Request, res: Response) {
   const { id, sceneId } = req.params;
-  const { narration_text, visual_prompt, duration_target } = req.body;
+  const { narration_text, visual_prompt, duration_target, background_prompt } = req.body;
   try {
     const project = await loadProject(id);
     const scene = project.scenes.find((s: any) => s.scene_id === sceneId || s.id === sceneId);
@@ -646,6 +646,7 @@ export async function updateSceneFields(req: Request, res: Response) {
     if (narration_text !== undefined) scene.narration_text = narration_text;
     if (visual_prompt !== undefined && scene.visuals?.[0]) scene.visuals[0].prompt = visual_prompt;
     if (duration_target !== undefined) scene.duration_target = Number(duration_target);
+    if (background_prompt !== undefined) (scene as any).background_prompt = background_prompt;
     await saveProjectState(project);
     res.json({ ok: true, scene });
   } catch (error) {

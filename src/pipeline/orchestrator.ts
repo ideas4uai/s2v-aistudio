@@ -579,6 +579,24 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
     }
   }
 
+  // Stage 2: generate separate background image if prompt provided
+  if ((scene as any).background_prompt && !(scene as any).background_path) {
+    try {
+      const bgBase64 = await AIService.generateImageBase64((scene as any).background_prompt, { isStoryEpisode: true });
+      if (bgBase64) {
+        const bgTmpDir = path.join(os.tmpdir(), 'ais-renderer', project.project_id!);
+        if (!fs.existsSync(bgTmpDir)) fs.mkdirSync(bgTmpDir, { recursive: true });
+        const bgPath = path.join(bgTmpDir, `${scene.scene_id}_background.jpg`);
+        const bgBuffer = Buffer.from(bgBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+        fs.writeFileSync(bgPath, bgBuffer);
+        (scene as any).background_path = bgPath;
+        console.log('[Orchestrator] Background generated for scene:', scene.scene_id);
+      }
+    } catch (bgErr: any) {
+      console.warn('[Orchestrator] Background generation failed for scene:', scene.scene_id, bgErr?.message);
+    }
+  }
+
   // Art style injection for NARRATOR/background scenes only
   const universeStyle = (project.universe as any)?.artStyle || '';
   if (universeStyle && scene.visuals[0] && (scene.visuals[0] as any).status !== 'completed') {
