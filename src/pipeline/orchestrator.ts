@@ -313,6 +313,10 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       if ((scene as any).captioned_path && !(scene as any).captioned_path.startsWith('http')) {
         (scene as any).captioned_path = undefined;
       }
+      // Clear Stage 2 paths so background regenerates if prompt changed.
+      scene.background_path = undefined;
+      scene.background_url = undefined;
+      scene.transparent_path = undefined;
       // Reset status so batch filter includes this scene in processing.
       // Internal caches (narration_path, visual.status='completed') still prevent
       // re-generation of expensive audio and images.
@@ -320,7 +324,7 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
         scene.status = 'pending';
       }
     }
-    console.log('[Orchestrator] Cleared local render paths — will re-render all visual clips');
+    console.log('[Orchestrator] Cleared local render paths and Stage 2 paths — will re-render all visual clips');
 
     // Reset cancellation if starting fresh
     project.is_cancelled = false;
@@ -580,16 +584,29 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   }
 
   // Stage 2: generate separate background image if prompt provided
-  if ((scene as any).background_prompt && !(scene as any).background_path) {
+  if (scene.background_prompt && !scene.background_path) {
     try {
-      const bgBase64 = await AIService.generateImageBase64((scene as any).background_prompt, { isStoryEpisode: true });
+      const bgBase64 = await AIService.generateImageBase64(scene.background_prompt, { isStoryEpisode: true });
       if (bgBase64) {
         const bgTmpDir = path.join(os.tmpdir(), 'ais-renderer', project.project_id!);
         if (!fs.existsSync(bgTmpDir)) fs.mkdirSync(bgTmpDir, { recursive: true });
-        const bgPath = path.join(bgTmpDir, `${scene.scene_id}_background.jpg`);
+        const bgLocalPath = path.join(bgTmpDir, `${scene.scene_id}_background.png`);
         const bgBuffer = Buffer.from(bgBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-        fs.writeFileSync(bgPath, bgBuffer);
-        (scene as any).background_path = bgPath;
+        fs.writeFileSync(bgLocalPath, bgBuffer);
+        scene.background_path = bgLocalPath;
+        // Upload to Supabase so the path survives server restarts
+        try {
+          const bgUrl = await FirestoreService.uploadAsset(
+            project.project_id!,
+            `backgrounds/${scene.scene_id}_background.png`,
+            bgBuffer,
+            'image/png'
+          );
+          scene.background_url = bgUrl;
+          console.log('[Orchestrator] Background uploaded:', bgUrl.slice(-60));
+        } catch (uploadErr: any) {
+          console.warn('[Orchestrator] Background upload failed (local path kept):', uploadErr?.message);
+        }
         console.log('[Orchestrator] Background generated for scene:', scene.scene_id);
       }
     } catch (bgErr: any) {

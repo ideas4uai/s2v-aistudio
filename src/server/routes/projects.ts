@@ -133,7 +133,10 @@ projectsRouter.get('/:id', async (req, res) => {
         segment_path: toUrl(s.segment_path || ''),
         captioned_path: toUrl(s.captioned_path || ''),
         status: s.status,
-        suggestions: s.suggestions
+        suggestions: s.suggestions,
+        background_prompt: s.background_prompt || '',
+        background_path: s.background_path || null,
+        background_url: s.background_url || null,
       }))
     };
 

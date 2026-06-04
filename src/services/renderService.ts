@@ -92,7 +92,7 @@ async function compositeCharacterOverBackground(
   return new Promise((resolve) => {
     const args = [
       '-loop', '1', '-t', duration.toString(), '-i', backgroundPath,
-      '-i', characterPngPath,
+      '-loop', '1', '-i', characterPngPath,
       '-filter_complex',
       '[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1[bg];' +
       '[1:v]scale=-1:1344:flags=lanczos[char];' +
@@ -354,6 +354,22 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           }
           console.log('[RenderVisual] animatorSucceeded:', animatorSucceeded, '— using', animatorSucceeded ? 'animator output directly' : 'Ken Burns fallback');
 
+          // Stage 2 prep: ensure background file is local (re-download from Supabase if needed)
+          if (scene?.background_url && scene?.background_path && !fs.existsSync(scene.background_path)) {
+            console.log('[RenderVisual] Re-downloading background from Supabase');
+            try {
+              const bgDir = path.dirname(scene.background_path);
+              if (!fs.existsSync(bgDir)) fs.mkdirSync(bgDir, { recursive: true });
+              const bgResp = await fetch(scene.background_url);
+              if (bgResp.ok) {
+                fs.writeFileSync(scene.background_path, Buffer.from(await bgResp.arrayBuffer()));
+                console.log('[RenderVisual] Background re-downloaded:', path.basename(scene.background_path));
+              }
+            } catch (dlErr: any) {
+              console.warn('[RenderVisual] Background re-download failed:', dlErr?.message);
+            }
+          }
+
           // Stage 2 prep: run rembg if background_path exists
           if (scene?.background_path && fs.existsSync(scene.background_path)) {
             const sceneId = scene.scene_id || visual.visual_id;
@@ -390,6 +406,11 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
               // mergeVideoAudio is available for direct use if the caller needs a self-contained clip.
               fs.copyFileSync(compositedPath, outputPath);
               scene.rendered_path = outputPath;
+              // Clean up intermediate files
+              try {
+                if (fs.existsSync(animatedPath)) fs.unlinkSync(animatedPath);
+                if (fs.existsSync(compositedPath)) fs.unlinkSync(compositedPath);
+              } catch { /* non-fatal */ }
               console.log('[RenderVisual] Stage 2 render complete');
             } else {
               console.log('[RenderVisual] Composite failed — falling back to Stage 1');
