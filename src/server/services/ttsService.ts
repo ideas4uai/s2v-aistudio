@@ -40,17 +40,19 @@ export async function generateNarration(
 
       const voicesDir = process.env.PIPER_VOICES_DIR || path.dirname(piperBin);
       const VOICE_MAP: Record<string, string> = {
-        'VEER':     'en_US-lessac-medium',
+        'VEER':     'en_US-joe-medium',
+        'VEER_ALT': 'en_US-reza_ibrahim-medium',
         'BYTE':     'en_US-ryan-high',
         'NOVA':     'en_GB-alba-medium',
         'NARRATOR': 'en_US-lessac-medium',
       };
       const VOICE_STYLE: Record<string, { speed: number; noise: number }> = {
-        'NARRATOR': { speed: 0.95, noise: 0.2 },
-        'VEER':     { speed: 0.9,  noise: 0.1 },
-        'BYTE':     { speed: 1.15, noise: 0.4 },
-        'NOVA':     { speed: 0.85, noise: 0.1 },
-        'MIRA':     { speed: 0.88, noise: 0.2 },
+        'NARRATOR': { speed: 0.95, noise: 0.2  },
+        'VEER':     { speed: 0.92, noise: 0.2  },
+        'VEER_ALT': { speed: 0.90, noise: 0.2  },
+        'BYTE':     { speed: 1.15, noise: 0.4  },
+        'NOVA':     { speed: 0.85, noise: 0.1  },
+        'MIRA':     { speed: 0.88, noise: 0.2  },
         'BIAS':     { speed: 0.92, noise: 0.15 },
         'NULL':     { speed: 0.75, noise: 0.05 },
       };
