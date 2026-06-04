@@ -96,6 +96,7 @@ export interface Scene {
   background_prompt?: string;
   background_path?: string;
   background_url?: string;
+  transparent_path?: string;
 
   // Source-aware generation metadata
   primarySubject?: string;

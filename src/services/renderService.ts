@@ -1,4 +1,4 @@
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
 import os from 'os';
@@ -80,6 +80,38 @@ async function callAnimator(
   } finally {
     fs.promises.unlink(configPath).catch(() => {});
   }
+}
+
+async function callRembg(inputPath: string, outputPath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const scriptPath = path.join(process.cwd(), 'src/scripts/rembg_worker.py');
+    console.log('[Rembg] Removing background:', path.basename(inputPath));
+
+    const proc = spawn('py', [scriptPath, inputPath, outputPath]);
+    let stderr = '';
+
+    proc.stdout.on('data', (d) => console.log('[Rembg]', d.toString().trim()));
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        const exists = fs.existsSync(outputPath);
+        const size = exists ? fs.statSync(outputPath).size : 0;
+        console.log('[Rembg] Complete. PNG size:', size, 'bytes');
+        resolve(exists && size > 10000);
+      } else {
+        console.error('[Rembg] Failed:', stderr);
+        resolve(false);
+      }
+    });
+
+    proc.on('error', (e) => {
+      console.error('[Rembg] Spawn error:', e);
+      resolve(false);
+    });
+
+    setTimeout(() => { proc.kill(); console.error('[Rembg] Timeout'); resolve(false); }, 60000);
+  });
 }
 
 async function renderMultiFrameVisual(visual: any, project: any, signal?: AbortSignal): Promise<string> {
@@ -261,6 +293,25 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
             const preset = isPreview ? 'ultrafast' : (storedPreset || 'fast');
             const qualityFlags = isPreview ? '' : is4k ? '-crf 18 -b:v 8M' : '-crf 20 -b:v 4M';
             await guardedExec(`"${ffmpeg}" -loop 1 -i "${imagePath}" -c:v libx264 -preset ${preset} ${qualityFlags} -r 30 -t ${duration} -pix_fmt yuv420p -vf "${filter}" -y "${outputPath}"`, signal);
+          }
+
+          // Stage 2: remove background if a background layer exists for this scene
+          if (scene?.background_path && fs.existsSync(scene.background_path)) {
+            const sceneId = scene.scene_id || visual.visual_id;
+            const transparentPath = path.join(tmpDir, `${sceneId}_transparent.png`);
+            if (!fs.existsSync(transparentPath)) {
+              console.log('[RenderVisual] Running rembg for character transparency');
+              const rembgSuccess = await callRembg(imagePath, transparentPath);
+              if (rembgSuccess) {
+                scene.transparent_path = transparentPath;
+                console.log('[RenderVisual] Character transparent PNG ready');
+              } else {
+                console.log('[RenderVisual] Rembg failed — will use flat image fallback');
+              }
+            } else {
+              scene.transparent_path = transparentPath;
+              console.log('[RenderVisual] Transparent PNG cached — skipping rembg');
+            }
           }
         } else {
            const fallbackRes = project?.settings?.aspectRatio === '9:16' ? '1080x1920' : '1920x1080';
