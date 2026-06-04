@@ -82,6 +82,77 @@ async function callAnimator(
   }
 }
 
+async function compositeCharacterOverBackground(
+  backgroundPath: string,
+  characterPngPath: string,
+  outputPath: string,
+  duration: number,
+  ffmpegPath: string
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const args = [
+      '-loop', '1', '-t', duration.toString(), '-i', backgroundPath,
+      '-i', characterPngPath,
+      '-filter_complex',
+      '[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1[bg];' +
+      '[1:v]scale=-1:1344:flags=lanczos[char];' +
+      '[bg][char]overlay=x=(W-w)/2:y=H-h-80[composited]',
+      '-map', '[composited]',
+      '-c:v', 'libx264', '-preset', 'fast', '-crf', '20',
+      '-pix_fmt', 'yuv420p', '-r', '24',
+      '-t', duration.toString(), '-y', outputPath,
+    ];
+
+    console.log('[Composite] Running FFmpeg overlay...');
+    console.log('[Composite] Duration:', duration, 's');
+    console.log('[Composite] Background:', path.basename(backgroundPath));
+    console.log('[Composite] Character:', path.basename(characterPngPath));
+
+    const proc = spawn(ffmpegPath, args);
+    let stderr = '';
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        const exists = fs.existsSync(outputPath);
+        const size = exists ? fs.statSync(outputPath).size : 0;
+        console.log('[Composite] Success. Output size:', Math.round(size / 1024), 'KB');
+        resolve(exists && size > 50000);
+      } else {
+        const lines = stderr.split('\n').filter(l => l.trim()).slice(-20).join('\n');
+        console.error('[Composite] Failed:', lines);
+        resolve(false);
+      }
+    });
+
+    proc.on('error', (e) => { console.error('[Composite] Spawn:', e); resolve(false); });
+    setTimeout(() => { proc.kill(); console.error('[Composite] Timeout'); resolve(false); }, 180000);
+  });
+}
+
+async function mergeVideoAudio(
+  videoPath: string,
+  audioPath: string,
+  outputPath: string,
+  ffmpegPath: string
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-i', videoPath, '-i', audioPath,
+      '-c:v', 'copy', '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-b:a', '192k',
+      '-shortest', '-y', outputPath,
+    ];
+    const proc = spawn(ffmpegPath, args);
+    let stderr = '';
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.on('close', (code) => {
+      if (code === 0) { console.log('[MergeAudio] Complete:', path.basename(outputPath)); resolve(); }
+      else reject(new Error('mergeVideoAudio failed: ' + stderr.slice(-500)));
+    });
+    proc.on('error', reject);
+  });
+}
+
 async function callRembg(inputPath: string, outputPath: string): Promise<boolean> {
   return new Promise((resolve) => {
     const scriptPath = path.join(process.cwd(), 'src/scripts/rembg_worker.py');
@@ -283,19 +354,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           }
           console.log('[RenderVisual] animatorSucceeded:', animatorSucceeded, '— using', animatorSucceeded ? 'animator output directly' : 'Ken Burns fallback');
 
-          if (animatorSucceeded) {
-            fs.copyFileSync(animatedPath, outputPath);
-            console.log('[RenderVisual] Using animator output directly — Ken Burns skipped');
-            fs.promises.unlink(animatedPath).catch(() => {});
-          } else {
-            console.log('[RenderVisual] Animator not used — applying Ken Burns fallback');
-            const storedPreset = project?.settings?.exportPreset;
-            const preset = isPreview ? 'ultrafast' : (storedPreset || 'fast');
-            const qualityFlags = isPreview ? '' : is4k ? '-crf 18 -b:v 8M' : '-crf 20 -b:v 4M';
-            await guardedExec(`"${ffmpeg}" -loop 1 -i "${imagePath}" -c:v libx264 -preset ${preset} ${qualityFlags} -r 30 -t ${duration} -pix_fmt yuv420p -vf "${filter}" -y "${outputPath}"`, signal);
-          }
-
-          // Stage 2: remove background if a background layer exists for this scene
+          // Stage 2 prep: run rembg if background_path exists
           if (scene?.background_path && fs.existsSync(scene.background_path)) {
             const sceneId = scene.scene_id || visual.visual_id;
             const transparentPath = path.join(tmpDir, `${sceneId}_transparent.png`);
@@ -312,6 +371,51 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
               scene.transparent_path = transparentPath;
               console.log('[RenderVisual] Transparent PNG cached — skipping rembg');
             }
+          }
+
+          // Stage 2 compositing decision
+          if (scene?.transparent_path && fs.existsSync(scene.transparent_path) &&
+              scene?.background_path && fs.existsSync(scene.background_path)) {
+            console.log('[RenderVisual] Stage 2: compositing character over background');
+            const sceneId = scene.scene_id || visual.visual_id;
+            const compositedPath = path.join(tmpDir, `${sceneId}_composited.mp4`);
+            const ffmpegBin = ffmpeg as string;
+            const compositeSuccess = await compositeCharacterOverBackground(
+              scene.background_path, scene.transparent_path, compositedPath,
+              audioDuration && audioDuration > 0 ? audioDuration : duration, ffmpegBin
+            );
+            if (compositeSuccess) {
+              console.log('[RenderVisual] Composite succeeded — writing to output');
+              // renderVisualClip returns video-only; assembleSceneSegment adds audio downstream.
+              // mergeVideoAudio is available for direct use if the caller needs a self-contained clip.
+              fs.copyFileSync(compositedPath, outputPath);
+              scene.rendered_path = outputPath;
+              console.log('[RenderVisual] Stage 2 render complete');
+            } else {
+              console.log('[RenderVisual] Composite failed — falling back to Stage 1');
+              // Fall through to Stage 1 below
+              if (animatorSucceeded) {
+                fs.copyFileSync(animatedPath, outputPath);
+                fs.promises.unlink(animatedPath).catch(() => {});
+              } else {
+                const storedPreset = project?.settings?.exportPreset;
+                const preset = isPreview ? 'ultrafast' : (storedPreset || 'fast');
+                const qualityFlags = isPreview ? '' : is4k ? '-crf 18 -b:v 8M' : '-crf 20 -b:v 4M';
+                await guardedExec(`"${ffmpeg}" -loop 1 -i "${imagePath}" -c:v libx264 -preset ${preset} ${qualityFlags} -r 30 -t ${duration} -pix_fmt yuv420p -vf "${filter}" -y "${outputPath}"`, signal);
+              }
+            }
+          } else if (animatorSucceeded) {
+            // Stage 1: animator output
+            fs.copyFileSync(animatedPath, outputPath);
+            console.log('[RenderVisual] Stage 1: using animator output directly — Ken Burns skipped');
+            fs.promises.unlink(animatedPath).catch(() => {});
+          } else {
+            // Stage 1: Ken Burns fallback
+            console.log('[RenderVisual] Stage 1: applying Ken Burns fallback');
+            const storedPreset = project?.settings?.exportPreset;
+            const preset = isPreview ? 'ultrafast' : (storedPreset || 'fast');
+            const qualityFlags = isPreview ? '' : is4k ? '-crf 18 -b:v 8M' : '-crf 20 -b:v 4M';
+            await guardedExec(`"${ffmpeg}" -loop 1 -i "${imagePath}" -c:v libx264 -preset ${preset} ${qualityFlags} -r 30 -t ${duration} -pix_fmt yuv420p -vf "${filter}" -y "${outputPath}"`, signal);
           }
         } else {
            const fallbackRes = project?.settings?.aspectRatio === '9:16' ? '1080x1920' : '1920x1080';
