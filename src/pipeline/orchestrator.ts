@@ -680,6 +680,13 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   for (const visual of scene.visuals) {
     const existingRendered = (visual as any).rendered_path as string | undefined;
     const isLocalMp4 = !!(existingRendered && existingRendered.endsWith('.mp4') && fs.existsSync(existingRendered));
+    // Promote a Supabase image URL from rendered_path to asset_path so renderVisualClip can use it
+    // (generateSceneImage sets rendered_path but not asset_path; pipeline requires asset_path)
+    if (!isLocalMp4 && !(visual as any).asset_path && existingRendered?.startsWith('http')) {
+      console.log('[Orchestrator] Promoting rendered_path image URL to asset_path for rendering');
+      (visual as any).asset_path = existingRendered;
+      (visual as any).rendered_path = undefined;
+    }
     if (!isLocalMp4 && (visual as any).asset_path) {
       if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
       const renderedLocal = await renderVisualClip(visual, project, signal, scene, audioDur > 0 ? audioDur : undefined);
