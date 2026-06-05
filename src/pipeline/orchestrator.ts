@@ -289,6 +289,19 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
     if (!loadedProject) throw new Error(`Project ${project_id} not found`);
     project = loadedProject;
 
+    // If project has a universeId but not the embedded universe object, load it now
+    if ((project as any).universeId && !(project as any).universe) {
+      try {
+        const universe = await FirestoreService.getDocument('universes', (project as any).universeId);
+        if (universe) {
+          (project as any).universe = universe;
+          console.log('[Orchestrator] Loaded universe by ID:', (project as any).universeId);
+        }
+      } catch (e: any) {
+        console.warn('[Orchestrator] Failed to load universe by ID:', e?.message);
+      }
+    }
+
     // Allow re-runs from any terminal state — reset to draft so path-clearing runs
     if (project.status === 'completed' || project.status === 'cancelled' || project.status === 'failed') {
       console.log(`[Orchestrator] Resetting project ${project.project_id} from '${project.status}' to 'draft' for re-run.`);

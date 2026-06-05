@@ -684,10 +684,11 @@ export async function updateProjectWorldEntities(req: Request, res: Response) {
 
 export async function updateProjectSettings(req: Request, res: Response) {
   const { id } = req.params;
-  const { settings } = req.body;
+  const { settings, universeId } = req.body;
   try {
      const project = await loadProject(id);
-     project.settings = settings;
+     if (settings !== undefined) project.settings = settings;
+     if (universeId !== undefined) (project as any).universeId = universeId || null;
      await saveProjectState(project);
      res.json({ message: 'Settings updated' });
   } catch(error) {
