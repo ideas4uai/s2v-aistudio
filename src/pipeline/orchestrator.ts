@@ -584,6 +584,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   }
 
   // Stage 2: generate separate background image if prompt provided
+  console.log('[Orchestrator] Background prompt for scene:', scene.scene_id, '→', scene.background_prompt || 'NO PROMPT SET');
   if (scene.background_prompt && !scene.background_path) {
     try {
       const bgBase64 = await AIService.generateImageBase64(scene.background_prompt, { isStoryEpisode: true });
