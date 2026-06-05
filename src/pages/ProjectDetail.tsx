@@ -8,20 +8,55 @@ export function ProjectDetail() {
   const navigate = useNavigate();
   const [project, setProject] = useState<any>(null);
 
-  useEffect(() => {
-    const fetchProject = async () => {
-      try {
-        const res = await authenticatedFetch(`/api/projects/${id}`);
-        if (res.ok) {
-          const data = await res.json();
-          setProject(data);
-        }
-      } catch (error) {
-        console.error('Error fetching project:', error);
+  const fetchProject = async () => {
+    try {
+      const res = await authenticatedFetch(`/api/projects/${id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setProject(data);
       }
-    };
+    } catch (error) {
+      console.error('Error fetching project:', error);
+    }
+  };
+
+  // Initial load + re-fetch when the window regains focus (user navigates back)
+  useEffect(() => {
     fetchProject();
+    const onFocus = () => fetchProject();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, [id]);
+
+  // Poll status while a render is in progress; apply output_path as soon as it lands
+  useEffect(() => {
+    if (!project) return;
+    if (project.status === 'completed' || project.status === 'failed' || project.status === 'cancelled') return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await authenticatedFetch(`/api/projects/${id}/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (data.output_path) {
+          setProject((prev: any) => prev ? {
+            ...prev,
+            output_path: data.output_path,
+            outputPath:  data.output_path,
+            status:      data.status,
+          } : prev);
+        }
+
+        if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+          clearInterval(interval);
+          fetchProject();
+        }
+      } catch { /* non-fatal */ }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [project?.status, id]);
 
   if (!project) return <div className="p-8 text-center text-neutral-500 animate-pulse">Loading project details...</div>;
 

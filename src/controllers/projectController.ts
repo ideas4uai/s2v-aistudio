@@ -10,6 +10,7 @@ import { hashCode } from '../utils/hash.js';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
+import { toUrl } from '../utils/path.js';
 
 export async function previewProject(req: Request, res: Response) {
   const { id } = req.params;
@@ -607,12 +608,14 @@ export async function getProjectStatus(req: Request, res: Response) {
   const { id } = req.params;
   try {
      const project = await loadProject(id);
-     res.json({ 
-       status: project.status, 
+     res.json({
+       status: project.status,
        current_action: project.current_action,
        progress_percent: project.progress_percent,
        logs: project.logs || [],
-       error_log: project.error_log 
+       error_log: project.error_log,
+       output_path: toUrl(project.output_path || ''),
+       outputPath:  toUrl(project.output_path || ''),
      });
   } catch (error) {
      res.status(500).json({ error: String(error) });
