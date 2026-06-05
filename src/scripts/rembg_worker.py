@@ -1,16 +1,23 @@
 import sys
 import os
+import time
+
+from rembg import remove, new_session
+
+# Session created once at module level — avoids re-loading ONNX weights on every call
+_session = new_session('u2net')
 
 def remove_background(input_path: str, output_path: str) -> bool:
     try:
-        from rembg import remove
         from PIL import Image
         import io
 
         with open(input_path, 'rb') as f:
             input_data = f.read()
 
-        output_data = remove(input_data)
+        start = time.time()
+        output_data = remove(input_data, session=_session)
+        print(f'[rembg] Model inference: {round(time.time() - start, 1)}s')
 
         img = Image.open(io.BytesIO(output_data))
         img.save(output_path, 'PNG')

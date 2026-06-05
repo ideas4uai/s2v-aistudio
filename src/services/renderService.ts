@@ -181,7 +181,7 @@ async function callRembg(inputPath: string, outputPath: string): Promise<boolean
       resolve(false);
     });
 
-    setTimeout(() => { proc.kill(); console.error('[Rembg] Timeout'); resolve(false); }, 60000);
+    setTimeout(() => { proc.kill(); console.error('[Rembg] Timeout after 180s'); resolve(false); }, 180000);
   });
 }
 
