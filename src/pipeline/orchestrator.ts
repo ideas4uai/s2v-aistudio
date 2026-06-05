@@ -318,10 +318,24 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       scene.background_url = undefined;
       scene.transparent_path = undefined;
       // Reset status so batch filter includes this scene in processing.
-      // Internal caches (narration_path, visual.status='completed') still prevent
-      // re-generation of expensive audio and images.
       if (scene.status === 'completed') {
         scene.status = 'pending';
+      }
+      // Reset image visuals to pending so LoRA generates a fresh character.
+      // Preserve visuals that are already a rendered video clip (.mp4).
+      if (scene.visuals) {
+        for (const v of scene.visuals) {
+          const hasVideoAsset = v.asset_path?.endsWith('.mp4') || (v as any).rendered_path?.endsWith('.mp4');
+          if (v.status === 'completed' && !hasVideoAsset) {
+            v.status = 'pending';
+            // Clear stale Supabase image URL so the "promote rendered_path" path
+            // doesn't skip LoRA by re-using the old cached character image.
+            if ((v as any).rendered_path?.startsWith('http')) {
+              (v as any).rendered_path = undefined;
+            }
+            console.log('[Orchestrator] Reset visual to pending for re-generation:', (v as any).visual_id || (v as any).id);
+          }
+        }
       }
     }
     console.log('[Orchestrator] Cleared local render paths and Stage 2 paths — will re-render all visual clips');
