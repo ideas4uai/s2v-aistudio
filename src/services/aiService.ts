@@ -63,14 +63,42 @@ async function generateImageWithLoRA(
     const replicateToken = process.env.REPLICATE_API_TOKEN;
     if (!replicateToken) return null;
 
-    const version = loraModelUrl.includes(':') ? loraModelUrl.split(':')[1] : loraModelUrl;
-    const startRes = await fetch('https://api.replicate.com/v1/predictions', {
+    console.log('[LoRA] Model string:', loraModelUrl);
+
+    // Reject stale delivery URLs and tar paths — these are training artifacts, not model identifiers
+    if (loraModelUrl.startsWith('http') || loraModelUrl.includes('.tar') || loraModelUrl.includes('/trained_model')) {
+      console.error('[LoRA] Invalid loraModelUrl — got a storage path instead of "owner/name:version_hash". Re-run lora-status to refresh the character model URL.');
+      return null;
+    }
+
+    const colonIdx = loraModelUrl.indexOf(':');
+    const modelPath = colonIdx !== -1 ? loraModelUrl.slice(0, colonIdx) : loraModelUrl;
+    const version   = colonIdx !== -1 ? loraModelUrl.slice(colonIdx + 1) : '';
+
+    if (!modelPath.includes('/')) {
+      console.error('[LoRA] Model path must be "owner/name", got:', modelPath);
+      return null;
+    }
+
+    const input = { prompt: `${triggerWord} ${prompt}`, num_inference_steps: 28, guidance_scale: 3.5, aspect_ratio: aspectRatio, output_format: 'jpg' };
+
+    // Use version-based endpoint when we have a full hash; model-based when we only have owner/name
+    let predUrl: string;
+    let body: object;
+    if (version && version.length >= 32) {
+      predUrl = 'https://api.replicate.com/v1/predictions';
+      body = { version, input };
+      console.log('[LoRA] Version-based endpoint — model:', modelPath, 'version:', version.slice(0, 16) + '...');
+    } else {
+      predUrl = `https://api.replicate.com/v1/models/${modelPath}/predictions`;
+      body = { input };
+      console.log('[LoRA] Model-based endpoint:', modelPath);
+    }
+
+    const startRes = await fetch(predUrl, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${replicateToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        version,
-        input: { prompt: `${triggerWord} ${prompt}`, num_inference_steps: 28, guidance_scale: 3.5, aspect_ratio: aspectRatio, output_format: 'jpg' },
-      }),
+      body: JSON.stringify(body),
     });
     if (!startRes.ok) {
       console.warn('[LoRA Gen] Start failed:', (await startRes.text()).slice(0, 200));
