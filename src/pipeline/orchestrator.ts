@@ -349,6 +349,12 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
           const keepAsVideo = v.asset_path?.endsWith('.mp4') && !v.asset_path.startsWith('http');
           if (v.status === 'completed' && !keepAsVideo) {
             v.status = 'pending';
+            // Delete the cached compositor output so renderVisualClip re-runs with the new character
+            const cachedMp4 = path.join(os.tmpdir(), 'ais-renderer', `${project_id}_visual_${(v as any).visual_id}.mp4`);
+            if (fs.existsSync(cachedMp4)) {
+              try { fs.unlinkSync(cachedMp4); } catch { /* non-fatal */ }
+              console.log('[Orchestrator] Deleted cached compositor output:', path.basename(cachedMp4));
+            }
             console.log('[Orchestrator] Reset visual to pending for re-generation:', (v as any).visual_id || (v as any).id);
           }
         }
