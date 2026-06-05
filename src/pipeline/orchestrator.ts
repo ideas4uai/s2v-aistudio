@@ -322,17 +322,20 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
         scene.status = 'pending';
       }
       // Reset image visuals to pending so LoRA generates a fresh character.
-      // Preserve visuals that are already a rendered video clip (.mp4).
       if (scene.visuals) {
         for (const v of scene.visuals) {
-          const hasVideoAsset = v.asset_path?.endsWith('.mp4') || (v as any).rendered_path?.endsWith('.mp4');
-          if (v.status === 'completed' && !hasVideoAsset) {
+          // Clear local .mp4 intermediate (rendered by compositor last run — not an asset to preserve).
+          if ((v as any).rendered_path && !(v as any).rendered_path.startsWith('http')) {
+            (v as any).rendered_path = undefined;
+          }
+          // Clear HTTP URLs from both fields (promoted Supabase image, stale generateSceneImage result).
+          if ((v as any).rendered_path?.startsWith('http')) (v as any).rendered_path = undefined;
+          if ((v as any).asset_path?.startsWith('http')) (v as any).asset_path = undefined;
+          // Now reset status. Only preserve visuals whose asset_path is a local video file
+          // (e.g. stock footage downloaded in a prior run — those are worth keeping).
+          const keepAsVideo = v.asset_path?.endsWith('.mp4') && !v.asset_path.startsWith('http');
+          if (v.status === 'completed' && !keepAsVideo) {
             v.status = 'pending';
-            // Clear stale Supabase image URL so the "promote rendered_path" path
-            // doesn't skip LoRA by re-using the old cached character image.
-            if ((v as any).rendered_path?.startsWith('http')) {
-              (v as any).rendered_path = undefined;
-            }
             console.log('[Orchestrator] Reset visual to pending for re-generation:', (v as any).visual_id || (v as any).id);
           }
         }
