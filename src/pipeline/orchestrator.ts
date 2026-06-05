@@ -678,10 +678,14 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
     ? await getAudioDuration(scene.narration_path) : 0;
   console.log('[Orchestrator] Rendering visuals with audio duration:', audioDur > 0 ? audioDur.toFixed(3) + 's' : 'unknown (using duration_target)');
   for (const visual of scene.visuals) {
-    if (!(visual as any).rendered_path && (visual as any).asset_path) {
+    const existingRendered = (visual as any).rendered_path as string | undefined;
+    const isLocalMp4 = !!(existingRendered && existingRendered.endsWith('.mp4') && fs.existsSync(existingRendered));
+    if (!isLocalMp4 && (visual as any).asset_path) {
       if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
       const renderedLocal = await renderVisualClip(visual, project, signal, scene, audioDur > 0 ? audioDur : undefined);
       if (renderedLocal) (visual as any).rendered_path = renderedLocal;
+    } else if (isLocalMp4) {
+      console.log('[Orchestrator] Visual already rendered, skipping:', path.basename(existingRendered!));
     }
   }
 
