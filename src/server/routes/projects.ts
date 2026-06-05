@@ -137,6 +137,7 @@ projectsRouter.get('/:id', async (req, res) => {
         visual_prompt: s.visuals?.[0]?.prompt || s.visualPrompt,
         character: s.character || 'NARRATOR',
         emotion: s.emotion || 'neutral',
+        scene_type: (s as any).scene_type || 'street',
         image_path: toUrl(s.visuals?.[0]?.rendered_path || s.preview_path || ''),
         audio_path: toUrl(s.narration_path || ''),
         preview_path: toUrl(s.preview_path || ''),

@@ -82,6 +82,60 @@ async function callAnimator(
   }
 }
 
+async function callSceneAnimatorV3(
+  backgroundPath: string,
+  characterPath: string,
+  outputPath: string,
+  duration: number,
+  emotion: string = 'neutral',
+  sceneType: string = 'street',
+  _ffmpegPath: string
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const scriptPath = path.join(process.cwd(), 'src/scripts/scene_animator_v3.py');
+    const args = [
+      scriptPath,
+      '--background', backgroundPath,
+      '--character',  characterPath,
+      '--output',     outputPath,
+      '--duration',   duration.toString(),
+      '--emotion',    emotion,
+      '--scene_type', sceneType,
+      '--fps',        '24',
+      '--width',      '1080',
+      '--height',     '1920',
+    ];
+
+    console.log('[SceneAnimV3] Starting Metro engine');
+    console.log('[SceneAnimV3] Background:', path.basename(backgroundPath));
+    console.log('[SceneAnimV3] Character:', path.basename(characterPath));
+    console.log('[SceneAnimV3] Duration:', duration, 's');
+    console.log('[SceneAnimV3] Emotion:', emotion);
+
+    const proc = spawn('py', args);
+    let stderr = '';
+
+    proc.stdout.on('data', (d) => { process.stdout.write(d); });
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        const exists = fs.existsSync(outputPath);
+        const size   = exists ? fs.statSync(outputPath).size : 0;
+        console.log('[SceneAnimV3] Complete.', Math.round(size / 1024), 'KB');
+        resolve(exists && size > 10000);
+      } else {
+        console.error('[SceneAnimV3] Failed:', stderr.slice(-300));
+        resolve(false);
+      }
+    });
+
+    proc.on('error', (e) => { console.error('[SceneAnimV3] Spawn error:', e); resolve(false); });
+
+    setTimeout(() => { proc.kill(); console.error('[SceneAnimV3] Timeout'); resolve(false); }, 600000);
+  });
+}
+
 async function compositeCharacterOverBackground(
   backgroundPath: string,
   characterPngPath: string,
@@ -396,9 +450,12 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
             const sceneId = scene.scene_id || visual.visual_id;
             const compositedPath = path.join(tmpDir, `${sceneId}_composited.mp4`);
             const ffmpegBin = ffmpeg as string;
-            const compositeSuccess = await compositeCharacterOverBackground(
+            const compositeSuccess = await callSceneAnimatorV3(
               scene.background_path, scene.transparent_path, compositedPath,
-              audioDuration && audioDuration > 0 ? audioDuration : duration, ffmpegBin
+              audioDuration && audioDuration > 0 ? audioDuration : duration,
+              scene.emotion || 'neutral',
+              scene.scene_type || 'street',
+              ffmpegBin
             );
             if (compositeSuccess) {
               console.log('[RenderVisual] Composite succeeded — writing to output');

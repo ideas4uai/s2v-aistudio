@@ -22,6 +22,7 @@ interface Scene {
   status?: string;
   character?: string;
   emotion?: string;
+  scene_type?: string;
   background_prompt?: string;
 }
 
@@ -1571,6 +1572,31 @@ export function ProjectEditor() {
                               }
                             }}
                           />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Scene Type</label>
+                          <select
+                            defaultValue={scene.scene_type || 'street'}
+                            onBlur={async (e) => {
+                              const val = e.target.value;
+                              try {
+                                await authenticatedFetch(`/api/projects/${id}/scenes/${sceneId}`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ scene_type: val }),
+                                });
+                              } catch (err) {
+                                console.warn('Failed to save scene_type:', err);
+                              }
+                            }}
+                            className="w-full text-sm text-neutral-700 bg-neutral-50 p-2 rounded-lg border border-neutral-200 focus:border-indigo-400 focus:outline-none"
+                          >
+                            <option value="bedroom">Bedroom</option>
+                            <option value="street">Street</option>
+                            <option value="grid">Grid / Data Space</option>
+                            <option value="corridor">Corridor</option>
+                            <option value="black">Black / NULL</option>
+                          </select>
                         </div>
                       </div>
 
