@@ -69,6 +69,8 @@ export function UniverseEditor() {
   const [posesExpanded, setPosesExpanded] = useState<Record<string, boolean>>({});
   const [trainingLora, setTrainingLora] = useState<string | null>(null);
   const [checkingLoraStatus, setCheckingLoraStatus] = useState<string | null>(null);
+  const [editingLoraUrl, setEditingLoraUrl] = useState<string | null>(null);
+  const [loraUrlDraft, setLoraUrlDraft] = useState('');
   const [lightboxChar, setLightboxChar] = useState<StoryCharacter | null>(null);
   const [locationLightbox, setLocationLightbox] = useState<StoryLocation | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -227,6 +229,29 @@ export function UniverseEditor() {
       alert('LoRA training failed to start: ' + e.message);
     } finally {
       setTrainingLora(null);
+    }
+  };
+
+  const handleSaveLoraUrl = async (char: StoryCharacter) => {
+    if (!loraUrlDraft.trim()) return;
+    try {
+      const res = await authenticatedFetch(`/api/universes/${id}/characters/${char.id}/lora-url`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ loraModelUrl: loraUrlDraft.trim() }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setUniverse((prev: any) => ({
+        ...prev,
+        characters: (prev.characters || []).map((c: any) =>
+          c.id === char.id ? { ...c, loraModelUrl: data.loraModelUrl, loraStatus: 'ready', useLoRA: true } : c
+        ),
+      }));
+      setEditingLoraUrl(null);
+      console.log('[Universe] LoRA URL updated for', char.name, '→', data.loraModelUrl);
+    } catch (e: any) {
+      alert('Failed to save LoRA URL: ' + e.message);
     }
   };
 
@@ -769,17 +794,50 @@ export function UniverseEditor() {
                           </span>
                         )}
                         {(char as any).loraStatus === 'ready' ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-green-600 font-medium">✓ LoRA Ready</span>
-                            <label className="flex items-center gap-1 cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={(char as any).useLoRA || false}
-                                onChange={() => toggleUseLoRA(char)}
-                                className="w-3 h-3 accent-green-600"
-                              />
-                              <span className="text-xs text-neutral-600">Use LoRA</span>
-                            </label>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-green-600 font-medium">✓ LoRA Ready</span>
+                              <label className="flex items-center gap-1 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={(char as any).useLoRA || false}
+                                  onChange={() => toggleUseLoRA(char)}
+                                  className="w-3 h-3 accent-green-600"
+                                />
+                                <span className="text-xs text-neutral-600">Use LoRA</span>
+                              </label>
+                              <button
+                                onClick={() => { setEditingLoraUrl(char.id); setLoraUrlDraft((char as any).loraModelUrl || ''); }}
+                                className="text-xs text-neutral-400 hover:text-neutral-700 underline transition-colors"
+                                title={(char as any).loraModelUrl || 'No model URL set'}
+                              >
+                                edit URL
+                              </button>
+                            </div>
+                            {editingLoraUrl === char.id && (
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <input
+                                  className="text-xs px-2 py-1 border border-neutral-300 rounded font-mono flex-1 min-w-0 focus:ring-1 focus:ring-indigo-400 outline-none"
+                                  value={loraUrlDraft}
+                                  onChange={e => setLoraUrlDraft(e.target.value)}
+                                  placeholder="owner/name:version_hash"
+                                  onKeyDown={e => { if (e.key === 'Enter') handleSaveLoraUrl(char); if (e.key === 'Escape') setEditingLoraUrl(null); }}
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => handleSaveLoraUrl(char)}
+                                  className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors whitespace-nowrap"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={() => setEditingLoraUrl(null)}
+                                  className="text-xs text-neutral-400 hover:text-neutral-700 transition-colors"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            )}
                           </div>
                         ) : (char as any).loraStatus === 'training' ? (
                           <div className="flex items-center gap-2">

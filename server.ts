@@ -383,6 +383,35 @@ async function startServer() {
     }
   });
 
+  // Manually set or correct a character's loraModelUrl (e.g. fix stale training artifact paths)
+  app.patch('/api/universes/:id/characters/:charId/lora-url', async (req, res) => {
+    const { charId } = req.params;
+    try {
+      const { loraModelUrl } = req.body as { loraModelUrl?: string };
+      if (!loraModelUrl?.trim()) return res.status(400).json({ error: 'loraModelUrl is required' });
+
+      const trimmed = loraModelUrl.trim();
+      // Reject delivery URLs and tar paths — only owner/name or owner/name:hash accepted
+      if (trimmed.startsWith('http') || trimmed.includes('.tar')) {
+        return res.status(400).json({ error: 'Invalid format. Use "owner/name:version_hash" (e.g. ideas4uai/veer-lora:abc123...)' });
+      }
+
+      const universe = await FirestoreService.getDocument('universes', req.params.id);
+      if (!universe) return res.status(404).json({ error: 'Universe not found' });
+      const character = (universe as any).characters?.find((c: any) => c.id === charId);
+      if (!character) return res.status(404).json({ error: 'Character not found' });
+
+      const updatedChars = (universe as any).characters.map((c: any) =>
+        c.id === charId ? { ...c, loraModelUrl: trimmed, loraStatus: 'ready', useLoRA: true } : c
+      );
+      await FirestoreService.saveDocument('universes', req.params.id, { ...(universe as any), characters: updatedChars });
+      console.log(`[LoRA] URL manually updated for ${character.name}:`, trimmed);
+      res.json({ ok: true, loraModelUrl: trimmed });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post('/api/universes/:id/characters/:charId/poses', async (req, res) => {
     const { charId } = req.params;
     try {
