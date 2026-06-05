@@ -1,10 +1,27 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
 import { getKeyForTask, getGeminiKey, type KeyTask } from '../utils/geminiAuth.js';
 
-// Lazy initialization to ensure we catch the latest process.env state
+const isAdcMode = !!process.env.GOOGLE_CLOUD_PROJECT;
+const gcpProject = process.env.GOOGLE_CLOUD_PROJECT || '';
+const gcpLocation = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
+
+console.log(
+  isAdcMode
+    ? `[STARTUP] Auth mode: ADC (Vertex AI) project: ${gcpProject}`
+    : '[STARTUP] Auth mode: API Keys'
+);
+
 const aiInstances: Record<string, GoogleGenAI> = {};
 
 const getAI = (apiKey: string) => {
+  if (isAdcMode) {
+    if (!aiInstances['adc']) {
+      aiInstances['adc'] = new GoogleGenAI(
+        { vertexai: true, project: gcpProject, location: gcpLocation } as any
+      );
+    }
+    return aiInstances['adc'];
+  }
   const cacheKey = apiKey || 'default';
   if (!aiInstances[cacheKey]) {
     if (!apiKey) console.warn('[AIService] No Gemini API key available');
@@ -91,10 +108,12 @@ async function generateImageWithGeminiNative(
   try {
     let geminiKey = '';
     try { geminiKey = getKeyForTask('image'); } catch { return null; }
-    if (!geminiKey) return null;
+    if (!geminiKey && !isAdcMode) return null;
 
     const { GoogleGenAI: GGenAI } = await import('@google/genai');
-    const ai = new GGenAI({ apiKey: geminiKey });
+    const ai = isAdcMode
+      ? new GGenAI({ vertexai: true, project: gcpProject, location: gcpLocation } as any)
+      : new GGenAI({ apiKey: geminiKey });
 
     const parts: any[] = [];
 
@@ -254,12 +273,14 @@ export const AIService = {
     // Provider 1: Imagen 4 Fast via AI Studio key (primary - confirmed working)
     let imagenApiKey = '';
     try { imagenApiKey = getKeyForTask('image'); } catch { /* falls through to next provider */ }
-    if (imagenApiKey) {
+    if (imagenApiKey || isAdcMode) {
       try {
         const imagenModel = options?.quality === '4k' ? 'imagen-4.0-generate-001' : 'imagen-4.0-fast-generate-001';
         console.log(`[ImageGen] Trying Imagen 4 (${imagenModel})...`);
         const { GoogleGenAI } = await import('@google/genai');
-        const imagenAI = new GoogleGenAI({ apiKey: imagenApiKey });
+        const imagenAI = isAdcMode
+          ? new GoogleGenAI({ vertexai: true, project: gcpProject, location: gcpLocation } as any)
+          : new GoogleGenAI({ apiKey: imagenApiKey });
         const imagenResponse = await imagenAI.models.generateImages({
           model: imagenModel,
           prompt: styledPrompt,
@@ -357,7 +378,7 @@ export const AIService = {
     // Provider 4: Gemini 2.5 flash image (when quota available)
     let geminiImageKey = '';
     try { geminiImageKey = getKeyForTask('image'); } catch { /* no key configured */ }
-    if (geminiImageKey) {
+    if (geminiImageKey || isAdcMode) {
       try {
         console.log('[ImageGen] Trying Gemini 2.5 flash image...');
         const ai = getAI(geminiImageKey);

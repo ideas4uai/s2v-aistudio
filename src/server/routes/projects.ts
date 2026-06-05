@@ -41,6 +41,16 @@ projectsRouter.get('/test_ai', async (req, res) => {
    }
 });
 
+projectsRouter.get('/test-adc', async (req, res) => {
+  const mode = process.env.GOOGLE_CLOUD_PROJECT ? 'ADC (Vertex AI)' : 'API Keys';
+  try {
+    const text = await AIService.generateText('Say hello in one sentence', { task: 'default' });
+    res.json({ ok: true, mode, text });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, mode, error: String(e) });
+  }
+});
+
 projectsRouter.post('/clear-ai-quota', (req, res) => {
   AIService.clearQuotaFlags();
   res.json({ message: 'AI quota flags cleared. All models will be retried on next operation.' });

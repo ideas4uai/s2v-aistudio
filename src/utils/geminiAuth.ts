@@ -8,6 +8,7 @@ const KEY_MAP: Record<KeyTask, string> = {
 };
 
 export function getKeyForTask(task: KeyTask): string {
+  if (process.env.GOOGLE_CLOUD_PROJECT) return ''; // ADC mode — key unused
   const key = KEY_MAP[task];
   if (!key) throw new Error(
     `No API key configured for task: ${task}. Add GEMINI_KEY_${task.toUpperCase()} to .env`
