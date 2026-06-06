@@ -243,7 +243,7 @@ async function callRembg(inputPath: string, outputPath: string): Promise<boolean
         resolve(false);
       });
 
-      setTimeout(() => { proc.kill(); console.error('[Rembg] Timeout after 300s'); resolve(false); }, 300000);
+      setTimeout(() => { proc.kill(); console.error('[Rembg] Timeout after 60s'); resolve(false); }, 60000);
     });
   } finally {
     rembgRunning = false;

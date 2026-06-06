@@ -31,6 +31,13 @@ import { ScriptwriterAgent } from './agents/scriptwriterAgent.js';
 import { StoryboardAgent } from './agents/storyboardAgent.js';
 import { WorldAgent } from './agents/worldAgent.js';
 import { abortManager } from './abortManager.js';
+import { requestContext } from '../server/utils/context.js';
+
+async function downloadFile(url: string, destPath: string): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`downloadFile failed: ${res.status} ${url}`);
+  fs.writeFileSync(destPath, Buffer.from(await res.arrayBuffer()));
+}
 
 // ============================================================================
 // STYLE ENGINE
@@ -336,9 +343,9 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       if ((scene as any).captioned_path && !(scene as any).captioned_path.startsWith('http')) {
         (scene as any).captioned_path = undefined;
       }
-      // Clear Stage 2 paths so background regenerates if prompt changed.
+      // Clear local Stage 2 paths — they won't survive a server restart.
+      // Keep background_url (Supabase) so the pipeline re-downloads instead of regenerating.
       scene.background_path = undefined;
-      scene.background_url = undefined;
       scene.transparent_path = undefined;
       // Reset status so batch filter includes this scene in processing.
       if (scene.status === 'completed') {
@@ -639,15 +646,29 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
     }
   }
 
-  // Stage 2: generate separate background image if prompt provided
+  // Stage 2: generate or re-download background image
   console.log('[Orchestrator] Background prompt for scene:', scene.scene_id, '→', scene.background_prompt || 'NO PROMPT SET');
+  const bgTmpDir = path.join(os.tmpdir(), 'ais-renderer', project.project_id!);
+  if (!fs.existsSync(bgTmpDir)) fs.mkdirSync(bgTmpDir, { recursive: true });
+  const bgLocalPath = path.join(bgTmpDir, `${scene.scene_id}_background.png`);
+
+  if (scene.background_prompt && !scene.background_path && scene.background_url) {
+    // Background already in Supabase from a prior run — re-download instead of regenerating
+    try {
+      console.log('[Orchestrator] Background cached in Supabase — re-downloading');
+      await downloadFile(scene.background_url, bgLocalPath);
+      scene.background_path = bgLocalPath;
+      console.log('[Orchestrator] Background re-downloaded:', path.basename(bgLocalPath));
+    } catch (dlErr: any) {
+      console.warn('[Orchestrator] Background re-download failed, will regenerate:', dlErr?.message);
+      scene.background_url = undefined;
+    }
+  }
+
   if (scene.background_prompt && !scene.background_path) {
     try {
       const bgBase64 = await AIService.generateImageBase64(scene.background_prompt, { isStoryEpisode: true });
       if (bgBase64) {
-        const bgTmpDir = path.join(os.tmpdir(), 'ais-renderer', project.project_id!);
-        if (!fs.existsSync(bgTmpDir)) fs.mkdirSync(bgTmpDir, { recursive: true });
-        const bgLocalPath = path.join(bgTmpDir, `${scene.scene_id}_background.png`);
         const bgBuffer = Buffer.from(bgBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
         fs.writeFileSync(bgLocalPath, bgBuffer);
         scene.background_path = bgLocalPath;

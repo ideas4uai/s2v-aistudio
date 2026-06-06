@@ -1,6 +1,7 @@
 import { FirestoreService } from '../server/db/firestore.js';
 import { Request, Response } from 'express';
 import { runPipeline, runScenePipeline, loadProject, saveProjectState } from '../pipeline/orchestrator.js';
+import { requestContext } from '../server/utils/context.js';
 import { WorldAgent } from '../pipeline/agents/worldAgent.js';
 import { DirectorAgent } from '../pipeline/agents/directorAgent.js';
 import { ScriptwriterAgent } from '../pipeline/agents/scriptwriterAgent.js';
@@ -15,8 +16,10 @@ import { toUrl } from '../utils/path.js';
 export async function previewProject(req: Request, res: Response) {
   const { id } = req.params;
   try {
-    // Start preview pipeline async
-    runPipeline(id, { preview: true }).catch(console.error);
+    const previewToken = (req as any).user?.token || '__dev__';
+    requestContext.run({ token: previewToken }, () => {
+      runPipeline(id, { preview: true }).catch(console.error);
+    });
     res.json({ message: 'Preview started' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to start preview' });
@@ -498,7 +501,10 @@ export async function renderProject(req: Request, res: Response) {
       project.output_path = undefined;
       await saveProjectState(project);
     }
-    runPipeline(id, { preview: false }).catch(console.error);
+    const token = (req as any).user?.token || '__dev__';
+    requestContext.run({ token }, () => {
+      runPipeline(id, { preview: false }).catch(console.error);
+    });
     res.json({ message: 'Full render pipeline started' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to start render' });
