@@ -7,6 +7,8 @@ import ffmpeg from 'ffmpeg-static';
 
 const execAsync = promisify(exec);
 
+let rembgRunning = false;
+
 /**
  * Executes a command but allows it to be aborted via signal.
  */
@@ -132,7 +134,7 @@ async function callSceneAnimatorV3(
 
     proc.on('error', (e) => { console.error('[SceneAnimV3] Spawn error:', e); resolve(false); });
 
-    setTimeout(() => { proc.kill(); console.error('[SceneAnimV3] Timeout'); resolve(false); }, 600000);
+    setTimeout(() => { proc.kill(); console.error('[SceneAnimV3] Timeout'); resolve(false); }, 900000);
   });
 }
 
@@ -208,35 +210,44 @@ async function mergeVideoAudio(
 }
 
 async function callRembg(inputPath: string, outputPath: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const scriptPath = path.join(process.cwd(), 'src/scripts/rembg_worker.py');
-    console.log('[Rembg] Removing background:', path.basename(inputPath));
+  // Serialize rembg calls — concurrent processes compete for CPU and time out
+  while (rembgRunning) {
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  rembgRunning = true;
+  try {
+    return await new Promise((resolve) => {
+      const scriptPath = path.join(process.cwd(), 'src/scripts/rembg_worker.py');
+      console.log('[Rembg] Removing background:', path.basename(inputPath));
 
-    const proc = spawn('py', [scriptPath, inputPath, outputPath]);
-    let stderr = '';
+      const proc = spawn('py', [scriptPath, inputPath, outputPath]);
+      let stderr = '';
 
-    proc.stdout.on('data', (d) => console.log('[Rembg]', d.toString().trim()));
-    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+      proc.stdout.on('data', (d) => console.log('[Rembg]', d.toString().trim()));
+      proc.stderr.on('data', (d) => { stderr += d.toString(); });
 
-    proc.on('close', (code) => {
-      if (code === 0) {
-        const exists = fs.existsSync(outputPath);
-        const size = exists ? fs.statSync(outputPath).size : 0;
-        console.log('[Rembg] Complete. PNG size:', size, 'bytes');
-        resolve(exists && size > 10000);
-      } else {
-        console.error('[Rembg] Failed:', stderr);
+      proc.on('close', (code) => {
+        if (code === 0) {
+          const exists = fs.existsSync(outputPath);
+          const size = exists ? fs.statSync(outputPath).size : 0;
+          console.log('[Rembg] Complete. PNG size:', size, 'bytes');
+          resolve(exists && size > 10000);
+        } else {
+          console.error('[Rembg] Failed:', stderr);
+          resolve(false);
+        }
+      });
+
+      proc.on('error', (e) => {
+        console.error('[Rembg] Spawn error:', e);
         resolve(false);
-      }
-    });
+      });
 
-    proc.on('error', (e) => {
-      console.error('[Rembg] Spawn error:', e);
-      resolve(false);
+      setTimeout(() => { proc.kill(); console.error('[Rembg] Timeout after 300s'); resolve(false); }, 300000);
     });
-
-    setTimeout(() => { proc.kill(); console.error('[Rembg] Timeout after 180s'); resolve(false); }, 180000);
-  });
+  } finally {
+    rembgRunning = false;
+  }
 }
 
 async function renderMultiFrameVisual(visual: any, project: any, signal?: AbortSignal): Promise<string> {

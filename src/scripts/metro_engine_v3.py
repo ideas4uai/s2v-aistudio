@@ -595,7 +595,11 @@ class SceneRenderer:
         # 2. Camera effects
         frame = light_flicker(frame, t, 0.022)
         if self.scene.emotion not in ("tense","empty"):
-            frame = heat_shimmer(frame, t, 0.8)
+            if fi % 3 == 0:
+                frame = heat_shimmer(frame, t, 0.8)
+                self._last_shimmer = frame.copy()
+            elif hasattr(self, '_last_shimmer'):
+                frame = cv2.addWeighted(frame, 0.85, self._last_shimmer, 0.15, 0)
         if self.scene.emotion == "tense":
             sp = t / self.scene.duration_sec
             shake = max(0, (sp-0.4)) * 5.0
