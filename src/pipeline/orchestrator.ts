@@ -5,7 +5,7 @@ import { calculateQualityScore } from '../services/qualityService.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import os from 'os';
-import { exec } from 'child_process';
+import { exec, execSync } from 'child_process';
 import { promisify } from 'util';
 import ffmpegStatic from 'ffmpeg-static';
 
@@ -276,6 +276,16 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
     console.log(`[Orchestrator] A pipeline is already running for project ${project_id}. Skipping.`);
     return;
   }
+
+  // Kill orphaned Python subprocesses from a previous run that crashed or was restarted.
+  // Without this, old py.exe workers consume CPU and starve new rembg/metro processes.
+  try {
+    execSync('taskkill /F /IM py.exe /T', { stdio: 'ignore' });
+    console.log('[Orchestrator] Killed orphaned py.exe processes');
+  } catch {
+    // No Python processes were running — normal case
+  }
+
   runningPipelines.add(project_id);
   let project: Project | undefined;
   const signal = abortManager.getOrCreate(project_id);
