@@ -487,16 +487,13 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
         const progress = 40 + Math.floor((i / scenesToProcess.length) * 40);
         await updateProgress(project, `Processing scene batch ${Math.floor(i/batchSize) + 1} of ${Math.ceil(scenesToProcess.length/batchSize)}...`, progress);
         
-        await Promise.all(batch.map(async (scene) => {
-          // Inner cancellation check
+        const processScene = async (scene: Scene) => {
           if (signal.aborted) throw new Error('PIPELINE_CANCELLED');
-
           const sceneIndex = project!.scenes.indexOf(scene) + 1;
           const totalScenes = project!.scenes.length;
           console.log(`[Orchestrator] Processing scene ${sceneIndex} of ${totalScenes} (${scene.scene_id})`);
           scene.status = 'processing';
           await guardedSaveProjectState(project!);
-
           try {
             await processSingleScene(scene, project!, 'default_preset', isPreview, isTestMode, signal);
             console.log(`[Orchestrator] Scene ${sceneIndex} of ${totalScenes} complete`);
@@ -505,7 +502,20 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
             console.error(`Scene ${scene.scene_id} failed:`, e);
             scene.status = 'failed';
           }
-        }));
+        };
+
+        // Stage 2 scenes (background_prompt set) spawn rembg + Metro engine —
+        // running those concurrently starves CPU. Force sequential for any batch
+        // that contains at least one Stage 2 scene.
+        const hasStage2 = batch.some(s => (s as any).background_prompt);
+        if (hasStage2) {
+          console.log('[Orchestrator] Stage 2 batch — processing sequentially to avoid CPU starvation');
+          for (const scene of batch) {
+            await processScene(scene);
+          }
+        } else {
+          await Promise.all(batch.map(processScene));
+        }
 
         // Small delay between batches
         if (i + batchSize < scenesToProcess.length) {
