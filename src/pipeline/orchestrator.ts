@@ -248,8 +248,8 @@ export async function runScenePipeline(project_id: string, scene_id: string, opt
   }
 }
 
-async function updateProgress(project: Project, action: string, percent?: number) {
-  await guardedSaveProjectState(project);
+async function updateProgress(project: Project, action: string, percent?: number, signal?: AbortSignal) {
+  await guardedSaveProjectState(project, signal);
 
   if (!project.logs) project.logs = [];
   const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -264,9 +264,8 @@ async function updateProgress(project: Project, action: string, percent?: number
   await saveProjectState(project);
 }
 
-async function guardedSaveProjectState(project: Project) {
-  const freshProject = await loadProject(project.project_id);
-  if (freshProject.is_cancelled || freshProject.status === 'cancelled') {
+async function guardedSaveProjectState(project: Project, signal?: AbortSignal) {
+  if (signal?.aborted) {
     project.is_cancelled = true;
     project.status = 'cancelled';
     throw new Error('PIPELINE_CANCELLED');
@@ -382,12 +381,12 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
     // Reset cancellation if starting fresh
     project.is_cancelled = false;
     project.logs = [];
-    await updateProgress(project, 'Initializing pipeline...', 5);
+    await updateProgress(project, 'Initializing pipeline...', 5, signal);
 
     // --- PHASE 0: Storage Connectivity Probe ---
     if (!isTestMode) {
       try {
-        await updateProgress(project, 'Testing cloud connectivity...', 7);
+        await updateProgress(project, 'Testing cloud connectivity...', 7, signal);
         const probeData = Buffer.from(`probe-${Date.now()}`);
         await FirestoreService.uploadAsset(project_id, '.probe.txt', probeData, 'text/plain');
         console.log(`[Orchestrator] Storage probe successful for ${project_id}`);
@@ -418,28 +417,28 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
     ) {
       console.log(`[Orchestrator] ${project.scenes.length} existing scenes with visual prompts — skipping scripting and scene_parsing, jumping to generating_assets`);
       project.status = 'generating_assets';
-      await guardedSaveProjectState(project);
+      await guardedSaveProjectState(project, signal);
     }
 
     // Status Transitions (only reached when no existing scenes)
     if (project.status === 'draft' || project.status === 'pending') {
       project.status = 'scripting';
-      await guardedSaveProjectState(project);
+      await guardedSaveProjectState(project, signal);
     }
     
     if (project.status === 'scripting') {
       console.log(`[Orchestrator] Phase: scripting — calling DirectorAgent.planVideo`);
-      await updateProgress(project, 'AI is drafting the script and visual direction...', 10);
+      await updateProgress(project, 'AI is drafting the script and visual direction...', 10, signal);
       const directorPlan = await withRetry(() => DirectorAgent.planVideo(project!), { retries: 2 });
       console.log(`[Orchestrator] DirectorAgent.planVideo complete`);
       console.log(`[Orchestrator] Phase: scripting — calling ScriptwriterAgent.writeScript`);
-      await updateProgress(project, 'Refining narrative structure...', 15);
+      await updateProgress(project, 'Refining narrative structure...', 15, signal);
       const { rawScript, scenes: drafts } = await withRetry(() => ScriptwriterAgent.writeScript(project!, directorPlan), { retries: 2 });
       console.log(`[Orchestrator] ScriptwriterAgent.writeScript complete, ${drafts.length} draft scenes`);
       project.script = rawScript;
       
       console.log(`[Orchestrator] Phase: scripting — calling WorldAgent.analyzeWorld`);
-      await updateProgress(project, 'Identifying world entities for consistency...', 20);
+      await updateProgress(project, 'Identifying world entities for consistency...', 20, signal);
       project.world_entities = await WorldAgent.analyzeWorld(project, rawScript);
       console.log(`[Orchestrator] WorldAgent.analyzeWorld complete`);
       
@@ -452,12 +451,12 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       } as any));
 
       project.status = 'scene_parsing';
-      await guardedSaveProjectState(project);
+      await guardedSaveProjectState(project, signal);
     }
 
     if (project.status === 'scene_parsing') {
       console.log(`[Orchestrator] Phase: scene_parsing — calling StoryboardAgent.expandVisuals`);
-      await updateProgress(project, 'Breaking script into visual scenes...', 30);
+      await updateProgress(project, 'Breaking script into visual scenes...', 30, signal);
       const directorPlan = { character_consistency: project.character_description || 'N/A', pacing: project.pacing_intensity, scene_count: project.scenes?.length || 5 };
       
       // Re-map from the temporary scenes we saved
@@ -467,16 +466,16 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
          visual: s.visuals?.[0]?.prompt || ''
       }));
 
-      await updateProgress(project, 'Expanding visual prompts for image generation...', 35);
+      await updateProgress(project, 'Expanding visual prompts for image generation...', 35, signal);
       const scenes = await withRetry(() => StoryboardAgent.expandVisuals(project!, directorPlan as any, drafts), { retries: 2 });
       console.log(`[Orchestrator] StoryboardAgent.expandVisuals complete, ${scenes.length} scenes`);
       project.scenes = scenes;
       project.status = 'generating_assets';
-      await guardedSaveProjectState(project);
+      await guardedSaveProjectState(project, signal);
     }
 
     if (project.status === 'generating_assets') {
-      await updateProgress(project, 'Generating AI assets (Images & Audio)...', 40);
+      await updateProgress(project, 'Generating AI assets (Images & Audio)...', 40, signal);
       
       const scenesToProcess = project.scenes.filter(s => {
         if (s.status === 'degraded') return false;
@@ -492,7 +491,7 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
         if (signal.aborted) throw new Error('PIPELINE_CANCELLED');
         const batch = scenesToProcess.slice(i, i + batchSize);
         const progress = 40 + Math.floor((i / scenesToProcess.length) * 40);
-        await updateProgress(project, `Processing scene batch ${Math.floor(i/batchSize) + 1} of ${Math.ceil(scenesToProcess.length/batchSize)}...`, progress);
+        await updateProgress(project, `Processing scene batch ${Math.floor(i/batchSize) + 1} of ${Math.ceil(scenesToProcess.length/batchSize)}...`, progress, signal);
         
         const processScene = async (scene: Scene) => {
           if (signal.aborted) throw new Error('PIPELINE_CANCELLED');
@@ -500,7 +499,7 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
           const totalScenes = project!.scenes.length;
           console.log(`[Orchestrator] Processing scene ${sceneIndex} of ${totalScenes} (${scene.scene_id})`);
           scene.status = 'processing';
-          await guardedSaveProjectState(project!);
+          await guardedSaveProjectState(project!, signal);
           try {
             await processSingleScene(scene, project!, 'default_preset', isPreview, isTestMode, signal);
             console.log(`[Orchestrator] Scene ${sceneIndex} of ${totalScenes} complete`);
@@ -540,16 +539,16 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
 
       if (finalCheckSuccess) {
          project.status = 'stitching_video';
-         await guardedSaveProjectState(project);
+         await guardedSaveProjectState(project, signal);
       } else {
          project.status = 'failed';
-         await guardedSaveProjectState(project);
+         await guardedSaveProjectState(project, signal);
          throw new Error("Asset generation phase failed for some scenes.");
       }
     }
 
     if (project.status === 'stitching_video') {
-       await updateProgress(project, 'Stitching scenes together into final video...', 85);
+       await updateProgress(project, 'Stitching scenes together into final video...', 85, signal);
        await concatFinalVideo(project_id, isPreview, signal);
 
        if (signal.aborted) throw new Error('PIPELINE_CANCELLED');
@@ -561,7 +560,7 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
        project.output_path = finalState.output_path;
        project.quality_score = finalState.quality_score;
 
-       await updateProgress(project, 'Video generation complete!', 100);
+       await updateProgress(project, 'Video generation complete!', 100, signal);
     }
 
   } catch (error) {
