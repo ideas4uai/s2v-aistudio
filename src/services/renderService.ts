@@ -120,7 +120,10 @@ async function callSceneAnimatorV3(
     proc.stdout.on('data', (d) => { process.stdout.write(d); });
     proc.stderr.on('data', (d) => { stderr += d.toString(); });
 
+    const timer = setTimeout(() => { proc.kill(); console.error('[SceneAnimV3] Timeout'); resolve(false); }, 900000);
+
     proc.on('close', (code) => {
+      clearTimeout(timer);
       if (code === 0) {
         const exists = fs.existsSync(outputPath);
         const size   = exists ? fs.statSync(outputPath).size : 0;
@@ -132,9 +135,7 @@ async function callSceneAnimatorV3(
       }
     });
 
-    proc.on('error', (e) => { console.error('[SceneAnimV3] Spawn error:', e); resolve(false); });
-
-    setTimeout(() => { proc.kill(); console.error('[SceneAnimV3] Timeout'); resolve(false); }, 900000);
+    proc.on('error', (e) => { clearTimeout(timer); console.error('[SceneAnimV3] Spawn error:', e); resolve(false); });
   });
 }
 
