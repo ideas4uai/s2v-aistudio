@@ -1577,7 +1577,7 @@ export function ProjectEditor() {
                           <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Scene Type</label>
                           <select
                             defaultValue={scene.scene_type || 'street'}
-                            onBlur={async (e) => {
+                            onChange={async (e) => {
                               const val = e.target.value;
                               try {
                                 await authenticatedFetch(`/api/projects/${id}/scenes/${sceneId}`, {
@@ -1596,6 +1596,32 @@ export function ProjectEditor() {
                             <option value="grid">Grid / Data Space</option>
                             <option value="corridor">Corridor</option>
                             <option value="black">Black / NULL</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Emotion</label>
+                          <select
+                            defaultValue={scene.emotion || 'neutral'}
+                            onChange={async (e) => {
+                              const val = e.target.value;
+                              try {
+                                await authenticatedFetch(`/api/projects/${id}/scenes/${sceneId}`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ emotion: val }),
+                                });
+                              } catch (err) {
+                                console.warn('Failed to save emotion:', err);
+                              }
+                            }}
+                            className="w-full text-sm text-neutral-700 bg-neutral-50 p-2 rounded-lg border border-neutral-200 focus:border-indigo-400 focus:outline-none"
+                          >
+                            <option value="neutral">Neutral</option>
+                            <option value="curious">Curious</option>
+                            <option value="tense">Tense</option>
+                            <option value="sad">Sad</option>
+                            <option value="empty">Empty (NULL)</option>
+                            <option value="warm">Warm</option>
                           </select>
                         </div>
                       </div>
