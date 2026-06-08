@@ -186,6 +186,14 @@ async function generateImageWithGeminiNative(
   }
 }
 
+const INDIAN_AESTHETIC_KEYWORDS = ['south asian','indian','graphic novel','nexus city','terracotta','devanagari','hyderabad','mughal','jali','saffron','trigger studio'];
+
+const isAnime = (prompt: string): boolean => {
+  const lower = prompt.toLowerCase();
+  if (INDIAN_AESTHETIC_KEYWORDS.some(kw => lower.includes(kw))) return false;
+  return lower.includes('anime') || lower.includes('manga') || lower.includes('cel shading');
+};
+
 export const AIService = {
   generateText: async (prompt: string, options?: any) => {
     const task = options?.task;
@@ -275,9 +283,7 @@ export const AIService = {
     const isStoryEpisode = options?.isStoryEpisode;
     const isLandscape = !isStoryEpisode && options?.aspectRatio === '16:9';
     const aspectRatio = isLandscape ? '16:9' : '9:16';
-    const isAnime = prompt.includes('anime') || prompt.includes('Trigger Studio') || prompt.includes('flat colour') ||
-      prompt.includes('South Asian') || prompt.includes('graphic novel') || prompt.includes('Indian');
-    const qualityPrompt = (prompt.includes('photorealistic') || isAnime)
+    const qualityPrompt = (prompt.includes('photorealistic') || isAnime(prompt))
       ? prompt
       : `${prompt}, photorealistic, cinematic lighting, sharp focus`;
     const orientationHint = isLandscape ? 'Horizontal 16:9 landscape orientation.' : 'Vertical 9:16 portrait orientation.';

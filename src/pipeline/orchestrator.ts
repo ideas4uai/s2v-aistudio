@@ -26,6 +26,7 @@ import { buildSceneTimeline } from '../utils/timeline.js';
 import { QuotaService } from '../server/services/quotaService.js';
 import { AIService } from '../services/aiService.js';
 import { FirestoreService } from '../server/db/firestore.js';
+import { createClient } from '@supabase/supabase-js';
 import { DirectorAgent } from './agents/directorAgent.js';
 import { ScriptwriterAgent } from './agents/scriptwriterAgent.js';
 import { StoryboardAgent } from './agents/storyboardAgent.js';
@@ -33,10 +34,6 @@ import { WorldAgent } from './agents/worldAgent.js';
 import { abortManager } from './abortManager.js';
 import { requestContext } from '../server/utils/context.js';
 
-// Cross-scene character anchor: stores first successful generation per character per run.
-// Key: "CHARNAME_projectId". Cleared at pipeline start. Used to feed Imagen 4 a reference
-// image for non-LoRA characters so subsequent scenes stay visually consistent.
-const characterAnchors = new Map<string, string>();
 
 const INDIAN_AESTHETIC_SUFFIX = 'South Asian graphic novel illustration style, Hyderabad cyberpunk city 2031, warm terracotta and saffron architecture, teal neon accents, Indian street culture, autorickshaws with holographic overlays, Hindi signage, chai stall neon lights, bold flat colour illustration, Trigger Studio quality, NOT Japanese, NOT manga, NOT Tokyo aesthetic, South Asian urban environment';
 
@@ -289,6 +286,7 @@ async function guardedSaveProjectState(project: Project, signal?: AbortSignal) {
 const runningPipelines = new Set<string>();
 
 export async function runPipeline(project_id: string, options?: { preview?: boolean, mode?: 'test' | 'production' }): Promise<void> {
+  const characterAnchors = new Map<string, string>();
   console.log('[Orchestrator] runPipeline called for:', project_id);
   if (runningPipelines.has(project_id)) {
     console.log(`[Orchestrator] A pipeline is already running for project ${project_id}. Skipping.`);
@@ -391,7 +389,6 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
     console.log('[Orchestrator] Cleared local render paths and Stage 2 paths — will re-render all visual clips');
 
     // Reset cancellation if starting fresh
-    characterAnchors.clear();
     project.is_cancelled = false;
     project.logs = [];
     await updateProgress(project, 'Initializing pipeline...', 5, signal);
@@ -514,7 +511,7 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
           scene.status = 'processing';
           await guardedSaveProjectState(project!, signal);
           try {
-            await processSingleScene(scene, project!, 'default_preset', isPreview, isTestMode, signal);
+            await processSingleScene(scene, project!, 'default_preset', isPreview, isTestMode, signal, characterAnchors);
             console.log(`[Orchestrator] Scene ${sceneIndex} of ${totalScenes} complete`);
           } catch (e) {
             if (e instanceof Error && e.message === 'PIPELINE_CANCELLED') throw e;
@@ -545,7 +542,7 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       const allAssetsSuccess = project.scenes.every(s => s.status === 'completed' || s.status === 'degraded');
 
       if (!allAssetsSuccess) {
-         await validateProjectAssets(project, signal);
+         await validateProjectAssets(project, signal, characterAnchors);
       }
       
       const finalCheckSuccess = project.scenes.every(s => s.status === 'completed' || s.status === 'degraded');
@@ -600,7 +597,7 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
 }
 
 
-export async function processSingleScene(scene: Scene, project: Project, voicePreset: string, isPreview: boolean, isTestMode: boolean, signal?: AbortSignal) {
+export async function processSingleScene(scene: Scene, project: Project, voicePreset: string, isPreview: boolean, isTestMode: boolean, signal?: AbortSignal, characterAnchors: Map<string, string> = new Map()) {
   // Check for cancellation at start of scene
   if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
 
@@ -645,6 +642,13 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
         }
         v.cache_key = '';
         console.log('[Orchestrator] LoRA generation for:', charName, 'model:', matchedChar.loraModelUrl.slice(-40));
+        // Additive: anchor feeds LoRA fallback path (Imagen 4) if Replicate fails
+        const loraAnchorKey = charName + '_' + project.project_id!;
+        const loraAnchorUrl = characterAnchors.get(loraAnchorKey);
+        if (loraAnchorUrl) {
+          v.referenceImageUrl = loraAnchorUrl;
+          console.log('[Orchestrator] Anchor set as LoRA fallback reference for:', charName);
+        }
       } else {
         // No LoRA — use anchor from a previous scene, or fall back to the static reference image.
         // Anchor = first successfully generated image for this character this run (local path).
@@ -849,7 +853,7 @@ export async function cleanupAssets(project: Project) {
   console.log(`[Orchestrator] Pipeline complete — local temp assets will be garbage-collected by OS for project ${project.project_id}`);
 }
 
-export async function validateProjectAssets(project: Project, signal?: AbortSignal) {
+export async function validateProjectAssets(project: Project, signal?: AbortSignal, characterAnchors: Map<string, string> = new Map()) {
   console.log(`[Orchestrator] Validating project assets...`);
   let missing = false;
   for (const scene of project.scenes) {
@@ -865,7 +869,7 @@ export async function validateProjectAssets(project: Project, signal?: AbortSign
       for (const scene of failedScenes) {
          if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
          try {
-            await processSingleScene(scene, project, 'default_preset', project.preview_mode || false, false, signal);
+            await processSingleScene(scene, project, 'default_preset', project.preview_mode || false, false, signal, characterAnchors);
          } catch (e) {
             console.error(`Recovery generation failed for scene ${scene.scene_id}:`, e);
             scene.status = 'failed';
@@ -964,11 +968,20 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
         console.warn('[Orchestrator] Compression failed, will upload original:', compErr?.message);
       }
 
-      // Upload to Supabase
+      // Upload to Supabase videos bucket via direct client
       let finalUrl = '';
       try {
+        const supaUrl = process.env.SUPABASE_URL;
+        const supaKey = process.env.SUPABASE_SERVICE_KEY;
+        if (!supaUrl || !supaKey) throw new Error('SUPABASE_URL / SUPABASE_SERVICE_KEY not set');
+        const supa = createClient(supaUrl, supaKey);
+        const filePath = `projects/${activeProject.project_id!}/${fileName}`;
         const fileData = fs.readFileSync(uploadPath);
-        finalUrl = await FirestoreService.uploadAsset(activeProject.project_id!, fileName, fileData, 'video/mp4');
+        const { error: upErr } = await supa.storage.from('videos').upload(filePath, fileData, { contentType: 'video/mp4', upsert: true });
+        if (upErr) throw upErr;
+        const { data: urlData } = supa.storage.from('videos').getPublicUrl(filePath);
+        finalUrl = urlData.publicUrl;
+        console.log('[Orchestrator] Supabase upload complete:', finalUrl.slice(-60));
         if (stitchedVideoPath.startsWith(os.tmpdir())) {
           fs.promises.unlink(stitchedVideoPath).catch(() => {});
         }
