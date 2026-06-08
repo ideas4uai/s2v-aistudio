@@ -82,7 +82,12 @@ export async function loadProject(project_id: string): Promise<Project> {
 export async function saveProjectState(project: Project): Promise<void> {
   const errorMsg = project.error_log ? ` ErrorLog: ${project.error_log}.` : '';
   console.log(`[DB] Saving project state for ${project.project_id}. Status: ${project.status}.${errorMsg} Scenes count: ${project.scenes?.length || 0}`);
-  
+
+  if (process.env.DISABLE_FIRESTORE === 'true') {
+    console.log('[DB] DISABLE_FIRESTORE=true — skipping Firestore write (in-memory only)');
+    return;
+  }
+
   try {
      project.updated_at = new Date();
      await FirestoreService.saveProject(project);
