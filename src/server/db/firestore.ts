@@ -129,13 +129,14 @@ export const FirestoreService = {
       const fields = jsonToFirestore(dataToSave).mapValue.fields;
       const updateMaskParams = Object.keys(fields).map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
       const { url: authUrl, headers: authHeaders } = withAuth(`${url}?${updateMaskParams}`, token);
+      console.log('[Firestore] PATCH URL:', authUrl.replace(apiKey, apiKey.slice(0, 8) + '...'));
 
       const res = await fetch(authUrl, {
          method: 'PATCH',
          headers: { ...authHeaders, 'Content-Type': 'application/json' },
          body: JSON.stringify({ name: `projects/${projectId}/databases/${databaseId}/documents/${docPath}`, fields })
       });
-      
+
       if (!res.ok) {
          const errorText = await res.text();
          throw new Error(`REST Error ${res.status}: ${errorText}`);

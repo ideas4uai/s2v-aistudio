@@ -33,6 +33,8 @@ import { WorldAgent } from './agents/worldAgent.js';
 import { abortManager } from './abortManager.js';
 import { requestContext } from '../server/utils/context.js';
 
+const INDIAN_AESTHETIC_SUFFIX = 'anime flat colour style, Trigger Studio quality, Indian urban architecture, warm terracotta and saffron accents, Hyderabad cyberpunk 2031, South Asian street aesthetics, holographic signs with Hindi text, NOT Japanese anime, warm monsoon city atmosphere, teal and saffron colour palette, chai shop neon, autorickshaws with data overlays';
+
 async function downloadFile(url: string, destPath: string): Promise<void> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`downloadFile failed: ${res.status} ${url}`);
@@ -627,7 +629,9 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
         const v = scene.visuals[0] as any;
         v.loraModelUrl = matchedChar.loraModelUrl;
         v.loraTriggerWord = triggerWord;
-        v.prompt = `${triggerWord} ` + (v.prompt || '');
+        if (!(v.prompt || '').includes(triggerWord)) {
+          v.prompt = `${triggerWord} ` + (v.prompt || '');
+        }
         v.cache_key = '';
         console.log('[Orchestrator] LoRA generation for:', charName, 'model:', matchedChar.loraModelUrl.slice(-40));
       } else if (imageUrl) {
@@ -666,7 +670,10 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
 
   if (scene.background_prompt && !scene.background_path) {
     try {
-      const bgBase64 = await AIService.generateImageBase64(scene.background_prompt, { isStoryEpisode: true });
+      const bgArtStyle = (project.universe as any)?.backgroundArtStyle || '';
+      const fullBgPrompt = [scene.background_prompt, INDIAN_AESTHETIC_SUFFIX, bgArtStyle].filter(Boolean).join(', ');
+      console.log('[Orchestrator] Background full prompt:', fullBgPrompt.slice(0, 120));
+      const bgBase64 = await AIService.generateImageBase64(fullBgPrompt, { isStoryEpisode: true });
       if (bgBase64) {
         const bgBuffer = Buffer.from(bgBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
         fs.writeFileSync(bgLocalPath, bgBuffer);

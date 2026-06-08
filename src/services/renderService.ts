@@ -103,7 +103,7 @@ async function callSceneAnimatorV3(
       '--duration',   duration.toString(),
       '--emotion',    emotion,
       '--scene_type', sceneType,
-      '--fps',        '24',
+      '--fps',        '12',
       '--width',      '1080',
       '--height',     '1920',
     ];

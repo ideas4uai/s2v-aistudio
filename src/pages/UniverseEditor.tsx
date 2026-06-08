@@ -661,6 +661,17 @@ export function UniverseEditor() {
                   />
                   <p className="text-xs text-neutral-400 mt-1">This description is injected into every image prompt</p>
                 </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-bold text-neutral-700 mb-2">Background Art Style</label>
+                  <textarea
+                    rows={2}
+                    className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm resize-none"
+                    placeholder="Additional style for background images (appended to scene background prompts)"
+                    value={universe.backgroundArtStyle || ''}
+                    onChange={e => setUniverse((u: any) => ({ ...u, backgroundArtStyle: e.target.value }))}
+                  />
+                  <p className="text-xs text-neutral-400 mt-1">Appended to every background prompt — use for world-specific visual aesthetic</p>
+                </div>
                 <div>
                   <label className="block text-sm font-bold text-neutral-700 mb-2">Episode Structure</label>
                   <input
