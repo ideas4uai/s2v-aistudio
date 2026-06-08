@@ -81,7 +81,7 @@ async function generateImageWithLoRA(
     }
 
     const input = {
-      prompt: `${triggerWord} ${prompt}`,
+      prompt: prompt,
       num_inference_steps: 28,
       guidance_scale: 3.5,
       aspect_ratio: aspectRatio,
@@ -275,7 +275,8 @@ export const AIService = {
     const isStoryEpisode = options?.isStoryEpisode;
     const isLandscape = !isStoryEpisode && options?.aspectRatio === '16:9';
     const aspectRatio = isLandscape ? '16:9' : '9:16';
-    const isAnime = prompt.includes('anime') || prompt.includes('Trigger Studio') || prompt.includes('flat colour');
+    const isAnime = prompt.includes('anime') || prompt.includes('Trigger Studio') || prompt.includes('flat colour') ||
+      prompt.includes('South Asian') || prompt.includes('graphic novel') || prompt.includes('Indian');
     const qualityPrompt = (prompt.includes('photorealistic') || isAnime)
       ? prompt
       : `${prompt}, photorealistic, cinematic lighting, sharp focus`;

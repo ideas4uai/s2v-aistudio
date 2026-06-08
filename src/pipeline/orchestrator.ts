@@ -5,7 +5,7 @@ import { calculateQualityScore } from '../services/qualityService.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import os from 'os';
-import { exec, execSync } from 'child_process';
+import { exec, execSync, spawn } from 'child_process';
 import { promisify } from 'util';
 import ffmpegStatic from 'ffmpeg-static';
 
@@ -33,7 +33,12 @@ import { WorldAgent } from './agents/worldAgent.js';
 import { abortManager } from './abortManager.js';
 import { requestContext } from '../server/utils/context.js';
 
-const INDIAN_AESTHETIC_SUFFIX = 'anime flat colour style, Trigger Studio quality, Indian urban architecture, warm terracotta and saffron accents, Hyderabad cyberpunk 2031, South Asian street aesthetics, holographic signs with Hindi text, NOT Japanese anime, warm monsoon city atmosphere, teal and saffron colour palette, chai shop neon, autorickshaws with data overlays';
+// Cross-scene character anchor: stores first successful generation per character per run.
+// Key: "CHARNAME_projectId". Cleared at pipeline start. Used to feed Imagen 4 a reference
+// image for non-LoRA characters so subsequent scenes stay visually consistent.
+const characterAnchors = new Map<string, string>();
+
+const INDIAN_AESTHETIC_SUFFIX = 'South Asian graphic novel illustration style, Hyderabad cyberpunk city 2031, warm terracotta and saffron architecture, teal neon accents, Indian street culture, autorickshaws with holographic overlays, Hindi signage, chai stall neon lights, bold flat colour illustration, Trigger Studio quality, NOT Japanese, NOT manga, NOT Tokyo aesthetic, South Asian urban environment';
 
 async function downloadFile(url: string, destPath: string): Promise<void> {
   const res = await fetch(url);
@@ -386,6 +391,7 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
     console.log('[Orchestrator] Cleared local render paths and Stage 2 paths — will re-render all visual clips');
 
     // Reset cancellation if starting fresh
+    characterAnchors.clear();
     project.is_cancelled = false;
     project.logs = [];
     await updateProgress(project, 'Initializing pipeline...', 5, signal);
@@ -640,9 +646,18 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
         v.cache_key = '';
         console.log('[Orchestrator] LoRA generation for:', charName, 'model:', matchedChar.loraModelUrl.slice(-40));
       } else {
-        // No LoRA — fall through to Imagen 4 with the scene visual prompt.
-        // Reference photo bypass removed: photorealistic faces break anime composites.
-        console.log('[Orchestrator] No LoRA for', charName, '— Imagen 4 will generate from visual prompt');
+        // No LoRA — use anchor from a previous scene, or fall back to the static reference image.
+        // Anchor = first successfully generated image for this character this run (local path).
+        // Reference = character's uploaded reference photo (Supabase URL).
+        const charKey = charName + '_' + project.project_id!;
+        const anchorUrl = characterAnchors.get(charKey);
+        const refUrl = anchorUrl || matchedChar.referenceImageUrl || (matchedChar as any).imageUrl;
+        if (refUrl) {
+          (scene.visuals[0] as any).referenceImageUrl = refUrl;
+          console.log('[Orchestrator]', anchorUrl ? 'Using anchor for:' : 'Reference image set for:', charName, refUrl.slice(-40));
+        } else {
+          console.log('[Orchestrator] No LoRA, no reference for:', charName, '— text prompt only');
+        }
       }
     }
   }
@@ -746,6 +761,15 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
        if (localAsset) {
           visual.asset_path = localAsset;
           if (i === 0 && !localAsset.endsWith('.mp4')) scene.image_path = localAsset;
+          // Store as anchor for subsequent scenes of the same character
+          const sceneCharName = (scene as any).character as string | undefined;
+          if (sceneCharName && sceneCharName !== 'NARRATOR' && i === 0) {
+            const charKey = sceneCharName + '_' + project.project_id!;
+            if (!characterAnchors.has(charKey)) {
+              characterAnchors.set(charKey, localAsset);
+              console.log('[Orchestrator] Anchor stored for:', sceneCharName);
+            }
+          }
        }
      }
      visual.status = 'completed'; // image ready; clip rendered after audio finishes
@@ -908,18 +932,49 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
       
       const fileName = isPreview ? `${activeProject.project_id}_preview.mp4` : `${activeProject.project_id}.mp4`;
       
-      // Upload final video to GCS directly from stitched path
+      // Save local backup first — survives Supabase failures and server restarts
+      const outputsDir = path.join(process.cwd(), 'outputs');
+      fs.mkdirSync(outputsDir, { recursive: true });
+      const backupPath = path.join(outputsDir, `${project_id}.mp4`);
+      try {
+        fs.copyFileSync(stitchedVideoPath, backupPath);
+        console.log('[Orchestrator] Local backup saved:', backupPath);
+      } catch (backupErr: any) {
+        console.warn('[Orchestrator] Backup copy failed (non-fatal):', backupErr?.message);
+      }
+
+      // Compress to stay under Supabase 50MB object limit
+      const compressedPath = stitchedVideoPath.replace('.mp4', '_upload.mp4');
+      let uploadPath = stitchedVideoPath;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const proc = spawn(ffmpegPath, [
+            '-i', stitchedVideoPath,
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '28',
+            '-c:a', 'aac', '-b:a', '128k',
+            '-y', compressedPath,
+          ]);
+          proc.on('close', code => code === 0 ? resolve() : reject(new Error(`compress exit ${code}`)));
+          proc.on('error', reject);
+        });
+        const sizeMB = fs.statSync(compressedPath).size / 1024 / 1024;
+        console.log('[Orchestrator] Compressed for upload:', sizeMB.toFixed(1), 'MB');
+        uploadPath = compressedPath;
+      } catch (compErr: any) {
+        console.warn('[Orchestrator] Compression failed, will upload original:', compErr?.message);
+      }
+
+      // Upload to Supabase
       let finalUrl = '';
       try {
-         const fileData = await fs.promises.readFile(stitchedVideoPath);
-         finalUrl = await FirestoreService.uploadAsset(activeProject.project_id!, fileName, fileData, 'video/mp4');
-         
-         // Delete stitched temp file
-         if (stitchedVideoPath.startsWith(os.tmpdir())) {
-            fs.promises.unlink(stitchedVideoPath).catch(() => {});
-         }
+        const fileData = fs.readFileSync(uploadPath);
+        finalUrl = await FirestoreService.uploadAsset(activeProject.project_id!, fileName, fileData, 'video/mp4');
+        if (stitchedVideoPath.startsWith(os.tmpdir())) {
+          fs.promises.unlink(stitchedVideoPath).catch(() => {});
+        }
+        if (uploadPath !== stitchedVideoPath) fs.promises.unlink(uploadPath).catch(() => {});
       } catch (err) {
-         console.error('Failed to upload final output video', err);
+        console.error('[Orchestrator] Supabase upload failed — local backup at:', backupPath, err);
       }
 
       // Extract thumbnail from final video (best frame at 1.5s hook moment)
@@ -959,9 +1014,9 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
       }
 
       if (isPreview) {
-        activeProject.preview_video_path = finalUrl || stitchedVideoPath;
+        activeProject.preview_video_path = finalUrl || backupPath;
       } else {
-        activeProject.output_path = finalUrl || stitchedVideoPath;
+        activeProject.output_path = finalUrl || backupPath;
       }
       activeProject.completed_at = new Date();
       
