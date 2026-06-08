@@ -634,17 +634,10 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
         }
         v.cache_key = '';
         console.log('[Orchestrator] LoRA generation for:', charName, 'model:', matchedChar.loraModelUrl.slice(-40));
-      } else if (imageUrl) {
-        scene.visuals = [{
-          ...(scene.visuals[0] || {}),
-          prompt: scene.visuals[0]?.prompt || '',
-          asset_type: 'ai_image' as any,
-          status: 'completed' as any,
-          url: imageUrl,
-          asset_path: imageUrl,
-        }] as any;
-        console.log('[Orchestrator] BYPASS: character scene', charName, 'using', poseUrl ? 'pose library' : 'reference image', '— Imagen 4 SKIPPED');
-        console.log('[Orchestrator] Character scene:', charName, '→', poseUrl ? 'pose' : 'reference', imageUrl.slice(-40));
+      } else {
+        // No LoRA — fall through to Imagen 4 with the scene visual prompt.
+        // Reference photo bypass removed: photorealistic faces break anime composites.
+        console.log('[Orchestrator] No LoRA for', charName, '— Imagen 4 will generate from visual prompt');
       }
     }
   }

@@ -80,7 +80,15 @@ async function generateImageWithLoRA(
       return null;
     }
 
-    const input = { prompt: `${triggerWord} ${prompt}`, num_inference_steps: 28, guidance_scale: 3.5, aspect_ratio: aspectRatio, output_format: 'jpg' };
+    const input = {
+      prompt: `${triggerWord} ${prompt}`,
+      num_inference_steps: 28,
+      guidance_scale: 3.5,
+      aspect_ratio: aspectRatio,
+      output_format: 'jpg',
+      lora_scale: 0.85,
+      negative_prompt: 'orange hair, blonde, white hair, pale skin, blue eyes, European, Japanese, Korean features, non-Indian appearance, red hair',
+    };
 
     // Use version-based endpoint when we have a full hash; model-based when we only have owner/name
     let predUrl: string;
