@@ -567,6 +567,11 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
 
     if (project.status === 'stitching_video') {
        await updateProgress(project, 'Stitching scenes together into final video...', 85, signal);
+       console.log('[DEBUG] project object id check:',
+         project.scenes[0]?.scene_id,
+         'segment_path:', (project.scenes[0] as any)?.segment_path,
+         'status:', project.scenes[0]?.status
+       );
        await concatFinalVideo(project_id, isPreview, signal, project);
 
        if (signal.aborted) throw new Error('PIPELINE_CANCELLED');
@@ -888,7 +893,11 @@ export async function validateProjectAssets(project: Project, signal?: AbortSign
 
 export async function concatFinalVideo(project_id: string, isPreview: boolean = false, signal?: AbortSignal, inMemoryProject?: Project): Promise<void> {
   const activeProject = inMemoryProject ?? await loadProject(project_id);
-  
+  console.log('[DEBUG] activeProject scenes[0]:',
+    activeProject.scenes[0]?.scene_id,
+    'segment_path:', (activeProject.scenes[0] as any)?.segment_path,
+    'status:', activeProject.scenes[0]?.status
+  );
   try {
     // 1. Get ordered scenes and 2. Collect scene.segment_path
     const sortedScenes = [...activeProject.scenes].sort((a, b) => a.order - b.order);
