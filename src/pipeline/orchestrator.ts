@@ -518,6 +518,14 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
             console.error(`Scene ${scene.scene_id} failed:`, e);
             scene.status = 'failed';
           }
+          // Explicitly sync mutated fields back to project.scenes to guard against
+          // reference drift (e.g. renderCaptions returning undefined overwrites segment_path).
+          const idx = project!.scenes.findIndex(s => s.scene_id === scene.scene_id);
+          if (idx !== -1) {
+            (project!.scenes[idx] as any).segment_path = (scene as any).segment_path;
+            project!.scenes[idx].status = scene.status;
+            (project!.scenes[idx] as any).rendered_path = (scene as any).rendered_path;
+          }
         };
 
         // Stage 2 scenes (background_prompt set) spawn rembg + Metro engine —
@@ -887,8 +895,23 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
     const finalScenes = [];
     const downloadedPaths: string[] = [];
 
+    const aisRendererDir = path.join(os.tmpdir(), 'ais-renderer');
+
     console.log('[Stitch] Total scenes:', sortedScenes.length);
     for (const scene of sortedScenes) {
+      // Resolve disk path as fallback when in-memory path is stale
+      const diskCaptioned = path.join(aisRendererDir, `${scene.scene_id}_captioned.mp4`);
+      const diskSegment = path.join(aisRendererDir, `${scene.scene_id}_segment.mp4`);
+      const diskPath = fs.existsSync(diskCaptioned) ? diskCaptioned : (fs.existsSync(diskSegment) ? diskSegment : undefined);
+      if (!scene.segment_path && diskPath) {
+        console.log('[Stitch] Recovering segment from disk for scene:', scene.scene_id, path.basename(diskPath));
+        (scene as any).segment_path = diskPath;
+        (scene as any).rendered_path = diskPath;
+      }
+      if (scene.status !== 'completed' && scene.status !== 'degraded' && diskPath) {
+        console.log('[Stitch] Recovering status to completed for scene:', scene.scene_id, '(was:', scene.status + ')');
+        scene.status = 'completed';
+      }
       console.log('[Stitch] Scene:', scene.scene_id,
         'status:', scene.status,
         'rendered_path:', scene.rendered_path?.substring(0, 60),
