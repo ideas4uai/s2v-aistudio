@@ -98,6 +98,12 @@ export interface Scene {
   background_url?: string;
   transparent_path?: string;
 
+  // Metro V4: unified full-scene LoRA generation (char + bg in one image,
+  // rembg skipped) and neighbour scene types for split-half transitions
+  unified?: boolean;
+  prev_scene_type?: string;
+  next_scene_type?: string;
+
   // Source-aware generation metadata
   primarySubject?: string;
   location?: string;

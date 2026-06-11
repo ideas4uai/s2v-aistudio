@@ -91,10 +91,16 @@ async function callSceneAnimatorV3(
   duration: number,
   emotion: string = 'neutral',
   sceneType: string = 'street',
-  _ffmpegPath: string
+  _ffmpegPath: string,
+  opts: { prevSceneType?: string; nextSceneType?: string } = {}
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    const scriptPath = path.join(process.cwd(), 'src/scripts/scene_animator_v3.py');
+    const useV4 = process.env.USE_METRO_V4 === 'true';
+    const scriptPath = path.join(
+      process.cwd(),
+      useV4 ? 'src/scripts/metro_engine_v4.py' : 'src/scripts/scene_animator_v3.py'
+    );
+    const fps = useV4 ? (process.env.METRO_V4_FPS || '24') : '12';
     const args = [
       scriptPath,
       '--background', backgroundPath,
@@ -103,14 +109,18 @@ async function callSceneAnimatorV3(
       '--duration',   duration.toString(),
       '--emotion',    emotion,
       '--scene_type', sceneType,
-      '--fps',        '12',
+      '--fps',        fps,
       '--width',      '1080',
       '--height',     '1920',
     ];
+    if (useV4) {
+      args.push('--prev_scene_type', opts.prevSceneType || '');
+      args.push('--next_scene_type', opts.nextSceneType || '');
+    }
 
-    console.log('[SceneAnimV3] Starting Metro engine');
+    console.log(`[SceneAnimV3] Starting Metro engine (${useV4 ? 'V4' : 'v3'}, ${fps}fps)`);
     console.log('[SceneAnimV3] Background:', path.basename(backgroundPath));
-    console.log('[SceneAnimV3] Character:', path.basename(characterPath));
+    console.log('[SceneAnimV3] Character:', characterPath ? path.basename(characterPath) : 'none (unified)');
     console.log('[SceneAnimV3] Duration:', duration, 's');
     console.log('[SceneAnimV3] Emotion:', emotion);
 
@@ -437,7 +447,9 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           }
 
           // Stage 2 prep: run rembg if background_path exists
-          if (scene?.background_path && fs.existsSync(scene.background_path)) {
+          // (skipped for unified scenes — the LoRA image already contains the
+          // character in the scene, there is nothing to cut out)
+          if (!scene?.unified && scene?.background_path && fs.existsSync(scene.background_path)) {
             const sceneId = scene.scene_id || visual.visual_id;
             const transparentPath = path.join(tmpDir, `${sceneId}_transparent.png`);
             if (!fs.existsSync(transparentPath)) {
@@ -455,6 +467,33 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
             }
           }
 
+          // Unified scenes (Metro V4): the LoRA image IS the full scene —
+          // animate it directly with no character layer.
+          if (scene?.unified && process.env.USE_METRO_V4 === 'true' && imagePath && fs.existsSync(imagePath)) {
+            console.log('[RenderVisual] Unified scene: animating full LoRA image with Metro V4');
+            const sceneId = scene.scene_id || visual.visual_id;
+            const unifiedPath = path.join(tmpDir, `${sceneId}_composited.mp4`);
+            const unifiedSuccess = await callSceneAnimatorV3(
+              imagePath, '', unifiedPath,
+              audioDuration && audioDuration > 0 ? audioDuration : duration,
+              scene.emotion || 'neutral',
+              scene.scene_type || 'street',
+              ffmpeg as string,
+              { prevSceneType: scene.prev_scene_type, nextSceneType: scene.next_scene_type }
+            );
+            if (unifiedSuccess) {
+              fs.copyFileSync(unifiedPath, outputPath);
+              scene.rendered_path = outputPath;
+              try {
+                if (fs.existsSync(animatedPath)) fs.unlinkSync(animatedPath);
+                if (fs.existsSync(unifiedPath)) fs.unlinkSync(unifiedPath);
+              } catch { /* non-fatal */ }
+              console.log('[RenderVisual] Unified render complete');
+              return outputPath;
+            }
+            console.log('[RenderVisual] Unified render failed — falling back to Stage 1/2');
+          }
+
           // Stage 2 compositing decision
           if (scene?.transparent_path && fs.existsSync(scene.transparent_path) &&
               scene?.background_path && fs.existsSync(scene.background_path)) {
@@ -467,7 +506,8 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
               audioDuration && audioDuration > 0 ? audioDuration : duration,
               scene.emotion || 'neutral',
               scene.scene_type || 'street',
-              ffmpegBin
+              ffmpegBin,
+              { prevSceneType: scene.prev_scene_type, nextSceneType: scene.next_scene_type }
             );
             if (compositeSuccess) {
               console.log('[RenderVisual] Composite succeeded — writing to output');

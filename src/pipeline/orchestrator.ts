@@ -614,6 +614,16 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   // Check for cancellation at start of scene
   if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
 
+  // Stamp neighbour scene types so Metro V4 can render its half of each
+  // cross-scene transition (clips are stitched with concat -c copy, so each
+  // clip must self-contain its side of the boundary).
+  {
+    const ordered = [...project.scenes].sort((a, b) => a.order - b.order);
+    const sIdx = ordered.findIndex(s => s.scene_id === scene.scene_id);
+    (scene as any).prev_scene_type = sIdx > 0 ? ((ordered[sIdx - 1] as any).scene_type || '') : '';
+    (scene as any).next_scene_type = (sIdx >= 0 && sIdx < ordered.length - 1) ? ((ordered[sIdx + 1] as any).scene_type || '') : '';
+  }
+
   scene.stage = 'audio_and_visuals';
   if (!scene.audio_hash) scene.audio_hash = generateAudioHash(scene.narration_text, voicePreset, (scene as any).character);
   
@@ -654,6 +664,17 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
           v.prompt = `${triggerWord} ` + (v.prompt || '');
         }
         v.cache_key = '';
+        // Unified full-scene generation (Metro V4 path): one LoRA image that
+        // contains character AND background — no separate BG gen, no rembg.
+        if (process.env.UNIFIED_SCENES === 'true' && charName === 'VEER' && scene.background_prompt) {
+          const sceneDesc = (v.prompt || '')
+            .split(triggerWord).join('')
+            .replace(/^[,\s]+/, '')
+            .trim();
+          v.prompt = `${triggerWord} ${sceneDesc}, ${scene.background_prompt}, South Asian graphic novel illustration style, Trigger Studio quality, flat colour, NOT photorealistic`;
+          (scene as any).unified = true;
+          console.log('[Orchestrator] Unified scene generation enabled for:', charName);
+        }
         console.log('[Orchestrator] LoRA generation for:', charName, 'model:', matchedChar.loraModelUrl.slice(-40));
         // Additive: anchor feeds LoRA fallback path (Imagen 4) if Replicate fails
         const loraAnchorKey = charName + '_' + project.project_id!;
@@ -685,7 +706,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   if (!fs.existsSync(bgTmpDir)) fs.mkdirSync(bgTmpDir, { recursive: true });
   const bgLocalPath = path.join(bgTmpDir, `${scene.scene_id}_background.png`);
 
-  if (scene.background_prompt && !scene.background_path && scene.background_url) {
+  if (scene.background_prompt && !scene.background_path && scene.background_url && !(scene as any).unified) {
     // Background already in Supabase from a prior run — re-download instead of regenerating
     try {
       console.log('[Orchestrator] Background cached in Supabase — re-downloading');
@@ -698,7 +719,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
     }
   }
 
-  if (scene.background_prompt && !scene.background_path) {
+  if (scene.background_prompt && !scene.background_path && !(scene as any).unified) {
     try {
       const bgArtStyle = (project.universe as any)?.backgroundArtStyle || '';
       const fullBgPrompt = [scene.background_prompt, INDIAN_AESTHETIC_SUFFIX, bgArtStyle].filter(Boolean).join(', ');
@@ -778,13 +799,27 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
        if (localAsset) {
           visual.asset_path = localAsset;
           if (i === 0 && !localAsset.endsWith('.mp4')) scene.image_path = localAsset;
-          // Store as anchor for subsequent scenes of the same character
+          // Store as anchor for subsequent scenes of the same character.
+          // Must be a public URL — consumers pass it to fetch() in aiService,
+          // which fails on local file paths.
           const sceneCharName = (scene as any).character as string | undefined;
-          if (sceneCharName && sceneCharName !== 'NARRATOR' && i === 0) {
+          if (sceneCharName && sceneCharName !== 'NARRATOR' && i === 0 && !localAsset.endsWith('.mp4')) {
             const charKey = sceneCharName + '_' + project.project_id!;
             if (!characterAnchors.has(charKey)) {
-              characterAnchors.set(charKey, localAsset);
-              console.log('[Orchestrator] Anchor stored for:', sceneCharName);
+              try {
+                const anchorUrl = await FirestoreService.uploadAsset(
+                  project.project_id!,
+                  `anchors/${sceneCharName}_anchor.png`,
+                  fs.readFileSync(localAsset),
+                  'image/png'
+                );
+                characterAnchors.set(charKey, anchorUrl);
+                console.log('[Orchestrator] Anchor uploaded for:', sceneCharName, anchorUrl.slice(-50));
+              } catch (anchorErr: any) {
+                // Do NOT store the local path — a non-URL anchor poisons the
+                // fetch() in aiService's reference-image path.
+                console.warn('[Orchestrator] Anchor upload failed for:', sceneCharName, anchorErr?.message);
+              }
             }
           }
        }
