@@ -24,6 +24,8 @@ import { requestContext } from './src/server/utils/context.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+console.log('[STARTUP] USE_METRO_V4:', process.env.USE_METRO_V4 ?? 'not set');
+
 async function seedTemplates() {
   try {
     const templatesCol = fdb.collection('templates');
