@@ -86,7 +86,7 @@ async function generateImageWithLoRA(
       guidance_scale: 3.5,
       aspect_ratio: aspectRatio,
       output_format: 'jpg',
-      lora_scale: 0.85,
+      lora_scale: 0.9,
       negative_prompt: 'orange hair, blonde, white hair, pale skin, blue eyes, European, Japanese, Korean features, non-Indian appearance, red hair',
     };
 

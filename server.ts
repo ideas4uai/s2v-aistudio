@@ -111,7 +111,7 @@ async function startServer() {
   // ONE-TIME FIX — remove after confirmed working
   // Overwrites stale training artifact URL for Veer with correct model string
   try {
-    const VEER_CORRECT_URL = 'ideas4uai/veer-lora:89d90f9c515860905260f4da9f09d01ca12f8e9cdd3479ee8970a3d4173e7a32';
+    const VEER_CORRECT_URL = 'ideas4uai/veer-lora:f76d11d517536db7637fc44f9165eac5618fdad1eaa1d7404275c7f50348fd02';
     await new Promise<void>((resolve) => {
       requestContext.run({ token: '__dev__' }, async () => {
         try {
