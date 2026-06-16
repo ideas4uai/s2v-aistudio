@@ -92,15 +92,26 @@ async function callSceneAnimatorV3(
   emotion: string = 'neutral',
   sceneType: string = 'street',
   _ffmpegPath: string,
-  opts: { prevSceneType?: string; nextSceneType?: string } = {}
+  opts: {
+    prevSceneType?: string;
+    nextSceneType?: string;
+    renderMode?: string;
+    characterName?: string;
+    audioPath?: string;
+  } = {}
 ): Promise<boolean> {
   return new Promise((resolve) => {
     const useV4 = process.env.USE_METRO_V4 === 'true';
+    // Doraemon Engine: cutout limited-animation path. Only active when the flag
+    // is set AND the scene asked for it — otherwise behaviour is unchanged.
+    const useDoraemon = process.env.USE_DORAEMON === 'true' && opts.renderMode === 'cutout';
     const scriptPath = path.join(
       process.cwd(),
-      useV4 ? 'src/scripts/metro_engine_v4.py' : 'src/scripts/scene_animator_v3.py'
+      useDoraemon ? 'src/scripts/doraemon_engine.py'
+        : useV4 ? 'src/scripts/metro_engine_v4.py'
+        : 'src/scripts/scene_animator_v3.py'
     );
-    const fps = useV4 ? (process.env.METRO_V4_FPS || '24') : '12';
+    const fps = (useV4 || useDoraemon) ? (process.env.METRO_V4_FPS || '24') : '12';
     const args = [
       scriptPath,
       '--background', backgroundPath,
@@ -113,12 +124,24 @@ async function callSceneAnimatorV3(
       '--width',      '1080',
       '--height',     '1920',
     ];
-    if (useV4) {
+    if (useV4 || useDoraemon) {
+      // Both engines accept (and tolerate) neighbour scene types.
       args.push('--prev_scene_type', opts.prevSceneType || '');
       args.push('--next_scene_type', opts.nextSceneType || '');
     }
+    if (useDoraemon) {
+      const charName = (opts.characterName || 'veer').toLowerCase();
+      args.push('--character_name', charName);
+      args.push('--parts_dir', path.join(process.cwd(), 'assets', 'characters', charName));
+      args.push('--render_mode', 'cutout');
+      // Audio drives lip-sync; without it the engine renders a static wide shot.
+      if (opts.audioPath && fs.existsSync(opts.audioPath)) {
+        args.push('--audio', opts.audioPath);
+      }
+    }
 
-    console.log(`[SceneAnimV3] Starting Metro engine (${useV4 ? 'V4' : 'v3'}, ${fps}fps)`);
+    const engineLabel = useDoraemon ? 'Doraemon' : useV4 ? 'V4' : 'v3';
+    console.log(`[SceneAnimV3] Starting Metro engine (${engineLabel}, ${fps}fps)`);
     console.log('[SceneAnimV3] Background:', path.basename(backgroundPath));
     console.log('[SceneAnimV3] Character:', characterPath ? path.basename(characterPath) : 'none (unified)');
     console.log('[SceneAnimV3] Duration:', duration, 's');
@@ -467,6 +490,44 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
             }
           }
 
+          // Cutout scenes (Doraemon Engine): render the talking-head / walk
+          // limited-animation directly over the background from pre-built part
+          // PNGs. Gated on USE_DORAEMON so the pipeline is untouched when off.
+          if (process.env.USE_DORAEMON === 'true' && scene?.render_mode === 'cutout') {
+            const cutoutBg = (scene.background_path && fs.existsSync(scene.background_path))
+              ? scene.background_path : imagePath;
+            if (cutoutBg && fs.existsSync(cutoutBg)) {
+              console.log('[RenderVisual] Cutout scene: rendering with Doraemon Engine');
+              const sceneId = scene.scene_id || visual.visual_id;
+              const cutoutPath = path.join(tmpDir, `${sceneId}_composited.mp4`);
+              const cutoutSuccess = await callSceneAnimatorV3(
+                cutoutBg, '', cutoutPath,
+                audioDuration && audioDuration > 0 ? audioDuration : duration,
+                scene.emotion || 'neutral',
+                scene.scene_type || 'street',
+                ffmpeg as string,
+                {
+                  prevSceneType: scene.prev_scene_type,
+                  nextSceneType: scene.next_scene_type,
+                  renderMode: scene.render_mode,
+                  characterName: scene.character,
+                  audioPath: scene.narration_path,
+                }
+              );
+              if (cutoutSuccess) {
+                fs.copyFileSync(cutoutPath, outputPath);
+                scene.rendered_path = outputPath;
+                try {
+                  if (fs.existsSync(animatedPath)) fs.unlinkSync(animatedPath);
+                  if (fs.existsSync(cutoutPath)) fs.unlinkSync(cutoutPath);
+                } catch { /* non-fatal */ }
+                console.log('[RenderVisual] Cutout render complete');
+                return outputPath;
+              }
+              console.log('[RenderVisual] Cutout render failed — falling back to Stage 1/2');
+            }
+          }
+
           // Unified scenes (Metro V4): the LoRA image IS the full scene —
           // animate it directly with no character layer.
           if (scene?.unified && process.env.USE_METRO_V4 === 'true' && imagePath && fs.existsSync(imagePath)) {
@@ -479,7 +540,13 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
               scene.emotion || 'neutral',
               scene.scene_type || 'street',
               ffmpeg as string,
-              { prevSceneType: scene.prev_scene_type, nextSceneType: scene.next_scene_type }
+              {
+                prevSceneType: scene.prev_scene_type,
+                nextSceneType: scene.next_scene_type,
+                renderMode: scene.render_mode,
+                characterName: scene.character,
+                audioPath: scene.narration_path,
+              }
             );
             if (unifiedSuccess) {
               fs.copyFileSync(unifiedPath, outputPath);
@@ -507,7 +574,13 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
               scene.emotion || 'neutral',
               scene.scene_type || 'street',
               ffmpegBin,
-              { prevSceneType: scene.prev_scene_type, nextSceneType: scene.next_scene_type }
+              {
+                prevSceneType: scene.prev_scene_type,
+                nextSceneType: scene.next_scene_type,
+                renderMode: scene.render_mode,
+                characterName: scene.character,
+                audioPath: scene.narration_path,
+              }
             );
             if (compositeSuccess) {
               console.log('[RenderVisual] Composite succeeded — writing to output');

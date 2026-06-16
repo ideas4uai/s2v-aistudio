@@ -104,6 +104,10 @@ export interface Scene {
   prev_scene_type?: string;
   next_scene_type?: string;
 
+  // Doraemon Engine: 'cutout' routes rendering to doraemon_engine.py (portrait
+  // talking-head from pre-built character part PNGs) when USE_DORAEMON=true.
+  render_mode?: 'generative' | 'cutout';
+
   // Source-aware generation metadata
   primarySubject?: string;
   location?: string;
