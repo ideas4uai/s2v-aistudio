@@ -372,6 +372,8 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           const animatedPath = path.join(tmpDir, `${visual.visual_id}_animated.mp4`);
           const audioPath = scene?.narration_path;
           const localAudioPath = audioPath;
+          // Resolve NARRATOR flag once so every downstream guard can use it.
+          const isNarratorScene = (scene?.character || '').toUpperCase() === 'NARRATOR';
 
           // Use passed-in audio duration (probed by orchestrator after TTS completes)
           const animatorDuration = (audioDuration && audioDuration > 0) ? audioDuration : duration;
@@ -379,7 +381,8 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
 
           console.log('[RenderVisual] animatedPath:', animatedPath.slice(-50));
           console.log('[RenderVisual] isTalking:', isTalking, 'audioPath:', audioPath ? audioPath.slice(-40) : 'NONE');
-          // Always use breathing — talking effect assumes close-up face, not full-body character images
+          // NARRATOR scenes skip the character animator — imagePath is the background itself.
+          if (!isNarratorScene) {
           console.log('[RenderVisual] Calling callAnimator — effect: breathing');
           await callAnimator({
             effect: 'breathing',
@@ -406,6 +409,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
               duration: 1.5
             });
           }
+          } // end !isNarratorScene
 
           // Create video from image!
           const fps = 30;
@@ -472,7 +476,8 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           // Stage 2 prep: run rembg if background_path exists
           // (skipped for unified scenes — the LoRA image already contains the
           // character in the scene, there is nothing to cut out)
-          if (!scene?.unified && scene?.background_path && fs.existsSync(scene.background_path)) {
+          // (skipped for NARRATOR — no character to remove, imagePath IS the background)
+          if (!scene?.unified && !isNarratorScene && scene?.background_path && fs.existsSync(scene.background_path)) {
             const sceneId = scene.scene_id || visual.visual_id;
             const transparentPath = path.join(tmpDir, `${sceneId}_transparent.png`);
             if (!fs.existsSync(transparentPath)) {
@@ -539,8 +544,11 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
 
           // Unified scenes (Metro V4): the LoRA image IS the full scene —
           // animate it directly with no character layer.
+          // Also covers NARRATOR scenes where imagePath was set to background_path
+          // and scene.unified was flagged by the orchestrator.
           if (scene?.unified && process.env.USE_METRO_V4 === 'true' && imagePath && fs.existsSync(imagePath)) {
-            console.log('[RenderVisual] Unified scene: animating full LoRA image with Metro V4');
+            const unifiedLabel = isNarratorScene ? 'NARRATOR background-only' : 'Unified full-scene LoRA';
+            console.log(`[RenderVisual] ${unifiedLabel}: animating with Metro V4 (no character layer)`);
             const sceneId = scene.scene_id || visual.visual_id;
             const unifiedPath = path.join(tmpDir, `${sceneId}_composited.mp4`);
             const unifiedSuccess = await callSceneAnimatorV3(

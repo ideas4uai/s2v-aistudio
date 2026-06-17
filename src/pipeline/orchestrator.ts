@@ -767,6 +767,22 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
      }
      visual.status = 'processing';
 
+     // NARRATOR scenes never generate a character image. If a background is
+     // already available (uploaded or freshly generated above) we hand it
+     // directly to the animator as the full scene image and mark the scene
+     // unified so rembg and the Stage-2 composite are both skipped.
+     if (!charName || charName === 'NARRATOR') {
+       if (scene.background_path && fs.existsSync(scene.background_path)) {
+         visual.asset_path = scene.background_path;
+         (scene as any).unified = true;
+         console.log('[Orchestrator] NARRATOR scene — using background as full scene, skipping character generation');
+       } else {
+         console.log('[Orchestrator] NARRATOR scene — no background yet, skipping character generation (will render black)');
+       }
+       visual.status = 'completed';
+       return;
+     }
+
      if (!visual.cache_key) {
         visual.cache_key = generateVisualHash(visual.prompt, visual.asset_type, visual.duration_target, visual.motion_instruction || 'none', project.mode, project.style_profile, (visual as any).referenceImageUrl || '');
      }
