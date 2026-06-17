@@ -60,8 +60,10 @@ import numpy as np
 # ═══════════════════════════════════════════════════════════════════════════
 
 OUT_W, OUT_H = 1080, 1920
-PORTRAIT_FILL_W = 0.70          # portrait spans centre 70% of frame width
-PORTRAIT_CENTER_Y = 0.40        # portrait vertical centre, fraction of height
+PORTRAIT_FILL_W = 0.85          # portrait spans centre 85% of frame width
+PORTRAIT_CENTER_Y = 0.40        # portrait vertical centre, fraction of height (legacy)
+PORTRAIT_BOTTOM_MARGIN = 80     # gap between portrait bottom edge and frame bottom
+PORTRAIT_FADE_PX = 200          # bottom alpha ramp height (px) to hide the hard cut
 BODY_HEIGHT_FRAC = 0.65         # full-body character height, fraction of frame
 FEET_Y = 1800                   # full-body feet anchor (px)
 CENTER_X = OUT_W // 2
@@ -451,14 +453,22 @@ class DoraemonRenderer:
             return
         box = union_bbox(present)                      # shared crop -> head locked
         target_w = int(OUT_W * PORTRAIT_FILL_W)
+        # Scale once to learn the portrait height, then fade the bottom over a
+        # fixed PORTRAIT_FADE_PX band (not a fraction) so the dissolve sits at
+        # the same pixel distance from the feet regardless of crop height.
+        sample = scale_to_width(crop(present[0], box), target_w)
+        ph = sample.shape[0]
+        fade_frac = min(0.5, PORTRAIT_FADE_PX / max(1, ph))
         for k in keys:
             if k in self.parts:
                 self.portraits[k] = fade_bottom_alpha(
-                    scale_to_width(crop(self.parts[k], box), target_w))
+                    scale_to_width(crop(self.parts[k], box), target_w), frac=fade_frac)
         any_p = next(iter(self.portraits.values()))
         ph, pw = any_p.shape[:2]
-        cy = int(OUT_H * PORTRAIT_CENTER_Y)
-        self.portrait_pos = (CENTER_X - pw // 2, cy - ph // 2)
+        # Bottom-anchor: portrait bottom edge sits PORTRAIT_BOTTOM_MARGIN above
+        # the frame bottom so Veer is grounded in the scene, not floating centre.
+        top_y = OUT_H - PORTRAIT_BOTTOM_MARGIN - ph
+        self.portrait_pos = (CENTER_X - pw // 2, top_y)
 
     def _prepare_walk(self):
         wkeys = [f'walk_{i:02d}' for i in range(1, 9) if f'walk_{i:02d}' in self.parts]
