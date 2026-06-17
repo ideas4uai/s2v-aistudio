@@ -494,9 +494,18 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           // limited-animation directly over the background from pre-built part
           // PNGs. Gated on USE_DORAEMON so the pipeline is untouched when off.
           if (process.env.USE_DORAEMON === 'true' && scene?.render_mode === 'cutout') {
+            // Fallback: a character without a built parts folder (e.g. Nova,
+            // Byte) cannot be cut out — fall through to the generative LoRA
+            // path so the character still appears, rather than rendering a bare
+            // background. Warn once so the missing parts are visible in logs.
+            const cutoutChar = (scene.character || 'veer').toLowerCase();
+            const cutoutPartsDir = path.join(process.cwd(), 'assets', 'characters', cutoutChar);
+            const hasCutoutParts = fs.existsSync(cutoutPartsDir);
             const cutoutBg = (scene.background_path && fs.existsSync(scene.background_path))
               ? scene.background_path : imagePath;
-            if (cutoutBg && fs.existsSync(cutoutBg)) {
+            if (!hasCutoutParts) {
+              console.warn(`[RenderVisual] Cutout requested for "${scene.character}" but parts dir not found (${cutoutPartsDir}) — falling back to generative render`);
+            } else if (cutoutBg && fs.existsSync(cutoutBg)) {
               console.log('[RenderVisual] Cutout scene: rendering with Doraemon Engine');
               const sceneId = scene.scene_id || visual.visual_id;
               const cutoutPath = path.join(tmpDir, `${sceneId}_composited.mp4`);

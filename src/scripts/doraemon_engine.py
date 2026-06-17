@@ -620,6 +620,10 @@ def main():
         print(f'[DoraemonEngine] Loaded {len(loaded)}/{len(CANONICAL_PARTS)} character parts')
         if missing:
             print(f'[DoraemonEngine] Missing parts (using fallbacks): {", ".join(missing)}')
+    elif args.render_mode == 'cutout':
+        print(f'[DoraemonEngine] WARNING: cutout requested but parts_dir not found '
+              f'({args.parts_dir or "<empty>"}) — falling back to background-only '
+              f'generative render')
     else:
         print(f'[DoraemonEngine] Loaded 0/{len(CANONICAL_PARTS)} character parts '
               f'(no parts_dir) — background only')
