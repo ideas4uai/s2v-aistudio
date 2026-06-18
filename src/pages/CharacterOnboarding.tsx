@@ -6,6 +6,19 @@ import type { AssetResult, AssetPackResult } from '../types/character';
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
+// Defined outside to give React a stable component reference across re-renders
+function StepDot({ n, label, step }: { n: number; label: string; step: number }) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors
+        ${step === n ? 'bg-indigo-600 text-white' : step > n ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-400'}`}>
+        {step > n ? '✓' : n}
+      </div>
+      <span className={`text-xs ${step === n ? 'text-white' : 'text-gray-500'}`}>{label}</span>
+    </div>
+  );
+}
+
 const ASSET_GROUPS: Record<string, string[]> = {
   'Body Poses': ['body_neutral', 'body_talking', 'body_thinking', 'body_surprised'],
   'Mouth / Lip Sync': ['mouth_closed', 'mouth_open_a', 'mouth_open_e', 'mouth_open_o', 'mouth_smile', 'mouth_smile_open'],
@@ -151,18 +164,9 @@ export function CharacterOnboarding() {
     }
   };
 
-  // ── Step indicator ────────────────────────────────────────────────────────
-  const StepDot = ({ n, label }: { n: number; label: string }) => (
-    <div className="flex flex-col items-center gap-1">
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors
-        ${step === n ? 'bg-indigo-600 text-white' : step > n ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-400'}`}>
-        {step > n ? '✓' : n}
-      </div>
-      <span className={`text-xs ${step === n ? 'text-white' : 'text-gray-500'}`}>{label}</span>
-    </div>
-  );
-
   // ── Render ────────────────────────────────────────────────────────────────
+  console.log('[CharacterOnboarding] mounted, step:', step);
+
   return (
     <div className="min-h-screen bg-gray-950 text-white px-4 py-8">
       <div className="max-w-3xl mx-auto">
@@ -178,15 +182,15 @@ export function CharacterOnboarding() {
 
         {/* Step indicator */}
         <div className="flex items-center gap-2 mb-8">
-          <StepDot n={1} label="Images" />
+          <StepDot n={1} label="Images" step={step} />
           <div className="flex-1 h-px bg-gray-700" />
-          <StepDot n={2} label="Details" />
+          <StepDot n={2} label="Details" step={step} />
           <div className="flex-1 h-px bg-gray-700" />
-          <StepDot n={3} label="Generate" />
+          <StepDot n={3} label="Generate" step={step} />
           <div className="flex-1 h-px bg-gray-700" />
-          <StepDot n={4} label="Review" />
+          <StepDot n={4} label="Review" step={step} />
           <div className="flex-1 h-px bg-gray-700" />
-          <StepDot n={5} label="Done" />
+          <StepDot n={5} label="Done" step={step} />
         </div>
 
         {/* ── Step 1: Upload images ─────────────────────────────────────── */}
