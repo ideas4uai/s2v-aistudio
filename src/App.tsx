@@ -5,6 +5,7 @@ import { ProjectDetail } from './pages/ProjectDetail';
 import { CreateProject } from './pages/CreateProject';
 import { ProjectEditor } from './pages/ProjectEditor';
 import { UniverseEditor } from './pages/UniverseEditor';
+import { CharacterOnboarding } from './pages/CharacterOnboarding';
 import { Layout } from './components/Layout';
 import { QuotaProvider } from './contexts/QuotaContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -23,6 +24,7 @@ export default function App() {
                 <Route path="/projects/:id" element={<ProjectDetail />} />
                 <Route path="/projects/:id/edit" element={<ProjectEditor />} />
                 <Route path="/universes/:id" element={<UniverseEditor />} />
+                <Route path="/characters/new" element={<CharacterOnboarding />} />
               </Routes>
             </Layout>
           </QuotaProvider>

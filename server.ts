@@ -564,6 +564,145 @@ async function startServer() {
     }
   });
 
+  // ── Character asset-pack generation ──────────────────────────────────────
+
+  // Generate assets for an EXISTING character (pass referenceImageUrls or use character.referenceImageUrl)
+  app.post('/api/universes/:id/characters/:charId/generate-assets', async (req, res) => {
+    const { charId } = req.params;
+    const { referenceImageUrls } = req.body as { referenceImageUrls?: string[] };
+    try {
+      const universe = await FirestoreService.getDocument('universes', req.params.id);
+      if (!universe) return res.status(404).json({ error: 'Universe not found' });
+      const character = (universe as any).characters?.find((c: any) => c.id === charId);
+      if (!character) return res.status(404).json({ error: 'Character not found' });
+
+      const refs: string[] = referenceImageUrls?.length
+        ? referenceImageUrls
+        : [character.referenceImageUrl].filter(Boolean);
+      if (!refs.length) return res.status(400).json({ error: 'No reference images. Upload a reference image first or pass referenceImageUrls.' });
+
+      const { generateAssetPack } = await import('./src/services/characterAssetService.js');
+      const result = await generateAssetPack(
+        charId,
+        character.name,
+        character.appearance || character.concept || character.description || '',
+        refs
+      );
+
+      // Mark asset pack as generated in universe document
+      const updatedChars = (universe as any).characters.map((c: any) =>
+        c.id === charId
+          ? { ...c, assetPackGenerated: true, assetPackGeneratedAt: new Date().toISOString(), assetPackSucceeded: result.succeeded }
+          : c
+      );
+      await FirestoreService.saveDocument('universes', req.params.id, { ...(universe as any), characters: updatedChars });
+      res.json(result);
+    } catch (err: any) {
+      console.error('[generate-assets] Error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Regenerate one asset for an existing character
+  app.post('/api/universes/:id/characters/:charId/regenerate-asset', async (req, res) => {
+    const { charId } = req.params;
+    const { assetName, referenceImageUrls } = req.body as { assetName: string; referenceImageUrls?: string[] };
+    if (!assetName) return res.status(400).json({ error: 'assetName is required' });
+    try {
+      const universe = await FirestoreService.getDocument('universes', req.params.id);
+      if (!universe) return res.status(404).json({ error: 'Universe not found' });
+      const character = (universe as any).characters?.find((c: any) => c.id === charId);
+      if (!character) return res.status(404).json({ error: 'Character not found' });
+
+      const refs: string[] = referenceImageUrls?.length
+        ? referenceImageUrls
+        : [character.referenceImageUrl].filter(Boolean);
+
+      const { regenerateAsset } = await import('./src/services/characterAssetService.js');
+      const result = await regenerateAsset(
+        charId,
+        character.name,
+        character.appearance || character.concept || '',
+        assetName,
+        refs
+      );
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Create a new character AND generate its full asset pack in one call
+  // Used by the character onboarding wizard (/characters/new)
+  app.post('/api/universes/:id/characters/new-with-assets', async (req, res) => {
+    const { name, description, referenceImagesBase64, style } = req.body as {
+      name: string;
+      description: string;
+      referenceImagesBase64: string[];   // data: URIs or plain base64 strings
+      style?: string;
+    };
+    if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
+    if (!referenceImagesBase64?.length) return res.status(400).json({ error: 'At least one reference image is required' });
+
+    try {
+      const universe = await FirestoreService.getDocument('universes', req.params.id);
+      if (!universe) return res.status(404).json({ error: 'Universe not found' });
+
+      // Create new character entry
+      const charId = uuidv4();
+      const newCharacter: any = {
+        id: charId,
+        name: name.trim(),
+        role: 'protagonist',
+        concept: description,
+        appearance: description,
+        personality: '',
+        colorPalette: '',
+        voiceStyle: '',
+        imagePrompt: '',
+        assetPackGenerated: false,
+      };
+
+      // Upload reference images to Supabase and get URLs
+      const refUrls: string[] = [];
+      for (let i = 0; i < Math.min(referenceImagesBase64.length, 4); i++) {
+        const raw = referenceImagesBase64[i];
+        const b64 = raw.includes(',') ? raw.split(',')[1] : raw;
+        const buf = Buffer.from(b64, 'base64');
+        const ext = raw.includes('image/png') || raw.includes('.png') ? 'png' : 'jpg';
+        const url = await FirestoreService.uploadAsset(
+          req.params.id,
+          `characters/${charId}_ref${i}.${ext}`,
+          buf,
+          ext === 'png' ? 'image/png' : 'image/jpeg'
+        );
+        refUrls.push(url);
+        if (i === 0) newCharacter.referenceImageUrl = url;
+      }
+
+      // Save character to universe
+      const updatedChars = [...((universe as any).characters || []), newCharacter];
+      await FirestoreService.saveDocument('universes', req.params.id, { ...(universe as any), characters: updatedChars });
+
+      // Generate asset pack
+      const { generateAssetPack } = await import('./src/services/characterAssetService.js');
+      const assetResult = await generateAssetPack(charId, name.trim(), description, refUrls, style);
+
+      // Update character with pack status
+      const finalChars = updatedChars.map((c: any) =>
+        c.id === charId
+          ? { ...c, assetPackGenerated: true, assetPackGeneratedAt: new Date().toISOString(), assetPackSucceeded: assetResult.succeeded }
+          : c
+      );
+      await FirestoreService.saveDocument('universes', req.params.id, { ...(universe as any), characters: finalChars });
+
+      res.json({ character: newCharacter, assetPack: assetResult, universeId: req.params.id });
+    } catch (err: any) {
+      console.error('[new-with-assets] Error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.use('/api/jobs', jobsRouter);
   app.use('/api/assets', assetsRouter);
   app.use('/api/visuals', visualsRouter);
