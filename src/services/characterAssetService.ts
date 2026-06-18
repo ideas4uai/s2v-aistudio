@@ -3,23 +3,9 @@ import path from 'path';
 import { GoogleGenAI } from '@google/genai';
 import { getKeyForTask } from '../utils/geminiAuth.js';
 import { FirestoreService } from '../server/db/firestore.js';
+import type { AssetResult, AssetPackResult } from '../types/character.js';
 
-export interface AssetResult {
-  assetName: string;
-  status: 'success' | 'failed';
-  localPath?: string;
-  supabaseUrl?: string;
-  error?: string;
-}
-
-export interface AssetPackResult {
-  characterId: string;
-  total: number;
-  succeeded: number;
-  failed: number;
-  results: AssetResult[];
-  timeTakenMs: number;
-}
+export type { AssetResult, AssetPackResult };
 
 // ─── Style base shared across all prompts ──────────────────────────────────
 const STYLE_BASE = `South Asian graphic novel flat colour illustration style. Clean bold outlines. NOT photorealistic. NOT realistic. Pure white background #FFFFFF only. Isolated character, no environment, no background elements, no shadows on floor.`;

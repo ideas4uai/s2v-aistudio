@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, ChevronRight, ChevronLeft, CheckCircle, XCircle, RefreshCw, Sparkles, User, Image, Loader2 } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
-import type { AssetResult, AssetPackResult } from '../services/characterAssetService';
+import type { AssetResult, AssetPackResult } from '../types/character';
 
 type Step = 1 | 2 | 3 | 4 | 5;
 

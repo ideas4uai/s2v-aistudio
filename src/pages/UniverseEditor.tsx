@@ -877,6 +877,14 @@ export function UniverseEditor() {
                               {trainingLora === char.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                               Train LoRA
                             </button>
+                            <button
+                              onClick={() => navigate('/characters/new')}
+                              title="Auto-generate a full 25-asset animation pack from reference images"
+                              className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
+                            >
+                              <Sparkles className="w-4 h-4" />
+                              New Character (Auto)
+                            </button>
                             {(char as any).loraTrainingId && (
                               <button
                                 onClick={() => handleCheckLoraStatus(char)}
