@@ -298,7 +298,7 @@ export const AIService = {
       console.log('[ImageGen] Using LoRA model:', (options.loraModelUrl as string).slice(-40));
       const loraResult = await generateImageWithLoRA(prompt, options.loraModelUrl as string, triggerWord, aspectRatio);
       if (loraResult) return loraResult;
-      console.log('[ImageGen] LoRA failed, falling back to Imagen 4');
+      console.log('[ImageGen] LoRA failed, falling back to Gemini 3.1 Flash Image');
     }
 
     const referenceImageUrl = options?.referenceImageUrl as string | undefined;
@@ -313,38 +313,38 @@ export const AIService = {
       }
     }
 
-    // Provider 1: Imagen 4 Fast via AI Studio key (primary - confirmed working)
+    // Provider 1: Gemini 3.1 Flash Image (replaces Imagen 4 — deprecated Aug 17 2026)
     let imagenApiKey = '';
     try { imagenApiKey = getKeyForTask('image'); } catch { /* falls through to next provider */ }
     if (imagenApiKey || isAdcMode) {
       try {
-        const imagenModel = options?.quality === '4k' ? 'imagen-4.0-generate-001' : 'imagen-4.0-fast-generate-001';
-        console.log(`[ImageGen] Trying Imagen 4 (${imagenModel})...`);
+        console.log('[ImageGen] Trying Gemini 3.1 Flash Image...');
         const { GoogleGenAI } = await import('@google/genai');
-        const imagenAI = isAdcMode
+        const geminiImageAI = isAdcMode
           ? new GoogleGenAI({ vertexai: true, project: gcpProject, location: gcpLocation } as any)
           : new GoogleGenAI({ apiKey: imagenApiKey });
-        const imagenResponse = await imagenAI.models.generateImages({
-          model: imagenModel,
-          prompt: styledPrompt,
-          config: {
-            numberOfImages: 1,
-            aspectRatio,
-            ...(referenceImageBytes ? {
-              referenceImages: [{
-                referenceType: 'REFERENCE_TYPE_STYLE',
-                referenceImage: { bytesBase64Encoded: referenceImageBytes }
-              }]
-            } : {})
-          }
+
+        const imgParts: any[] = [];
+        if (referenceImageBytes) {
+          const mimeType = referenceImageUrl?.includes('.png') ? 'image/png' : 'image/jpeg';
+          imgParts.push({ inlineData: { data: referenceImageBytes, mimeType } });
+        }
+        imgParts.push({ text: styledPrompt });
+
+        const geminiImgResponse = await geminiImageAI.models.generateContent({
+          model: 'gemini-3.1-flash-image',
+          contents: [{ role: 'user', parts: imgParts }],
+          config: { responseModalities: ['IMAGE', 'TEXT'] } as any,
         });
-        const bytes = imagenResponse.generatedImages?.[0]?.image?.imageBytes;
-        if (!bytes) throw new Error('No image bytes');
-        const base64 = bytes as string;
-        console.log('[ImageGen] Imagen 4 Fast success! Size:', Math.round(base64.length * 0.75 / 1024), 'KB');
+
+        const responseParts = geminiImgResponse.candidates?.[0]?.content?.parts || [];
+        const imgPart = responseParts.find((p: any) => p.inlineData?.mimeType?.startsWith('image/'));
+        if (!imgPart?.inlineData?.data) throw new Error('No image in response');
+        const base64 = imgPart.inlineData.data as string;
+        console.log('[ImageGen] Gemini 3.1 Flash Image success! Size:', Math.round(base64.length * 0.75 / 1024), 'KB');
         return base64;
       } catch (e: any) {
-        console.warn('[ImageGen] Imagen 4 Fast failed:', e.message, 'status:', e.status);
+        console.warn('[ImageGen] Gemini 3.1 Flash Image failed:', e.message, 'status:', e.status);
       }
     }
 
