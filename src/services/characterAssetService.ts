@@ -4,6 +4,11 @@ import { GoogleGenAI } from '@google/genai';
 import { FirestoreService } from '../server/db/firestore.js';
 import type { AssetResult, AssetPackResult } from '../types/character.js';
 
+// Mirror aiService.ts ADC detection — same pattern, same env vars
+const isAdcMode = !!process.env.GOOGLE_CLOUD_PROJECT;
+const gcpProject = process.env.GOOGLE_CLOUD_PROJECT || '';
+const gcpLocation = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
+
 export type { AssetResult, AssetPackResult };
 
 // ─── Style base shared across all prompts ──────────────────────────────────
@@ -113,11 +118,14 @@ export async function generateAssetPack(
     console.warn('[AssetPack] No reference images loaded — generation may have poor consistency');
   }
 
-  // ── Setup Gemini client — always AI Studio (API key), never Vertex AI ADC ──
-  // Vertex AI requires allowlist access for image gen models; AI Studio does not.
-  const apiKey = process.env.GEMINI_KEY_IMAGE || process.env.GEMINI_KEY_VISUAL || '';
-  if (!apiKey) throw new Error('[AssetPack] GEMINI_KEY_IMAGE or GEMINI_KEY_VISUAL must be set');
-  const ai = new GoogleGenAI({ apiKey });
+  // ── Setup Gemini client — mirrors aiService.ts Provider 4 pattern exactly ──
+  // ADC mode (GOOGLE_CLOUD_PROJECT set) → Vertex AI client; otherwise API key.
+  const apiKey = isAdcMode ? '' : (process.env.GEMINI_KEY_IMAGE || process.env.GEMINI_KEY_VISUAL || '');
+  if (!isAdcMode && !apiKey) throw new Error('[AssetPack] GEMINI_KEY_IMAGE or GEMINI_KEY_VISUAL must be set (non-ADC mode)');
+  const ai = isAdcMode
+    ? new GoogleGenAI({ vertexai: true, project: gcpProject, location: gcpLocation } as any)
+    : new GoogleGenAI({ apiKey });
+  console.log(`[AssetPack] Auth: ${isAdcMode ? `ADC Vertex AI (${gcpProject})` : 'API key'}`);
 
   const styleInstruction = style === 'flat_colour_anime'
     ? 'South Asian graphic novel flat colour illustration style, clean bold outlines, NOT photorealistic'
@@ -142,7 +150,7 @@ CRITICAL: Keep the EXACT SAME face, skin tone, hair colour, hair style, and outf
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const response = await ai.models.generateContent({
-            model: 'gemini-2.0-flash-preview-image-generation',
+            model: 'gemini-2.5-flash-image',
             contents: [{ role: 'user', parts }],
             config: { responseModalities: ['IMAGE', 'TEXT'] } as any,
           });
