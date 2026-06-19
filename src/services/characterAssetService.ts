@@ -131,11 +131,32 @@ export async function generateAssetPack(
     ? 'South Asian graphic novel flat colour illustration style, clean bold outlines, NOT photorealistic'
     : style;
 
-  // ── Generate all 25 assets in parallel ───────────────────────────────────
-  console.log(`[AssetPack] Starting generation of ${ASSET_NAMES.length} assets for "${characterName}" (${refParts.length} ref images)`);
+  // ── Generate assets with rate-gated concurrency ──────────────────────────
+  // gemini-2.5-flash-image on Vertex AI has a per-minute RPM cap.
+  // Gate: issue at most 1 new request every REQUEST_GAP_MS to stay under quota.
+  // Workers pick from the queue whenever the gate opens.
+  const CONCURRENCY = 5;          // max in-flight at once
+  const REQUEST_GAP_MS = 4500;    // ~13 RPM — safe under typical Vertex quota
+  const MAX_ATTEMPTS = 3;
+  const BACKOFF_BASE_MS = 3000;
+  const BACKOFF_429_MS = 20000;   // quota windows reset in ~60s; back off well short
 
-  const settled = await Promise.allSettled(
-    ASSET_NAMES.map(async (assetName): Promise<AssetResult> => {
+  console.log(`[AssetPack] Starting generation of ${ASSET_NAMES.length} assets for "${characterName}" (${refParts.length} ref images, concurrency=${CONCURRENCY}, gap=${REQUEST_GAP_MS}ms)`);
+
+  const queue = [...ASSET_NAMES];
+  const resultMap = new Map<string, AssetResult>();
+  let nextSlotAt = Date.now();
+
+  async function worker() {
+    while (queue.length > 0) {
+      const assetName = queue.shift();
+      if (!assetName) break;
+
+      // ── Rate gate: stagger request starts ──────────────────────────────
+      const waitMs = Math.max(0, nextSlotAt - Date.now());
+      nextSlotAt = Math.max(Date.now(), nextSlotAt) + REQUEST_GAP_MS;
+      if (waitMs > 0) await new Promise(r => setTimeout(r, waitMs));
+
       const rawPrompt = ASSET_PROMPTS[assetName]
         .replace('[CHARACTER_DESCRIPTION]', `${characterName}: ${characterDescription}.`)
         .replace('South Asian graphic novel flat colour illustration style', styleInstruction);
@@ -147,7 +168,7 @@ CRITICAL: Keep the EXACT SAME face, skin tone, hair colour, hair style, and outf
       const parts: any[] = [...refParts, { text: textInstruction }];
 
       let lastError = '';
-      for (let attempt = 0; attempt < 2; attempt++) {
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         try {
           const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
@@ -163,11 +184,9 @@ CRITICAL: Keep the EXACT SAME face, skin tone, hair colour, hair style, and outf
           const validationError = validateImageBuffer(buf, assetName);
           if (validationError) throw new Error(validationError);
 
-          // Save locally as PNG (PIL reads by content, extension is for tooling)
           const localPath = path.join(charDir, `${assetName}.png`);
           fs.writeFileSync(localPath, buf);
 
-          // Upload to Supabase: projects/{characterId}/parts/{assetName}.png
           const supabaseUrl = await FirestoreService.uploadAsset(
             characterId,
             `parts/${assetName}.png`,
@@ -176,22 +195,31 @@ CRITICAL: Keep the EXACT SAME face, skin tone, hair colour, hair style, and outf
           );
 
           console.log(`[AssetPack] ✓ ${assetName.padEnd(18)} ${Math.round(buf.length / 1024)}KB → ${supabaseUrl.slice(-40)}`);
-          return { assetName, status: 'success', localPath, supabaseUrl };
+          resultMap.set(assetName, { assetName, status: 'success', localPath, supabaseUrl });
+          lastError = '';
+          break;
         } catch (e: any) {
           lastError = e.message?.slice(0, 200) || 'Unknown error';
-          if (attempt < 1) await new Promise(r => setTimeout(r, 3000));
+          const is429 = lastError.includes('429') || lastError.includes('Resource exhausted') || lastError.includes('RESOURCE_EXHAUSTED');
+          if (attempt < MAX_ATTEMPTS - 1) {
+            const delay = is429 ? BACKOFF_429_MS : BACKOFF_BASE_MS * (attempt + 1);
+            console.warn(`[AssetPack] retry ${attempt + 1}/${MAX_ATTEMPTS - 1} ${assetName} in ${delay}ms: ${lastError.slice(0, 80)}`);
+            await new Promise(r => setTimeout(r, delay));
+          }
         }
       }
 
-      console.warn(`[AssetPack] ✗ ${assetName}: ${lastError}`);
-      return { assetName, status: 'failed', error: lastError };
-    })
-  );
+      if (lastError) {
+        console.warn(`[AssetPack] ✗ ${assetName}: ${lastError}`);
+        resultMap.set(assetName, { assetName, status: 'failed', error: lastError });
+      }
+    }
+  }
 
-  const results: AssetResult[] = settled.map((s, i) =>
-    s.status === 'fulfilled'
-      ? s.value
-      : { assetName: ASSET_NAMES[i], status: 'failed' as const, error: (s as PromiseRejectedResult).reason?.message }
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+
+  const results: AssetResult[] = ASSET_NAMES.map(name =>
+    resultMap.get(name) ?? { assetName: name, status: 'failed' as const, error: 'dropped from queue' }
   );
 
   const succeeded = results.filter(r => r.status === 'success').length;
