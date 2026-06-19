@@ -903,7 +903,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
      }
   }
 
-  scene.status = 'completed';
+  scene.status = scene.fallback_used ? 'degraded' : 'completed';
   scene.stage = 'done';
 }
 

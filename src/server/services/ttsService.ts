@@ -7,9 +7,41 @@ import ffmpegStatic from 'ffmpeg-static';
 
 const execAsync = promisify(exec);
 
-async function generateSilentAudio(outputPath: string, duration = 5): Promise<string> {
-  const silencePath = outputPath.replace('.wav', '-silence.wav');
-  await execAsync(`"${ffmpegStatic}" -f lavfi -i anullsrc=r=44100:cl=stereo -t ${duration} -y "${silencePath}"`);
+function estimateDurationSec(text: string, hintSec?: number): number {
+  if (hintSec && hintSec > 0) return hintSec;
+  // ~150 wpm = 2.5 words/second; minimum 3 seconds
+  const words = text.trim().split(/\s+/).filter(w => w.length > 0).length;
+  return Math.max(3, Math.ceil(words / 2.5));
+}
+
+async function generateSilentAudio(outputPath: string, durationSec: number): Promise<string> {
+  const silencePath = outputPath.replace(/\.wav$/, '-silence.wav');
+  try {
+    await execAsync(
+      `"${ffmpegStatic}" -f lavfi -i anullsrc=r=44100:cl=stereo -t ${durationSec.toFixed(2)} -y "${silencePath}"`
+    );
+  } catch (ffmpegErr: any) {
+    // Last resort: ffmpeg itself failed — write a raw silent WAV directly (no dependencies)
+    console.error(`[TTS] ffmpeg silence generation failed: ${ffmpegErr.message} — writing raw WAV`);
+    const sampleRate = 44100;
+    const numSamples = Math.round(sampleRate * Math.max(1, durationSec));
+    const dataSize = numSamples * 2; // mono, 16-bit
+    const header = Buffer.alloc(44);
+    header.write('RIFF', 0);
+    header.writeUInt32LE(36 + dataSize, 4);
+    header.write('WAVE', 8);
+    header.write('fmt ', 12);
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20);   // PCM
+    header.writeUInt16LE(1, 22);   // mono
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(sampleRate * 2, 28); // byte rate
+    header.writeUInt16LE(2, 32);   // block align
+    header.writeUInt16LE(16, 34);  // bits per sample
+    header.write('data', 36);
+    header.writeUInt32LE(dataSize, 40);
+    await fs.writeFile(silencePath, Buffer.concat([header, Buffer.alloc(dataSize, 0)]));
+  }
   return silencePath;
 }
 
@@ -17,11 +49,13 @@ export async function generateNarration(
   text: string,
   sceneId: string,
   projectId: string,
-  settings?: any
+  settings?: any,
+  durationSec?: number
 ): Promise<string> {
   const projectAudioDir = path.join(os.tmpdir(), 'ais-audio', projectId);
   await fs.mkdir(projectAudioDir, { recursive: true });
   const outputPath = path.join(projectAudioDir, `narration-${sceneId}.wav`);
+  const silenceDuration = estimateDurationSec(text, durationSec);
   const textFilePath = path.join(projectAudioDir, `text-${sceneId}.txt`);
 
   // Normalise short language codes to full names used throughout the routing
@@ -106,13 +140,13 @@ export async function generateNarration(
       }
       await fs.unlink(textFilePath).catch(() => {});
       console.log(`[TTS] Using silent audio fallback for scene: ${sceneId}`);
-      return generateSilentAudio(outputPath);
+      return generateSilentAudio(outputPath, silenceDuration);
     }
   }
 
   // 2. No TTS provider configured — generate silence
   console.warn(`[TTS] No TTS provider configured (PIPER_BIN_PATH not set) for scene ${sceneId} — using silence`);
   console.log(`[TTS] Using silent audio fallback for scene: ${sceneId}`);
-  return generateSilentAudio(outputPath);
+  return generateSilentAudio(outputPath, silenceDuration);
 }
 

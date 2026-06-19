@@ -27,15 +27,19 @@ async function getAudioDuration(filePath: string): Promise<number> {
 }
 
 export const generateSceneAudio = async (scene: Scene, preset: any, hash: string, projectSettings?: any) => {
-  // Use a proper project ID folder
-  const projectId = (scene as any).projectId || 'tmp_' + scene.scene_id; 
+  const projectId = (scene as any).projectId || 'tmp_' + scene.scene_id;
   const audioPath = await generateNarration(
     scene.narration_text,
     scene.scene_id,
     projectId,
-    { ...projectSettings, character: scene.character }
+    { ...projectSettings, character: scene.character },
+    scene.duration_target
   );
   if (audioPath) {
+    if (audioPath.endsWith('-silence.wav')) {
+      scene.fallback_used = true;
+      console.warn(`[VoiceService] Scene ${scene.scene_id}: TTS failed — silent audio fallback active`);
+    }
     await saveToCache(hash, audioPath);
     const actualDuration = await getAudioDuration(audioPath);
     if (actualDuration > 0) {
