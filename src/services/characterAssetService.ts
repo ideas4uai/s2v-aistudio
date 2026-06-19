@@ -115,6 +115,23 @@ export function validateAssetConsistency(
   }
 }
 
+// ─── Local reference image loader ─────────────────────────────────────────
+// Returns up to 4 image Buffers sorted by filename from
+// assets/characters/{characterId}/_references/, or null if folder absent/empty.
+export function loadLocalReferenceImages(characterId: string): Buffer[] | null {
+  const refDir = path.join(process.cwd(), 'assets', 'characters', characterId, '_references');
+  if (!fs.existsSync(refDir)) return null;
+
+  const files = fs.readdirSync(refDir)
+    .filter(f => /\.(png|jpe?g|webp)$/i.test(f))
+    .sort()
+    .slice(0, 4);
+
+  if (files.length === 0) return null;
+
+  return files.map(f => fs.readFileSync(path.join(refDir, f)));
+}
+
 // ─── Core generation function ───────────────────────────────────────────────
 export async function generateAssetPack(
   characterId: string,
@@ -130,33 +147,51 @@ export async function generateAssetPack(
   fs.mkdirSync(charDir, { recursive: true });
 
   // ── Load reference images as inline parts (up to 4) ──────────────────────
+  // PRIMARY: local _references folder.
+  // FALLBACK: caller-supplied URLs (Supabase or data:).
+  // ERROR: neither source has images → abort cleanly.
   const refParts: Array<{ inlineData: { data: string; mimeType: string } }> = [];
-  for (const url of referenceImages.slice(0, 4)) {
-    try {
-      let data: string;
-      let mimeType: string;
 
-      if (url.startsWith('data:')) {
-        // Already base64 data URL
-        const [header, b64] = url.split(',');
-        data = b64;
-        mimeType = header.split(':')[1].split(';')[0];
-      } else {
-        const res = await fetch(url);
-        if (!res.ok) { console.warn('[AssetPack] Could not fetch ref image:', url.slice(-60)); continue; }
-        const buf = Buffer.from(await res.arrayBuffer());
-        data = buf.toString('base64');
-        mimeType = url.includes('.png') ? 'image/png' : 'image/jpeg';
+  const localBufs = loadLocalReferenceImages(characterId);
+  if (localBufs && localBufs.length > 0) {
+    for (const buf of localBufs) {
+      // Detect PNG by magic bytes (0x89 0x50 …); everything else treated as JPEG.
+      const mimeType = (buf[0] === 0x89 && buf[1] === 0x50) ? 'image/png' : 'image/jpeg';
+      refParts.push({ inlineData: { data: buf.toString('base64'), mimeType } });
+    }
+    console.log(`[AssetPack] Loaded ${refParts.length} local reference(s) from _references/`);
+  } else {
+    // Fallback: URL-based references supplied by caller
+    for (const url of referenceImages.slice(0, 4)) {
+      try {
+        let data: string;
+        let mimeType: string;
+
+        if (url.startsWith('data:')) {
+          const [header, b64] = url.split(',');
+          data = b64;
+          mimeType = header.split(':')[1].split(';')[0];
+        } else {
+          const res = await fetch(url);
+          if (!res.ok) { console.warn('[AssetPack] Could not fetch ref URL:', url.slice(-60)); continue; }
+          const buf = Buffer.from(await res.arrayBuffer());
+          data = buf.toString('base64');
+          mimeType = url.includes('.png') ? 'image/png' : 'image/jpeg';
+        }
+        refParts.push({ inlineData: { data, mimeType } });
+        console.log('[AssetPack] Loaded reference URL:', url.slice(-50));
+      } catch (e: any) {
+        console.warn('[AssetPack] Ref URL load failed:', e.message);
       }
-      refParts.push({ inlineData: { data, mimeType } });
-      console.log('[AssetPack] Loaded reference image:', url.slice(-50));
-    } catch (e: any) {
-      console.warn('[AssetPack] Ref load failed:', e.message);
     }
   }
 
   if (refParts.length === 0) {
-    console.warn('[AssetPack] No reference images loaded — generation may have poor consistency');
+    throw new Error(
+      `[AssetPack] No reference images for character "${characterId}". ` +
+      `Add images to assets/characters/${characterId}/_references/ ` +
+      `or pass valid referenceImages URLs.`
+    );
   }
 
   // ── Save primary reference locally for consistency validation ──────────────
