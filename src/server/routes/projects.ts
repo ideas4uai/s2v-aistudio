@@ -29,6 +29,7 @@ import { toUrl } from '../../utils/path.js';
 
 import { AIService } from '../../services/aiService.js';
 import { FirestoreService } from '../db/firestore.js';
+import { loadProject } from '../../pipeline/orchestrator.js';
 
 export const projectsRouter = Router();
 
@@ -113,8 +114,12 @@ projectsRouter.get('/', async (req, res) => {
 
 projectsRouter.get('/:id', async (req, res) => {
   try {
-    const project: any = await FirestoreService.getProject(req.params.id);
-    if (!project) return res.status(404).json({ error: 'Project not found' });
+    let project: any;
+    try {
+      project = await loadProject(req.params.id);
+    } catch {
+      return res.status(404).json({ error: 'Project not found' });
+    }
     
     // Map Firestore Project to what the UI expects
     const charDesc = project.characterDescription || project.character_description || '';

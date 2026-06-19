@@ -66,10 +66,21 @@ function applyStyleToPrompt(prompt: string, style: StyleProfile): string {
 // DB PERSISTENCE
 // ============================================================================
 
+// Singleton in-memory project store for DISABLE_FIRESTORE=true dev runs.
+// Module-level Map persists across requests within a single server process.
+const projectMemoryStore = new Map<string, Project>();
+
 export async function loadProject(project_id: string): Promise<Project> {
+  // Check in-memory store first (written by saveProjectState when DISABLE_FIRESTORE=true)
+  const memProject = projectMemoryStore.get(project_id);
+  if (memProject) {
+    console.log(`[DB] Loaded project ${project_id} from in-memory store (scenes: ${memProject.scenes?.length ?? 0})`);
+    return memProject;
+  }
+
   const firestoreProject: any = await FirestoreService.getProject(project_id);
   if (!firestoreProject) throw new Error(`Project ${project_id} not found in Firestore`);
-  
+
   // Backwards compatibility for fields
   return {
      ...firestoreProject,
@@ -86,7 +97,9 @@ export async function saveProjectState(project: Project): Promise<void> {
   console.log(`[DB] Saving project state for ${project.project_id}. Status: ${project.status}.${errorMsg} Scenes count: ${project.scenes?.length || 0}`);
 
   if (process.env.DISABLE_FIRESTORE === 'true') {
-    console.log('[DB] DISABLE_FIRESTORE=true — skipping Firestore write (in-memory only)');
+    const pid = project.project_id!;
+    projectMemoryStore.set(pid, project);
+    console.log(`[DB] DISABLE_FIRESTORE=true — wrote to in-memory store (key: ${pid}, scenes: ${project.scenes?.length ?? 0})`);
     return;
   }
 
