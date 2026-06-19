@@ -74,7 +74,6 @@ async function main() {
       { model: 'gemini-2.5-flash-image', useAdc: true },
       { model: 'gemini-2.0-flash-exp', useAdc: true },
       { model: 'gemini-2.0-flash-preview-image-generation', useAdc: true },
-      { model: 'imagen-3.0-generate-001', useAdc: true },
     );
   }
 
