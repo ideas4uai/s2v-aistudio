@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { spawnSync } from 'child_process';
 import { GoogleGenAI } from '@google/genai';
 import { FirestoreService } from '../server/db/firestore.js';
 import type { AssetResult, AssetPackResult } from '../types/character.js';
@@ -74,6 +75,46 @@ function validateImageBuffer(buf: Buffer, assetName: string): string | null {
   return null;
 }
 
+// ─── Visual consistency validator ──────────────────────────────────────────
+const VALIDATOR_SCRIPT = path.join(process.cwd(), 'src', 'scripts', 'validate_consistency.py');
+const CONSISTENCY_THRESHOLD = 15;
+
+export function validateAssetConsistency(
+  assetPath: string,
+  referencePath: string
+): { passed: boolean; deltaE: number } {
+  try {
+    const result = spawnSync('py', [
+      VALIDATOR_SCRIPT,
+      '--asset', assetPath,
+      '--reference', referencePath,
+      '--threshold', String(CONSISTENCY_THRESHOLD),
+    ], { encoding: 'utf-8', timeout: 15000 });
+
+    if (result.error) {
+      console.warn('[AssetPack] Consistency validator spawn error:', result.error.message, '— skipping check');
+      return { passed: true, deltaE: 0 };
+    }
+
+    const stdout = result.stdout?.trim();
+    if (!stdout) {
+      console.warn('[AssetPack] Consistency validator empty output, stderr:', result.stderr?.slice(0, 120), '— skipping check');
+      return { passed: true, deltaE: 0 };
+    }
+
+    const data = JSON.parse(stdout) as any;
+    if (data.error) {
+      console.warn('[AssetPack] Consistency validator:', data.error, '— skipping check');
+      return { passed: true, deltaE: 0 };
+    }
+
+    return { passed: Boolean(data.passed), deltaE: Number(data.deltaE) || 0 };
+  } catch (e: any) {
+    console.warn('[AssetPack] Consistency validator exception:', e.message, '— skipping check');
+    return { passed: true, deltaE: 0 };
+  }
+}
+
 // ─── Core generation function ───────────────────────────────────────────────
 export async function generateAssetPack(
   characterId: string,
@@ -116,6 +157,20 @@ export async function generateAssetPack(
 
   if (refParts.length === 0) {
     console.warn('[AssetPack] No reference images loaded — generation may have poor consistency');
+  }
+
+  // ── Save primary reference locally for consistency validation ──────────────
+  let localRefPath: string | null = null;
+  if (refParts.length > 0) {
+    try {
+      const refBuf = Buffer.from(refParts[0].inlineData.data, 'base64');
+      const refExt = refParts[0].inlineData.mimeType.includes('png') ? 'png' : 'jpg';
+      localRefPath = path.join(charDir, `ref_primary.${refExt}`);
+      fs.writeFileSync(localRefPath, refBuf);
+      console.log(`[AssetPack] Reference saved for consistency checks: ref_primary.${refExt}`);
+    } catch (e: any) {
+      console.warn('[AssetPack] Could not save local reference — consistency checks skipped:', e.message);
+    }
   }
 
   // ── Setup Gemini client — mirrors aiService.ts Provider 4 pattern exactly ──
@@ -166,9 +221,15 @@ export async function generateAssetPack(
 CRITICAL: Keep the EXACT SAME face, skin tone, hair colour, hair style, and outfit as shown in the reference images. Only change the pose and expression as specified. Character name: ${characterName}.`;
 
       const parts: any[] = [...refParts, { text: textInstruction }];
+      const localPath = path.join(charDir, `${assetName}.png`);
 
       let lastError = '';
+      let finalBuf: Buffer | null = null;
+      let finalConsistency: { passed: boolean; deltaE: number } | null = null;
+
       for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        // ── Generate ────────────────────────────────────────────────────
+        let buf: Buffer;
         try {
           const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
@@ -180,38 +241,81 @@ CRITICAL: Keep the EXACT SAME face, skin tone, hair colour, hair style, and outf
           const imgPart = responseParts.find((p: any) => p.inlineData?.mimeType?.startsWith('image/'));
           if (!imgPart?.inlineData?.data) throw new Error('No image data in response');
 
-          const buf = Buffer.from(imgPart.inlineData.data as string, 'base64');
-          const validationError = validateImageBuffer(buf, assetName);
-          if (validationError) throw new Error(validationError);
-
-          const localPath = path.join(charDir, `${assetName}.png`);
-          fs.writeFileSync(localPath, buf);
-
-          const supabaseUrl = await FirestoreService.uploadAsset(
-            characterId,
-            `parts/${assetName}.png`,
-            buf,
-            'image/png'
-          );
-
-          console.log(`[AssetPack] ✓ ${assetName.padEnd(18)} ${Math.round(buf.length / 1024)}KB → ${supabaseUrl.slice(-40)}`);
-          resultMap.set(assetName, { assetName, status: 'success', localPath, supabaseUrl });
-          lastError = '';
-          break;
+          buf = Buffer.from(imgPart.inlineData.data as string, 'base64');
+          const sizeErr = validateImageBuffer(buf, assetName);
+          if (sizeErr) throw new Error(sizeErr);
         } catch (e: any) {
           lastError = e.message?.slice(0, 200) || 'Unknown error';
           const is429 = lastError.includes('429') || lastError.includes('Resource exhausted') || lastError.includes('RESOURCE_EXHAUSTED');
           if (attempt < MAX_ATTEMPTS - 1) {
             const delay = is429 ? BACKOFF_429_MS : BACKOFF_BASE_MS * (attempt + 1);
-            console.warn(`[AssetPack] retry ${attempt + 1}/${MAX_ATTEMPTS - 1} ${assetName} in ${delay}ms: ${lastError.slice(0, 80)}`);
+            console.warn(`[AssetPack] API retry ${attempt + 1}/${MAX_ATTEMPTS - 1} ${assetName} in ${delay}ms`);
             await new Promise(r => setTimeout(r, delay));
           }
+          continue;
         }
+
+        // ── Save locally (needed for consistency validator to read) ──────
+        fs.writeFileSync(localPath, buf);
+
+        // ── Consistency check ────────────────────────────────────────────
+        if (localRefPath) {
+          const check = validateAssetConsistency(localPath, localRefPath);
+          finalConsistency = check;
+
+          if (!check.passed && attempt < MAX_ATTEMPTS - 1) {
+            console.warn(`[AssetPack] ⚠ ${assetName} drifted (deltaE=${check.deltaE.toFixed(1)}) — regenerating (attempt ${attempt + 1}/${MAX_ATTEMPTS})`);
+            lastError = `Consistency drift: deltaE=${check.deltaE.toFixed(1)} > ${CONSISTENCY_THRESHOLD}`;
+            await new Promise(r => setTimeout(r, BACKOFF_BASE_MS));
+            continue;
+          }
+
+          if (!check.passed) {
+            // Final attempt still drifted — mark needs_review but still upload
+            console.warn(`[AssetPack] ⚠ ${assetName} still drifted after ${MAX_ATTEMPTS} attempts (deltaE=${check.deltaE.toFixed(1)}) → needs_review`);
+          }
+        }
+
+        finalBuf = buf;
+        lastError = '';
+        break;
       }
 
-      if (lastError) {
+      // ── Handle complete failure (all attempts threw API errors) ─────────
+      if (!finalBuf) {
         console.warn(`[AssetPack] ✗ ${assetName}: ${lastError}`);
         resultMap.set(assetName, { assetName, status: 'failed', error: lastError });
+        continue;
+      }
+
+      // ── Upload to Supabase ───────────────────────────────────────────────
+      try {
+        const supabaseUrl = await FirestoreService.uploadAsset(
+          characterId,
+          `parts/${assetName}.png`,
+          finalBuf,
+          'image/png'
+        );
+
+        const drifted = finalConsistency && !finalConsistency.passed;
+        const deMark = finalConsistency ? ` dE=${finalConsistency.deltaE.toFixed(1)}` : '';
+
+        if (drifted) {
+          console.warn(`[AssetPack] ⚠ ${assetName.padEnd(18)} ${Math.round(finalBuf.length / 1024)}KB${deMark} → needs_review`);
+          resultMap.set(assetName, {
+            assetName, status: 'needs_review', localPath, supabaseUrl,
+            deltaE: finalConsistency!.deltaE,
+          });
+        } else {
+          console.log(`[AssetPack] ✓ ${assetName.padEnd(18)} ${Math.round(finalBuf.length / 1024)}KB${deMark} → ${supabaseUrl.slice(-40)}`);
+          resultMap.set(assetName, {
+            assetName, status: 'success', localPath, supabaseUrl,
+            deltaE: finalConsistency?.deltaE,
+          });
+        }
+      } catch (uploadErr: any) {
+        console.warn(`[AssetPack] ✗ ${assetName} upload failed: ${uploadErr.message}`);
+        resultMap.set(assetName, { assetName, status: 'failed', error: `Upload: ${uploadErr.message}` });
       }
     }
   }
@@ -222,11 +326,16 @@ CRITICAL: Keep the EXACT SAME face, skin tone, hair colour, hair style, and outf
     resultMap.get(name) ?? { assetName: name, status: 'failed' as const, error: 'dropped from queue' }
   );
 
-  const succeeded = results.filter(r => r.status === 'success').length;
+  const succeeded   = results.filter(r => r.status === 'success').length;
+  const needsReview = results.filter(r => r.status === 'needs_review').length;
+  const failed      = results.filter(r => r.status === 'failed').length;
   const timeTakenMs = Date.now() - startTime;
 
-  console.log(`[AssetPack] ─── ${succeeded}/${results.length} generated in ${Math.round(timeTakenMs / 1000)}s ───`);
-  if (succeeded < results.length) {
+  console.log(`[AssetPack] ─── ${succeeded}/${results.length} generated in ${Math.round(timeTakenMs / 1000)}s (${needsReview} needs_review, ${failed} failed) ───`);
+  if (needsReview > 0) {
+    console.warn('[AssetPack] Needs review:', results.filter(r => r.status === 'needs_review').map(r => `${r.assetName}(dE=${r.deltaE?.toFixed(1)})`).join(', '));
+  }
+  if (failed > 0) {
     console.warn('[AssetPack] Failed:', results.filter(r => r.status === 'failed').map(r => r.assetName).join(', '));
   }
 
@@ -234,7 +343,8 @@ CRITICAL: Keep the EXACT SAME face, skin tone, hair colour, hair style, and outf
     characterId,
     total: results.length,
     succeeded,
-    failed: results.length - succeeded,
+    needsReview,
+    failed,
     results,
     timeTakenMs,
   };

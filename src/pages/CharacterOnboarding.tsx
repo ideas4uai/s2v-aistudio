@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, ChevronRight, ChevronLeft, CheckCircle, XCircle, RefreshCw, Sparkles, User, Image, Loader2 } from 'lucide-react';
+import { Upload, ChevronRight, ChevronLeft, CheckCircle, XCircle, RefreshCw, Sparkles, User, Image, Loader2, AlertTriangle } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 import type { AssetResult, AssetPackResult } from '../types/character';
 
@@ -154,8 +154,10 @@ export function CharacterOnboarding() {
       setAssetResult(prev => {
         if (!prev) return prev;
         const results = prev.results.map(r => r.assetName === assetName ? data : r);
-        const succeeded = results.filter(r => r.status === 'success').length;
-        return { ...prev, results, succeeded, failed: results.length - succeeded };
+        const succeeded   = results.filter(r => r.status === 'success').length;
+        const needsReview = results.filter(r => r.status === 'needs_review').length;
+        const failed      = results.filter(r => r.status === 'failed').length;
+        return { ...prev, results, succeeded, needsReview, failed };
       });
     } catch (e: any) {
       console.error('Regenerate failed:', e.message);
@@ -370,6 +372,7 @@ export function CharacterOnboarding() {
                 <h2 className="text-lg font-semibold">{createdCharacter?.name} — Asset Pack</h2>
                 <p className="text-gray-400 text-sm mt-0.5">
                   <span className="text-green-400 font-medium">{assetResult.succeeded}</span> / {assetResult.total} generated
+                  {assetResult.needsReview > 0 && <span className="text-yellow-400 ml-2">· {assetResult.needsReview} needs review</span>}
                   {assetResult.failed > 0 && <span className="text-red-400 ml-2">· {assetResult.failed} failed</span>}
                   <span className="text-gray-500 ml-2">· {Math.round(assetResult.timeTakenMs / 1000)}s</span>
                 </p>
@@ -390,11 +393,16 @@ export function CharacterOnboarding() {
                     const result = assetResult.results.find(r => r.assetName === assetName);
                     const isRegen = regenerating.has(assetName);
                     const success = result?.status === 'success';
+                    const review  = result?.status === 'needs_review';
 
                     return (
                       <div key={assetName} className="relative group">
-                        <div className={`aspect-square rounded-xl overflow-hidden border ${success ? 'border-gray-700 bg-gray-800' : 'border-red-800 bg-red-900/20'}`}>
-                          {success && result.supabaseUrl ? (
+                        <div className={`aspect-square rounded-xl overflow-hidden border ${
+                          success ? 'border-gray-700 bg-gray-800'
+                          : review ? 'border-yellow-700 bg-yellow-900/20'
+                          : 'border-red-800 bg-red-900/20'
+                        }`}>
+                          {(success || review) && result.supabaseUrl ? (
                             <img src={result.supabaseUrl} alt={assetName} className="w-full h-full object-contain" />
                           ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-2">
@@ -403,9 +411,17 @@ export function CharacterOnboarding() {
                             </div>
                           )}
 
+                          {/* Warning badge for needs_review */}
+                          {review && (
+                            <div className="absolute top-1.5 right-1.5 bg-yellow-500 rounded-full p-0.5" title={`Color drift detected (dE=${result.deltaE?.toFixed(1)})`}>
+                              <AlertTriangle className="w-3 h-3 text-yellow-900" />
+                            </div>
+                          )}
+
                           {/* Overlay with name + regen button */}
                           <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex flex-col items-center justify-end pb-2 gap-1">
                             <span className="text-white text-xs font-medium">{assetName}</span>
+                            {review && <span className="text-yellow-300 text-xs">dE={result.deltaE?.toFixed(1)}</span>}
                             <button
                               onClick={() => handleRegenerateAsset(assetName)}
                               disabled={isRegen}
