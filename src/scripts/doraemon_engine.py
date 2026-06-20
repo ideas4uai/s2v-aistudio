@@ -451,22 +451,41 @@ class DoraemonRenderer:
         present = [self.parts[k] for k in keys if k in self.parts]
         if not present:
             return
-        box = union_bbox(present)                      # shared crop -> head locked
+
+        # Normalise all portraits to the same canvas (transparent padding at
+        # bottom/right) before computing the shared crop box.  Without this,
+        # mixed-size assets (e.g. 1344×768 landscape and 1024×1024 square) clip
+        # to different heights inside union_bbox → different final portrait heights
+        # → top_y computed from the first portrait mis-anchors all others.
+        max_h = max(p.shape[0] for p in present)
+        max_w = max(p.shape[1] for p in present)
+        normed = {}
+        for k in keys:
+            if k in self.parts:
+                p = self.parts[k]
+                if p.shape[0] != max_h or p.shape[1] != max_w:
+                    canvas = np.zeros((max_h, max_w, 4), dtype=p.dtype)
+                    canvas[:p.shape[0], :p.shape[1]] = p
+                    normed[k] = canvas
+                else:
+                    normed[k] = p
+
+        box = union_bbox(list(normed.values()))        # shared crop -> head locked
         target_w = int(OUT_W * PORTRAIT_FILL_W)
         # Scale once to learn the portrait height, then fade the bottom over a
         # fixed PORTRAIT_FADE_PX band (not a fraction) so the dissolve sits at
         # the same pixel distance from the feet regardless of crop height.
-        sample = scale_to_width(crop(present[0], box), target_w)
+        sample = scale_to_width(crop(list(normed.values())[0], box), target_w)
         ph = sample.shape[0]
         fade_frac = min(0.5, PORTRAIT_FADE_PX / max(1, ph))
         for k in keys:
-            if k in self.parts:
+            if k in normed:
                 self.portraits[k] = fade_bottom_alpha(
-                    scale_to_width(crop(self.parts[k], box), target_w), frac=fade_frac)
+                    scale_to_width(crop(normed[k], box), target_w), frac=fade_frac)
         any_p = next(iter(self.portraits.values()))
         ph, pw = any_p.shape[:2]
         # Bottom-anchor: portrait bottom edge sits PORTRAIT_BOTTOM_MARGIN above
-        # the frame bottom so Veer is grounded in the scene, not floating centre.
+        # the frame bottom so the character is grounded in the scene.
         top_y = OUT_H - PORTRAIT_BOTTOM_MARGIN - ph
         self.portrait_pos = (CENTER_X - pw // 2, top_y)
 
