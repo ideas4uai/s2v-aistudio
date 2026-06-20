@@ -98,6 +98,7 @@ async function callSceneAnimatorV3(
     renderMode?: string;
     characterName?: string;
     audioPath?: string;
+    partsDir?: string;
   } = {}
 ): Promise<boolean> {
   return new Promise((resolve) => {
@@ -132,7 +133,9 @@ async function callSceneAnimatorV3(
     if (useDoraemon) {
       const charName = (opts.characterName || 'veer').toLowerCase();
       args.push('--character_name', charName);
-      args.push('--parts_dir', path.join(process.cwd(), 'assets', 'characters', charName));
+      // Use caller-resolved parts dir (handles UUID-named dirs) or fall back to name-based.
+      const resolvedPartsDir = opts.partsDir || path.join(process.cwd(), 'assets', 'characters', charName);
+      args.push('--parts_dir', resolvedPartsDir);
       args.push('--render_mode', 'cutout');
       // Audio drives lip-sync; without it the engine renders a static wide shot.
       if (opts.audioPath && fs.existsSync(opts.audioPath)) {
@@ -499,17 +502,29 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           // limited-animation directly over the background from pre-built part
           // PNGs. Gated on USE_DORAEMON so the pipeline is untouched when off.
           if (process.env.USE_DORAEMON === 'true' && scene?.render_mode === 'cutout') {
-            // Fallback: a character without a built parts folder (e.g. Nova,
-            // Byte) cannot be cut out — fall through to the generative LoRA
-            // path so the character still appears, rather than rendering a bare
-            // background. Warn once so the missing parts are visible in logs.
             const cutoutChar = (scene.character || 'veer').toLowerCase();
-            const cutoutPartsDir = path.join(process.cwd(), 'assets', 'characters', cutoutChar);
-            const hasCutoutParts = fs.existsSync(cutoutPartsDir);
+            let cutoutPartsDir = path.join(process.cwd(), 'assets', 'characters', cutoutChar);
+            // When the name-based folder exists but holds no PNGs (e.g. Nova whose
+            // assets live under a UUID-named folder), resolve the character's UUID
+            // from the universe and use that folder instead.
+            if (fs.existsSync(cutoutPartsDir) &&
+                !fs.readdirSync(cutoutPartsDir).some((f: string) => f.endsWith('.png'))) {
+              const matchedChar = (project as any)?.universe?.characters
+                ?.find((c: any) => c.name?.toLowerCase() === cutoutChar);
+              if (matchedChar?.id) {
+                const uuidDir = path.join(process.cwd(), 'assets', 'characters', matchedChar.id);
+                if (fs.existsSync(uuidDir) && fs.readdirSync(uuidDir).some((f: string) => f.endsWith('.png'))) {
+                  console.log(`[RenderVisual] Resolved "${cutoutChar}" parts from UUID dir: ${matchedChar.id}`);
+                  cutoutPartsDir = uuidDir;
+                }
+              }
+            }
+            const hasCutoutParts = fs.existsSync(cutoutPartsDir) &&
+              fs.readdirSync(cutoutPartsDir).some((f: string) => f.endsWith('.png'));
             const cutoutBg = (scene.background_path && fs.existsSync(scene.background_path))
               ? scene.background_path : imagePath;
             if (!hasCutoutParts) {
-              console.warn(`[RenderVisual] Cutout requested for "${scene.character}" but parts dir not found (${cutoutPartsDir}) — falling back to generative render`);
+              console.warn(`[RenderVisual] Cutout requested for "${scene.character}" but parts dir not found or empty (${cutoutPartsDir}) — falling back to generative render`);
             } else if (cutoutBg && fs.existsSync(cutoutBg)) {
               console.log('[RenderVisual] Cutout scene: rendering with Doraemon Engine');
               const sceneId = scene.scene_id || visual.visual_id;
@@ -525,6 +540,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                   nextSceneType: scene.next_scene_type,
                   renderMode: scene.render_mode,
                   characterName: scene.character,
+                  partsDir: cutoutPartsDir,
                   audioPath: scene.narration_path,
                 }
               );
