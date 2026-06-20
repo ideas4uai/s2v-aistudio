@@ -27,7 +27,7 @@ import numpy as np
 
 
 # ── Tuning constants ─────────────────────────────────────────────────────────
-WHITE_THRESH   = 240    # all BGR channels above this ->background pixel
+WHITE_THRESH   = 240    # all BGR channels above this = definitely background-colored
 NECK_FADE_PX   = 35     # vertical span of bottom alpha fade (portrait px)
 HEAD_FRAC      = 0.75   # keep top 75% of character bbox height (head+neck+collar stub)
 PAD_TOP        = 25     # extra transparent rows above hairline
@@ -36,8 +36,10 @@ PAD_SIDE       = 15     # extra transparent cols left/right of character
 
 def feather_alpha(alpha: np.ndarray) -> np.ndarray:
     """
-    Identical to metro_engine_v4.feather_alpha:
-    1px erode to kill white fringe, then 21x21 Gaussian to soften silhouette.
+    Base feather used by metro_engine_v4 on rembg cutouts (1px erode + 21x21 Gaussian).
+    Not used directly here — extract_head uses a stronger 3px erode + bg-zeroing
+    because white-background portrait art has wider anti-aliased border pixels.
+    Kept for reference / potential callers.
     """
     eroded = cv2.erode(alpha, np.ones((3, 3), np.uint8), iterations=1)
     return cv2.GaussianBlur(eroded, (21, 21), 0)
@@ -72,14 +74,16 @@ def extract_head(char_dir: Path) -> dict:
     print(f'  Input  : {input_path}')
     print(f'  Size   : {w}×{h}px')
 
-    # ── 1. Background subtraction ─────────────────────────────────────────────
-    # White/near-white pixels are background; everything else is the character.
-    bg_mask   = np.all(bgr > WHITE_THRESH, axis=2).astype(np.uint8) * 255
+    # ── 1. Background subtraction (BGR-based) ────────────────────────────────
+    # Pure white background: all BGR channels > WHITE_THRESH.
+    # Simple and reliable for white backgrounds. Residual boundary contamination
+    # is handled in step 4 via boundary-ring-only zeroing (not a blanket threshold).
+    bg_mask   = (np.all(bgr > WHITE_THRESH, axis=2).astype(np.uint8) * 255)
     char_mask = cv2.bitwise_not(bg_mask)
 
-    # Morphological close: fill small gaps inside the silhouette (e.g. between
-    # hair strands), then keep only the largest blob to drop floating elements.
-    close_k   = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    # Morphological close: fill small gaps (e.g. between hair strands), then
+    # keep only the largest blob to drop floating elements (Nova's notepad icon).
+    close_k   = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     char_mask = cv2.morphologyEx(char_mask, cv2.MORPH_CLOSE, close_k)
     char_mask = largest_component(char_mask)
 
@@ -111,12 +115,29 @@ def extract_head(char_dir: Path) -> dict:
     cw, ch = crop_bgr.shape[1], crop_bgr.shape[0]
     print(f'  Head crop : ({out_x0},{out_y0}) ->({out_x1},{out_y1})  {cw}×{ch}px')
 
-    # ── 4. Build RGBA ─────────────────────────────────────────────────────────
-    rgba = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2BGRA)
-    rgba[:, :, 3] = crop_mask
+    # ── 4. Boundary-ring decontamination (white-fringe fix) ──────────────────
+    # Anti-aliased edges carry partial-alpha transition pixels whose RGB is still
+    # white (the source background color). Compositing those pixels over any
+    # non-white background renders a visible white halo.
+    #
+    # Fix: grow the background mask inward ~3px (7x7 dilate), intersect that
+    # ring with pixels that are still near-white in BGR, zero ONLY those.
+    # Interior pixels — however pale, including Nova's silver hair — are never
+    # touched; they are guaranteed interior by the mask erosion in step 5.
+    not_mask_u8  = ((crop_mask == 0).astype(np.uint8) * 255)
+    dilated_not  = cv2.dilate(not_mask_u8, np.ones((7, 7), np.uint8))
+    near_white   = np.all(crop_bgr > WHITE_THRESH, axis=2)
+    boundary_contamination = (dilated_not > 0) & near_white
+    decontam_bgr = crop_bgr.copy()
+    decontam_bgr[boundary_contamination] = 0
+    rgba = cv2.cvtColor(decontam_bgr, cv2.COLOR_BGR2BGRA)
+    rgba[:, :, 3] = crop_mask  # raw mask before feathering, overwritten in step 5
 
-    # ── 5. Feather alpha edges (mirrors metro_engine_v4.feather_alpha exactly) ─
-    rgba[:, :, 3] = feather_alpha(rgba[:, :, 3])
+    # ── 5. Feather alpha ──────────────────────────────────────────────────────
+    # 1px erosion on alpha removes the morphological-close-swept boundary pixels
+    # from the fully-opaque region before Gaussian blur softens the edge.
+    eroded = cv2.erode(crop_mask, np.ones((3, 3), np.uint8), iterations=1)
+    rgba[:, :, 3] = cv2.GaussianBlur(eroded, (21, 21), 0)
 
     # ── 6. Bottom neck fade ───────────────────────────────────────────────────
     # Ramp alpha 255→0 over the last NECK_FADE_PX rows so the head composites
