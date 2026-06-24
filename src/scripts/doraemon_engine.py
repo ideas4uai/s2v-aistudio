@@ -232,6 +232,26 @@ def fade_bottom_alpha(bgra: np.ndarray, frac: float = 0.20) -> np.ndarray:
     return out
 
 
+def fade_bottom_to_color(bgra: np.ndarray, color_bgr: tuple, fade_px: int = 35) -> np.ndarray:
+    """
+    Crossfade the bottom `fade_px` rows from portrait pixels to a solid color
+    at full opacity.  Alpha stays 255 throughout — no transparency.
+
+    Used in portrait mode so the chest/shirt area dissolves into the shirt
+    color rather than fading to transparent and revealing the background.
+    """
+    out = bgra.copy()
+    h = out.shape[0]
+    band = min(max(1, fade_px), h)
+    # ramp: 0.0 at top of band (portrait), 1.0 at bottom (solid color)
+    ramp = np.linspace(0.0, 1.0, band, dtype=np.float32)[:, None, None]
+    color = np.array(color_bgr[:3], dtype=np.float32)[None, None, :]
+    rgb = out[h - band:, :, :3].astype(np.float32)
+    out[h - band:, :, :3] = np.clip(rgb * (1.0 - ramp) + color * ramp, 0, 255).astype(np.uint8)
+    out[h - band:, :, 3] = 255  # fully opaque — no background bleed
+    return out
+
+
 def scale_to_width(bgra, target_w):
     s = target_w / bgra.shape[1]
     return cv2.resize(bgra, (target_w, max(1, int(bgra.shape[0] * s))),
@@ -594,16 +614,37 @@ class DoraemonRenderer:
 
         box = union_bbox(list(normed.values()))        # shared crop -> head locked
         target_w = int(OUT_W * PORTRAIT_FILL_W)
-        # Scale once to learn the portrait height, then fade the bottom over a
-        # fixed PORTRAIT_FADE_PX band (not a fraction) so the dissolve sits at
-        # the same pixel distance from the feet regardless of crop height.
+
+        # Per-character portrait fade config: if character_meta.json provides
+        # portrait_fade_color_bgr, crossfade the bottom pixels to that solid
+        # color (no transparency) so the background doesn't show through the chest.
+        # Falls back to the old alpha-fade when no config is present.
+        portrait_fade_color = None
+        portrait_fade_px    = 35
+        if self.parts_dir:
+            char_meta_path = os.path.join(self.parts_dir, 'character_meta.json')
+            if os.path.exists(char_meta_path):
+                try:
+                    with open(char_meta_path) as _f:
+                        _cm = json.load(_f)
+                    portrait_fade_color = _cm.get('portrait_fade_color_bgr')
+                    portrait_fade_px    = int(_cm.get('portrait_fade_px', 35))
+                except Exception:
+                    pass
+
+        # Scale once to learn the portrait height; fade_frac only used in the
+        # alpha-fade fallback path.
         sample = scale_to_width(crop(list(normed.values())[0], box), target_w)
         ph = sample.shape[0]
         fade_frac = min(0.5, PORTRAIT_FADE_PX / max(1, ph))
         for k in keys:
             if k in normed:
-                self.portraits[k] = fade_bottom_alpha(
-                    scale_to_width(crop(normed[k], box), target_w), frac=fade_frac)
+                scaled = scale_to_width(crop(normed[k], box), target_w)
+                if portrait_fade_color:
+                    self.portraits[k] = fade_bottom_to_color(
+                        scaled, tuple(portrait_fade_color), fade_px=portrait_fade_px)
+                else:
+                    self.portraits[k] = fade_bottom_alpha(scaled, frac=fade_frac)
         any_p = next(iter(self.portraits.values()))
         ph, pw = any_p.shape[:2]
         # Bottom-anchor: portrait bottom edge sits PORTRAIT_BOTTOM_MARGIN above
