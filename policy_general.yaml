@@ -1,0 +1,9 @@
+﻿
+name: organizations/900269184013/policies/google.disableApiKeyCreation
+
+spec:
+
+  rules:
+
+  - enforce: false
+

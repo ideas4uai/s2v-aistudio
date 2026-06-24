@@ -9,7 +9,7 @@ import 'dotenv/config';
 import { requestContext } from '../src/server/utils/context.js';
 import { FirestoreService } from '../src/server/db/firestore.js';
 
-const PROJECT_ID = '85fed594';
+const PROJECT_ID = '85fed594-3d48-46bf-bfea-6e4d2037efd0';
 
 const INDIAN_AESTHETIC_SUFFIX = 'anime flat colour style, Trigger Studio quality, Indian urban architecture, warm terracotta and saffron accents, Hyderabad cyberpunk 2031, South Asian street aesthetics, holographic signs with Hindi text, NOT Japanese anime, warm monsoon city atmosphere, teal and saffron colour palette, chai shop neon, autorickshaws with data overlays';
 
