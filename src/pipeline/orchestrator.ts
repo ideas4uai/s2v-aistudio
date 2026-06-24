@@ -541,10 +541,10 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
           }
         };
 
-        // Stage 2 scenes (background_prompt set) spawn rembg + Metro engine —
+        // Stage 2 scenes (have a background — prompt or pre-supplied URL) spawn rembg + Metro engine —
         // running those concurrently starves CPU. Force sequential for any batch
         // that contains at least one Stage 2 scene.
-        const hasStage2 = batch.some(s => (s as any).background_prompt);
+        const hasStage2 = batch.some(s => (s as any).background_prompt || (s as any).background_url);
         if (hasStage2) {
           console.log('[Orchestrator] Stage 2 batch — processing sequentially to avoid CPU starvation');
           for (const scene of batch) {
@@ -719,8 +719,8 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   if (!fs.existsSync(bgTmpDir)) fs.mkdirSync(bgTmpDir, { recursive: true });
   const bgLocalPath = path.join(bgTmpDir, `${scene.scene_id}_background.png`);
 
-  if (scene.background_prompt && !scene.background_path && scene.background_url && !(scene as any).unified) {
-    // Background already in Supabase from a prior run — re-download instead of regenerating
+  if (!scene.background_path && scene.background_url && !(scene as any).unified) {
+    // Background URL available (pre-generated or cached from prior run) — download instead of regenerating
     try {
       console.log('[Orchestrator] Background cached in Supabase — re-downloading');
       await downloadFile(scene.background_url, bgLocalPath);
