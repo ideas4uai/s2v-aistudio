@@ -46,6 +46,7 @@ Usage:
 """
 
 import argparse
+import json
 import math
 import os
 import random
@@ -65,6 +66,7 @@ PORTRAIT_CENTER_Y = 0.40        # portrait vertical centre, fraction of height (
 PORTRAIT_BOTTOM_MARGIN = 80     # gap between portrait bottom edge and frame bottom
 PORTRAIT_FADE_PX = 200          # bottom alpha ramp height (px) to hide the hard cut
 BODY_HEIGHT_FRAC = 0.65         # full-body character height, fraction of frame
+BODY_COMPOSITE_HEIGHT_FRAC = 0.56  # body_composite target char height; only scales UP small characters
 FEET_Y = 1800                   # full-body feet anchor (px)
 CENTER_X = OUT_W // 2
 WALK_SPEED = 2.0                # walk bob frequency (Hz)
@@ -117,6 +119,35 @@ START_PORTRAIT = {
 }
 
 GRADE_EMOTIONS = {'curious', 'tense', 'sad', 'happy', 'empty'}
+
+# ── body_composite mode: headless poses available in parts_dir/_headless/ ────
+# body_thinking is intentionally excluded: the forearm in that pose connects to
+# the torso without a gap in the centre column, making automatic collar-top
+# detection ambiguous.  Deferred until a re-generated pose with a clearer
+# neck/collar gap is available.
+HEADLESS_BODY_POSES = [
+    'body_neutral', 'body_talking', 'body_surprised',
+    'body_idle', 'body_explaining', 'body_pointing',
+]
+
+# Emotion → headless body pose for body_composite mode.
+# 'thinking' falls back to body_neutral (see HEADLESS_BODY_POSES note above);
+# the emotional read still comes through via the face/eyes/brow on the head layer.
+BODY_COMPOSITE_BODY_MAP = {
+    'neutral':  'body_idle',        # standing still, listening
+    'curious':  'body_explaining',  # arm extended, presenting
+    'worried':  'body_neutral',     # contained stance
+    'happy':    'body_talking',     # animated gesture
+    'shocked':  'body_surprised',   # hands raised
+    'thinking': 'body_neutral',     # body_thinking deferred; emotion reads via face
+    'tense':    'body_neutral',     # arms at sides, contained
+    'sad':      'body_neutral',     # arms at sides
+    'empty':    'body_idle',        # still
+}
+
+# Head height as a fraction of total character height (derived from full-body
+# portrait analysis: head region ≈ 18.75% of character bbox height).
+HEAD_BODY_FRAC = 0.1875
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -298,6 +329,80 @@ def build_blink_schedule(n_frames: int, fps: int, duration: float, seed: int):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# BODY-COMPOSITE HELPERS
+# ═══════════════════════════════════════════════════════════════════════════
+
+def detect_collar_y(bgra: np.ndarray, bgr_img: np.ndarray) -> int:
+    """
+    Find where the shirt collar starts in a headless body image.
+
+    Strategy: longest opaque run in the centre column = the torso.
+    The start of that run is the collar top (top of the collar interior where
+    the neck enters the shirt).
+
+    Works correctly for body_surprised (raised arms create a short run above
+    the main torso run; the longest run wins) and all other included poses.
+    body_thinking is excluded from HEADLESS_BODY_POSES because its raised
+    forearm connects to the torso without a detectable gap.
+    """
+    alpha = bgra[:, :, 3]
+    h, w = alpha.shape
+    cx = w // 2
+    col = alpha[:, cx]
+
+    runs = []
+    in_run = False
+    run_start = 0
+    for y in range(h):
+        if col[y] > 30 and not in_run:
+            run_start = y
+            in_run = True
+        elif col[y] <= 30 and in_run:
+            runs.append((run_start, y - 1))
+            in_run = False
+    if in_run:
+        runs.append((run_start, h - 1))
+    if not runs:
+        return h // 4
+
+    return max(runs, key=lambda r: r[1] - r[0])[0]
+
+
+def build_body_meta(headless_dir: str) -> dict:
+    """
+    Compute and cache per-pose collar_y in body_meta.json.
+    Returns {pose: {'collar_y': int}, ...}.
+    Loads from cache if body_meta.json already exists.
+    """
+    meta_path = os.path.join(headless_dir, 'body_meta.json')
+    if os.path.exists(meta_path):
+        with open(meta_path) as f:
+            return json.load(f)
+
+    if not os.path.isdir(headless_dir):
+        raise RuntimeError(f'[DoraemonEngine] _headless dir not found: {headless_dir}')
+
+    meta = {}
+    for pose in HEADLESS_BODY_POSES:
+        p = os.path.join(headless_dir, f'{pose}.png')
+        if not os.path.exists(p):
+            continue
+        img = cv2.imread(p)
+        bgra = white_to_alpha(img)
+        if bgra is not None:
+            meta[pose] = {'collar_y': detect_collar_y(bgra, img)}
+
+    if not meta:
+        raise RuntimeError(f'[DoraemonEngine] No headless poses found in: {headless_dir}')
+
+    with open(meta_path, 'w') as f:
+        json.dump(meta, f, indent=2)
+    summary = ', '.join(f'{p}={v["collar_y"]}' for p, v in meta.items())
+    print(f'[DoraemonEngine] body_meta.json written: {summary}')
+    return meta
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # COMPOSITING (Section 6)
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -414,8 +519,9 @@ def apply_fade(frame: np.ndarray, fi: int, total: int, n: int = FADE_FRAMES) -> 
 
 class DoraemonRenderer:
     def __init__(self, background_path, parts, mode, duration, fps, emotion,
-                 amps, seed, walk_start_x, walk_end_x):
+                 amps, seed, walk_start_x, walk_end_x, parts_dir=''):
         self.parts = parts
+        self.parts_dir = parts_dir
         self.mode = mode
         self.fps = fps
         self.duration = duration
@@ -435,6 +541,19 @@ class DoraemonRenderer:
         self.wide_pos = (0, 0)
         self.blink = [None] * self.total_frames
 
+        # body_composite members — populated by _prepare_body_composite
+        self.body_composite_bodies = {}
+        self.body_composite_heads = {}
+        self.body_collar_meta = {}
+        self.body_feet_rows = {}   # bottom-most opaque row per pose (for grounding)
+        self.composite_scale = 1.0  # normalises char height for small/landscape-format bodies
+        self.neck_anchor_y = 0
+        self.head_canvas_w = 0
+        self.head_canvas_h = 0
+        self.contact_shadow = None
+        self.shadow_x = 0
+        self.shadow_y = 0
+
         if mode == 'portrait':
             self._prepare_portraits()
             self.blink = build_blink_schedule(self.total_frames, fps, duration, seed)
@@ -442,6 +561,9 @@ class DoraemonRenderer:
             self._prepare_walk()
         elif mode == 'wide':
             self._prepare_wide()
+        elif mode == 'body_composite':
+            self._prepare_body_composite()
+            self.blink = build_blink_schedule(self.total_frames, fps, duration, seed)
 
     # ── prep ────────────────────────────────────────────────────────────────
     def _prepare_portraits(self):
@@ -512,6 +634,122 @@ class DoraemonRenderer:
         bh, bw = body.shape[:2]
         self.wide_pos = (CENTER_X - bw // 2, FEET_Y - bh)
 
+    def _prepare_body_composite(self):
+        """
+        Load headless body poses + per-frame head composites for body_composite mode.
+
+        Head frames: each portrait key (mouth_*, eyes_*) is cropped to the head
+        region defined by crop_rect_orig in head_meta.json, then head_isolated.png's
+        canonical alpha is applied.  This reuses Phase-2 extraction quality
+        (clean edges + neck fade) across every face state without re-extracting.
+
+        Body frames: white-keyed to BGRA from _headless/*.png.
+        Collar positions loaded from body_meta.json (computed once, then cached).
+        """
+        parts_dir = self.parts_dir
+        headless_dir = os.path.join(parts_dir, '_headless')
+
+        # head_meta.json ─────────────────────────────────────────────────────
+        meta_path = os.path.join(parts_dir, 'head_meta.json')
+        if not os.path.exists(meta_path):
+            raise RuntimeError(f'[DoraemonEngine] head_meta.json not found: {meta_path}')
+        with open(meta_path) as f:
+            head_meta = json.load(f)
+
+        cw, ch = head_meta['canvas_wh']
+        self.neck_anchor_y = head_meta['neck_anchor_y']
+        self.head_canvas_w = cw
+        self.head_canvas_h = ch
+        rx0, ry0, rx1, ry1 = head_meta['crop_rect_orig']
+
+        # canonical alpha from head_isolated.png (Phase-2 extraction quality) ─
+        head_iso_path = os.path.join(parts_dir, 'head_isolated.png')
+        if not os.path.exists(head_iso_path):
+            raise RuntimeError(f'[DoraemonEngine] head_isolated.png not found: {head_iso_path}')
+        head_iso = cv2.imread(head_iso_path, cv2.IMREAD_UNCHANGED)
+        if head_iso is None or head_iso.ndim != 3 or head_iso.shape[2] != 4:
+            raise RuntimeError(f'[DoraemonEngine] head_isolated.png is not BGRA: {head_iso_path}')
+        canonical_alpha = head_iso[:, :, 3]   # (ch, cw)
+
+        # per-key head frames ─────────────────────────────────────────────────
+        portrait_keys = [
+            'mouth_closed', 'mouth_open_a', 'mouth_open_e', 'mouth_open_o',
+            'mouth_smile', 'mouth_smile_open',
+            'eyes_open', 'eyes_half', 'eyes_closed', 'eyes_wide',
+        ]
+        for key in portrait_keys:
+            if key not in self.parts:
+                continue
+            part = self.parts[key]          # BGRA at original portrait resolution
+            ph, pw = part.shape[:2]
+            x0c = max(0, min(rx0, pw - 1))
+            y0c = max(0, min(ry0, ph - 1))
+            x1c = max(x0c + 1, min(rx1, pw))
+            y1c = max(y0c + 1, min(ry1, ph))
+            head_crop = part[y0c:y1c, x0c:x1c, :].copy()
+            if head_crop.shape[0] != ch or head_crop.shape[1] != cw:
+                head_crop = cv2.resize(head_crop, (cw, ch), interpolation=cv2.INTER_LANCZOS4)
+            head_crop[:, :, 3] = canonical_alpha
+            # Zero transparent-area RGB so Lanczos scaling doesn't bleed white
+            # background pixels into semi-transparent edge pixels (white blob fix).
+            head_crop[canonical_alpha < 10, :3] = 0
+            self.body_composite_heads[key] = head_crop
+
+        if not self.body_composite_heads:
+            raise RuntimeError('[DoraemonEngine] No portrait head frames built — '
+                               'missing mouth_*/eyes_* parts')
+
+        # body_meta.json (per-pose collar_y) ─────────────────────────────────
+        self.body_collar_meta = build_body_meta(headless_dir)
+
+        # headless body poses ─────────────────────────────────────────────────
+        for pose in HEADLESS_BODY_POSES:
+            if pose not in self.body_collar_meta:
+                continue
+            p = os.path.join(headless_dir, f'{pose}.png')
+            if not os.path.exists(p):
+                continue
+            img = cv2.imread(p)
+            bgra = white_to_alpha(img)
+            if bgra is not None:
+                self.body_composite_bodies[pose] = bgra
+                # Bottom-most opaque row — used to ground feet at FEET_Y rather
+                # than the image bottom edge (which may have transparent whitespace).
+                col_max = bgra[:, :, 3].max(axis=1)
+                opaque = np.where(col_max > 30)[0]
+                self.body_feet_rows[pose] = int(opaque[-1]) if len(opaque) else bgra.shape[0] - 1
+
+        if not self.body_composite_bodies:
+            raise RuntimeError(f'[DoraemonEngine] No headless body PNGs loaded: {headless_dir}')
+
+        # Size normalisation: scale UP characters whose body images are small or
+        # landscape-format (e.g. Nova 1344x768) so they fill BODY_COMPOSITE_HEIGHT_FRAC
+        # of the frame.  composite_scale is never < 1.0 — tall characters unchanged.
+        norm_pose = ('body_idle' if 'body_idle' in self.body_composite_bodies
+                     else next(iter(self.body_composite_bodies)))
+        norm_feet  = self.body_feet_rows[norm_pose]
+        norm_collar = self.body_collar_meta[norm_pose]['collar_y']
+        target_body_below = BODY_COMPOSITE_HEIGHT_FRAC * OUT_H * (1.0 - HEAD_BODY_FRAC)
+        self.composite_scale = max(1.0, target_body_below / max(1, norm_feet - norm_collar))
+        if self.composite_scale > 1.005:
+            print(f'[DoraemonEngine] Height normalisation x{self.composite_scale:.3f} '
+                  f'(body_below={norm_feet - norm_collar}px -> target={target_body_below:.0f}px)')
+
+        # contact shadow (built once, composited before body each frame) ──────
+        rx, sh = 130, 60
+        sw = rx * 2 + 140
+        spr = np.zeros((sh, sw, 4), np.uint8)
+        cv2.ellipse(spr, (sw // 2, sh // 2), (rx, 14), 0, 0, 360, (0, 0, 0, 200), -1)
+        spr[:, :, 3] = cv2.GaussianBlur(spr[:, :, 3], (41, 41), 0)
+        self.contact_shadow = spr
+        self.shadow_x = CENTER_X - sw // 2
+        self.shadow_y = FEET_Y - sh // 2
+
+        print(f'[DoraemonEngine] body_composite ready: '
+              f'{len(self.body_composite_bodies)} body poses, '
+              f'{len(self.body_composite_heads)} head frames, '
+              f'neck_anchor_y={self.neck_anchor_y}')
+
     # ── per-frame portrait key selection ─────────────────────────────────────
     def _portrait_key(self, fi: int) -> str:
         if fi < 8:
@@ -526,6 +764,23 @@ class DoraemonRenderer:
                 k = mouth_key_for(float(self.amps[fi]), self.emotion)
         if k not in self.portraits:
             k = 'mouth_closed' if 'mouth_closed' in self.portraits else next(iter(self.portraits))
+        return k
+
+    def _head_key(self, fi: int) -> str:
+        """Same selection logic as _portrait_key but indexes body_composite_heads."""
+        if fi < 8:
+            k = START_PORTRAIT.get(self.emotion, 'mouth_closed')
+        else:
+            b = self.blink[fi]
+            if b == 'half':
+                k = 'eyes_half'
+            elif b == 'closed':
+                k = 'eyes_closed'
+            else:
+                k = mouth_key_for(float(self.amps[fi]), self.emotion)
+        if k not in self.body_composite_heads:
+            k = ('mouth_closed' if 'mouth_closed' in self.body_composite_heads
+                 else next(iter(self.body_composite_heads)))
         return k
 
     # ── render one frame ──────────────────────────────────────────────────────
@@ -559,6 +814,47 @@ class DoraemonRenderer:
             new_w = bw * breath
             composite_png(frame, self.wide_body, CENTER_X - new_w / 2.0,
                           (py + bh) - bh * breath, scale=breath)
+
+        elif self.mode == 'body_composite' and self.body_composite_bodies:
+            # Body pose for this emotion
+            body_key = BODY_COMPOSITE_BODY_MAP.get(self.emotion, 'body_neutral')
+            if body_key not in self.body_composite_bodies:
+                body_key = next(iter(self.body_composite_bodies))
+            body_img = self.body_composite_bodies[body_key]
+            collar_y = self.body_collar_meta[body_key]['collar_y']
+            bh, bw = body_img.shape[:2]
+
+            breath = 1.0 + 0.012 * math.sin(2 * math.pi * t / 2.0)
+            # composite_scale normalises char height across different body formats
+            body_scale = breath * self.composite_scale
+
+            # Ground feet (bottom-most opaque pixel row) at FEET_Y.
+            # Using feet_row instead of bh avoids floating caused by transparent
+            # whitespace that Gemini leaves below the feet in generated images.
+            feet_row = self.body_feet_rows.get(body_key, bh - 1)
+            body_x = CENTER_X - bw * body_scale / 2.0
+            body_y = FEET_Y - feet_row * body_scale
+
+            # Collar y in frame: distance from collar to actual feet (not image bottom)
+            body_below_collar = feet_row - collar_y
+            collar_y_frame = FEET_Y - body_below_collar * body_scale
+
+            # Head scale: head_height = HEAD_BODY_FRAC/(1-HEAD_BODY_FRAC) * body_below_collar
+            head_scale_base = (HEAD_BODY_FRAC / (1.0 - HEAD_BODY_FRAC)
+                               * body_below_collar * self.composite_scale / self.neck_anchor_y)
+            head_total_scale = head_scale_base * breath
+
+            head_x = CENTER_X - self.head_canvas_w * head_total_scale / 2.0
+            head_y = collar_y_frame - self.neck_anchor_y * head_total_scale
+
+            head_img = self.body_composite_heads[self._head_key(fi)]
+
+            # Composite order: contact shadow → body → head (head always in front)
+            if self.contact_shadow is not None:
+                composite_png(frame, self.contact_shadow, self.shadow_x, self.shadow_y)
+            composite_png(frame, body_img, body_x, body_y, scale=body_scale)
+            composite_png(frame, head_img, head_x, head_y, scale=head_total_scale)
+
         # else BACKGROUND mode: no character
 
         frame = apply_grade(frame, self.emotion)
@@ -601,6 +897,9 @@ def main():
     parser.add_argument('--parts_dir', default='')
     parser.add_argument('--render_mode', default='cutout')
     parser.add_argument('--walk', action='store_true')
+    parser.add_argument('--body_composite', action='store_true',
+                        help='Enable body+head composite mode when assets exist '
+                             '(default: portrait for audio, wide for no audio)')
     parser.add_argument('--walk_start_x', type=int, default=240)
     parser.add_argument('--walk_end_x', type=int, default=840)
     # Accepted for CLI compatibility with scene_animator_v3 / metro_engine_v4
@@ -652,20 +951,42 @@ def main():
     has_audio = bool(args.audio) and os.path.exists(args.audio) and float(amps.max()) > 1e-6
 
     # ── Mode selection ──
+    headless_dir = os.path.join(args.parts_dir, '_headless') if args.parts_dir else ''
+    has_headless = False
+    if headless_dir and os.path.isdir(headless_dir):
+        has_headless = any(
+            f.startswith('body_') and f.endswith('.png')
+            for f in os.listdir(headless_dir)
+        )
+    has_head_meta = bool(args.parts_dir) and os.path.exists(
+        os.path.join(args.parts_dir, 'head_meta.json'))
+    has_head_iso = bool(args.parts_dir) and os.path.exists(
+        os.path.join(args.parts_dir, 'head_isolated.png'))
+    body_composite_ready = has_headless and has_head_meta and has_head_iso
+
     if not parts or is_narrator:
         mode = 'background'
+        mode_reason = 'no character parts or narrator scene'
     elif args.walk:
         mode = 'walk'
+        mode_reason = '--walk flag set'
+    elif args.body_composite and body_composite_ready:
+        mode = 'body_composite'
+        mode_reason = (f'--body_composite flag set; assets found '
+                       f'in {os.path.basename(args.parts_dir or "")}')
     elif has_audio:
         mode = 'portrait'
+        mode_reason = 'audio present; no headless assets - portrait lip-sync fallback'
     else:
         mode = 'wide'
-    print(f'[DoraemonEngine] Mode: {mode}'
-          f'{" (audio-driven lip-sync)" if mode == "portrait" else ""}')
+        mode_reason = 'no audio and no headless assets - wide static pose fallback'
+
+    print(f'[DoraemonEngine] Mode: {mode} — {mode_reason}')
 
     renderer = DoraemonRenderer(
         args.background, parts, mode, args.duration, fps, emotion, amps,
-        args.seed, args.walk_start_x, args.walk_end_x)
+        args.seed, args.walk_start_x, args.walk_end_x,
+        parts_dir=args.parts_dir)
 
     os.makedirs(os.path.dirname(args.output) or '.', exist_ok=True)
     writer, codec = open_writer(args.output, fps, OUT_W, OUT_H)

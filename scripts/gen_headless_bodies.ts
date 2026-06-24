@@ -30,18 +30,35 @@ const BACKOFF_429_MS = 25000;
 const CHARACTERS: Record<string, {
   name: string;
   description: string;
-  assetsDir: string;    // where to save
-  refDir: string;       // where _references/ lives
+  outfit: string;          // canonical outfit lock for all 7 body poses
+  outfitWarning?: string;  // note about ignoring reference image discrepancies
+  sampleRef?: string;      // path relative to assetsDir — an already-correct pose used as visual style reference
+  assetsDir: string;       // where to save _headless/ output
+  refDir: string;          // where _references/ lives
 }> = {
   veer: {
     name: 'VEER',
-    description: 'Young South Asian man, mid-20s, dark short hair, warm brown skin, casual modern outfit — navy blue jacket over white shirt, dark jeans.',
+    // Verified against approved portrait assets (mouth_closed.png, eyes_open.png).
+    description: 'Young South Asian man, mid-20s, dark short hair, warm brown skin.',
+    // Verified against approved portrait assets: plain navy blue crew-neck t-shirt,
+    // dark charcoal grey jogger pants, white sneakers. NO jacket. NO graphic.
+    outfit: `OUTFIT (must match exactly): PLAIN SOLID navy blue crew-neck t-shirt — absolutely NO graphics, NO logos, NO prints, NO text, NO emblems, NO designs, NO decorative elements of any kind on the shirt — SOLID SINGLE COLOUR ONLY. Dark charcoal grey jogger pants with visible drawstring waistband. White sneakers.`,
+    outfitWarning: `Ignore any jacket, layered clothing, or graphic/logo/print visible on the t-shirt in the reference images. The canonical shirt is PLAIN SOLID NAVY BLUE with ZERO graphics or prints.`,
     assetsDir: path.join(process.cwd(), 'assets', 'characters', 'veer'),
     refDir: path.join(process.cwd(), 'assets', 'characters', 'c8d441f2-3395-4982-8aa8-951386040579'),
   },
   nova: {
     name: 'NOVA',
-    description: 'Young South Asian woman, mid-20s, long dark hair, warm brown skin, modern outfit.',
+    // Verified against approved portrait assets (mouth_closed.png, eyes_open.png, body_neutral.png):
+    // silver-white hair with teal-blue gradient tips, teal/cyan eyes, light warm skin.
+    description: 'Young South Asian woman, mid-20s, silver-white hair with teal-blue gradient tips, teal/cyan eyes, light warm skin.',
+    // Verified against _headless/body_neutral.png (correct generated pose):
+    // vertical teal center seam, teal side piping on coat panels, teal holographic ring at
+    // collar level, teal piping on leggings, teal boot accents. NOT a wide horizontal band.
+    outfit: `OUTFIT (must match exactly): dark navy blue fitted knee-length structured coat with high round stand-up collar, vertical teal/cyan piping seam running down center-front of coat, teal/cyan seam and piping lines along coat panel edges and sleeves, teal/cyan holographic ring or disc orbiting at collar/shoulder level, dark navy slim leggings with teal/cyan piping lines on sides, dark blue ankle boots with teal/cyan accent details. The teal details are thin VERTICAL lines and seams — NOT a single wide horizontal band across the chest.`,
+    outfitWarning: `Ignore any floating holographic notepad or earpiece visible in the reference images. The FIRST style-reference image shows the exact correct outfit rendering — match its teal line details precisely. SKIN TONE: All visible skin areas (hands, wrists) must be light warm peachy-beige — NOT dark brown, NOT tan. Match the skin tone shown in the reference images exactly.`,
+    // body_neutral.png is already correctly generated — use it as a visual style reference
+    sampleRef: '_headless/body_neutral.png',
     assetsDir: path.join(process.cwd(), 'assets', 'characters', '3da9733b-1f11-4365-9e90-a0043f76c187'),
     refDir: path.join(process.cwd(), 'assets', 'characters', '3da9733b-1f11-4365-9e90-a0043f76c187'),
   },
@@ -56,29 +73,24 @@ const HEADLESS_STRONG = `CRITICAL VISUAL REQUIREMENT: This image MUST NOT contai
 
 const STYLE_BASE_HEADLESS = `${STYLE_BASE} The character appears HEADLESS in this frame — white background where the head would be, collar at very top of image.`;
 
-// ─── Canonical outfit lock ────────────────────────────────────────────────────
-// Determined from approved portrait assets (mouth_closed.png, eyes_open.png):
-// plain navy blue crew-neck t-shirt, dark charcoal grey jogger pants, white sneakers.
-// NO jacket. All 7 body poses must match this exactly.
-const VEER_OUTFIT = `OUTFIT (must match exactly): plain navy blue crew-neck t-shirt (no jacket, no hoodie, no zip-up, no layering — t-shirt only), dark charcoal grey jogger pants with visible drawstring waistband, white sneakers.`;
-
 // ─── 7 Headless body pose prompts ────────────────────────────────────────────
+// [OUTFIT_DESCRIPTION] is replaced per-character at generation time via char.outfit.
 const HEADLESS_PROMPTS: Record<string, string> = {
-  body_neutral: `[CHARACTER_DESCRIPTION] Clothing and body pose illustration: body from collar downward only. Standing relaxed, arms naturally at sides, weight balanced, feet flat on ground, facing forward. ${VEER_OUTFIT} ${HEADLESS_STRONG} ${STYLE_BASE_HEADLESS}`,
+  body_neutral: `[CHARACTER_DESCRIPTION] Clothing and body pose illustration: body from collar downward only. Standing relaxed, arms naturally at sides, weight balanced, feet flat on ground, facing forward. [OUTFIT_DESCRIPTION] ${HEADLESS_STRONG} ${STYLE_BASE_HEADLESS}`,
 
   // body angled 3/4 view to avoid direct camera-face — which makes model add head
-  body_talking: `[CHARACTER_DESCRIPTION] Clothing and body pose illustration — BODY FROM COLLAR DOWN, NO HEAD. Body angled slightly to the right (3/4 view). Right arm raised with palm open to the side as if gesturing while speaking. Left arm relaxed at side. Weight shifted to left foot. Body is turned, not facing directly forward. ${VEER_OUTFIT} ${HEADLESS_STRONG} ${STYLE_BASE_HEADLESS}`,
+  body_talking: `[CHARACTER_DESCRIPTION] Clothing and body pose illustration — BODY FROM COLLAR DOWN, NO HEAD. Body angled slightly to the right (3/4 view). Right arm raised with palm open to the side as if gesturing while speaking. Left arm relaxed at side. Weight shifted to left foot. Body is turned, not facing directly forward. [OUTFIT_DESCRIPTION] ${HEADLESS_STRONG} ${STYLE_BASE_HEADLESS}`,
 
-  body_thinking: `[CHARACTER_DESCRIPTION] Clothing and body pose illustration: body from collar downward only. One hand raised up near collar height in a thoughtful gesture, other arm crossed loosely at waist, slight weight shift to one side. ${VEER_OUTFIT} ${HEADLESS_STRONG} ${STYLE_BASE_HEADLESS}`,
+  body_thinking: `[CHARACTER_DESCRIPTION] Clothing and body pose illustration: body from collar downward only. One hand raised up near collar height in a thoughtful gesture, other arm crossed loosely at waist, slight weight shift to one side. [OUTFIT_DESCRIPTION] ${HEADLESS_STRONG} ${STYLE_BASE_HEADLESS}`,
 
-  body_surprised: `[CHARACTER_DESCRIPTION] Clothing and body pose illustration — BODY AND HANDS ONLY, NO HEAD. Both hands raised to upper-chest height, palms flat and facing outward with fingers spread wide. Elbows bent at 90 degrees. Body torso leaning slightly backward. Feet planted. This is a STOP or WHOA hand gesture, using only arms and body posture. ${VEER_OUTFIT} ${HEADLESS_STRONG} ${STYLE_BASE_HEADLESS}`,
+  body_surprised: `[CHARACTER_DESCRIPTION] Clothing and body pose illustration — BODY AND HANDS ONLY, NO HEAD. Both hands raised to upper-chest height, palms flat and facing outward with fingers spread wide. Elbows bent at 90 degrees. Body torso leaning slightly backward. Feet planted. This is a STOP or WHOA hand gesture, using only arms and body posture. [OUTFIT_DESCRIPTION] ${HEADLESS_STRONG} ${STYLE_BASE_HEADLESS}`,
 
-  body_idle: `[CHARACTER_DESCRIPTION] Clothing and body pose illustration: body from collar downward only. Standing completely still, arms hanging relaxed and close to body, feet shoulder-width apart, weight evenly balanced. Minimal resting pose. ${VEER_OUTFIT} ${HEADLESS_STRONG} ${STYLE_BASE_HEADLESS}`,
+  body_idle: `[CHARACTER_DESCRIPTION] Clothing and body pose illustration: body from collar downward only. Standing completely still, arms hanging relaxed and close to body, feet shoulder-width apart, weight evenly balanced. Minimal resting pose. [OUTFIT_DESCRIPTION] ${HEADLESS_STRONG} ${STYLE_BASE_HEADLESS}`,
 
-  body_explaining: `[CHARACTER_DESCRIPTION] Clothing and body pose illustration: body from collar downward only. One arm extended forward with open palm facing up in a presenting/explaining gesture, other arm slightly bent at side, body leaning very slightly forward. ${VEER_OUTFIT} ${HEADLESS_STRONG} ${STYLE_BASE_HEADLESS}`,
+  body_explaining: `[CHARACTER_DESCRIPTION] Clothing and body pose illustration: body from collar downward only. One arm extended forward with open palm facing up in a presenting/explaining gesture, other arm slightly bent at side, body leaning very slightly forward. [OUTFIT_DESCRIPTION] ${HEADLESS_STRONG} ${STYLE_BASE_HEADLESS}`,
 
   // pointing to the side (not directly at camera) to avoid triggering head generation
-  body_pointing: `[CHARACTER_DESCRIPTION] Clothing and body pose illustration — BODY FROM COLLAR DOWN, NO HEAD. Body turned 3/4 to the left. Left arm fully extended pointing diagonally to the upper left, index finger extended. Right arm relaxed at side. Weight on right foot, slight forward lean. Body is angled, not facing camera directly. ${VEER_OUTFIT} ${HEADLESS_STRONG} ${STYLE_BASE_HEADLESS}`,
+  body_pointing: `[CHARACTER_DESCRIPTION] Clothing and body pose illustration — BODY FROM COLLAR DOWN, NO HEAD. Body turned 3/4 to the left. Left arm fully extended pointing diagonally to the upper left, index finger extended. Right arm relaxed at side. Weight on right foot, slight forward lean. Body is angled, not facing camera directly. [OUTFIT_DESCRIPTION] ${HEADLESS_STRONG} ${STYLE_BASE_HEADLESS}`,
 };
 
 // ─── PNG dimension reader (no deps) ──────────────────────────────────────────
@@ -137,6 +149,24 @@ async function main() {
     console.log(`  Output dir: ${outDir}`);
 
     const refParts = loadRefs(char.refDir);
+
+    // Load optional style-reference image (an already-correct pose to show exact outfit rendering)
+    let sampleRefParts: any[] = [];
+    if (char.sampleRef) {
+      const samplePath = path.join(char.assetsDir, char.sampleRef);
+      if (fs.existsSync(samplePath)) {
+        const buf = fs.readFileSync(samplePath);
+        const mimeType = (buf[0] === 0x89 && buf[1] === 0x50) ? 'image/png' : 'image/jpeg';
+        sampleRefParts = [
+          { text: 'STYLE REFERENCE — this image shows an already-correct body pose for this character. Match its outfit detail style exactly (teal line placement, piping, holographic ring):' },
+          { inlineData: { data: buf.toString('base64'), mimeType } },
+        ];
+        console.log(`  Style ref: ${char.sampleRef}`);
+      } else {
+        console.warn(`  WARNING: sampleRef not found, skipping: ${samplePath}`);
+      }
+    }
+
     let nextSlotAt = Date.now();
     let passed = 0, failed = 0;
 
@@ -158,18 +188,20 @@ async function main() {
       if (waitMs > 0) await new Promise(r => setTimeout(r, waitMs));
 
       const prompt = promptTemplate
-        .replace('[CHARACTER_DESCRIPTION]', `${char.name}: ${char.description}.`);
+        .replace('[CHARACTER_DESCRIPTION]', `${char.name}: ${char.description}.`)
+        .replace('[OUTFIT_DESCRIPTION]', char.outfit);
 
-      const textInstruction = `Match the character's skin tone and hair from the reference images. Ignore any jacket or layered clothing visible in references — the canonical outfit is a PLAIN NAVY BLUE T-SHIRT ONLY (no jacket).
+      const outfitNote = char.outfitWarning ? ` ${char.outfitWarning}` : '';
+      const textInstruction = `Match the character's skin tone and hair from the reference images.${outfitNote}
 
 ${prompt}
 
 CRITICAL RULES:
-1. NO HEAD. NO FACE. NO NECK. White background replaces the head. The t-shirt collar is the very top of the illustration.
-2. OUTFIT: plain navy blue crew-neck t-shirt ONLY — absolutely no jacket, no hoodie, no zip-up. Dark charcoal grey jogger pants. White sneakers.
+1. NO HEAD. NO FACE. NO NECK. White background replaces the head. The collar/neckline is the very top of the illustration.
+2. ${char.outfit}
 3. Show full body from collar to feet.`;
 
-      const parts: any[] = [...refParts, { text: textInstruction }];
+      const parts: any[] = [...refParts, ...sampleRefParts, { text: textInstruction }];
       let success = false;
 
       for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
