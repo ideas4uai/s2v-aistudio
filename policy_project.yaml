@@ -1,4 +1,0 @@
-﻿name: projects/project-ab1f9612-c6b1-48b5-b1d/policies/google.disableApiKeyCreation
-spec:
-  rules:
-  - enforce: false

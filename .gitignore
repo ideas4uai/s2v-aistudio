@@ -57,3 +57,8 @@ Thumbs.db
 # Runtime logs
 *.log
 .gstack/
+
+outputs/*.txt
+policy*.yaml
+**/__pycache__/
+*.pyc
