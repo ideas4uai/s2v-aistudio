@@ -137,6 +137,15 @@ async function callSceneAnimatorV3(
       const resolvedPartsDir = opts.partsDir || path.join(process.cwd(), 'assets', 'characters', charName);
       args.push('--parts_dir', resolvedPartsDir);
       args.push('--render_mode', 'cutout');
+      // Auto-enable body_composite when headless assets exist for this character.
+      const headlessDir = path.join(resolvedPartsDir, '_headless');
+      const headMetaPath = path.join(resolvedPartsDir, 'head_meta.json');
+      const headIsoPath  = path.join(resolvedPartsDir, 'head_isolated.png');
+      const hasHeadless  = fs.existsSync(headlessDir) &&
+        fs.readdirSync(headlessDir).some(f => f.startsWith('body_') && f.endsWith('.png'));
+      if (hasHeadless && fs.existsSync(headMetaPath) && fs.existsSync(headIsoPath)) {
+        args.push('--body_composite');
+      }
       // Audio drives lip-sync; without it the engine renders a static wide shot.
       if (opts.audioPath && fs.existsSync(opts.audioPath)) {
         args.push('--audio', opts.audioPath);
