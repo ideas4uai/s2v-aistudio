@@ -480,7 +480,9 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           // (skipped for unified scenes — the LoRA image already contains the
           // character in the scene, there is nothing to cut out)
           // (skipped for NARRATOR — no character to remove, imagePath IS the background)
-          if (!scene?.unified && !isNarratorScene && scene?.background_path && fs.existsSync(scene.background_path)) {
+          // (skipped for Doraemon cutout — engine uses parts dir, transparent_path is unused)
+          const isDoraemonCutout = process.env.USE_DORAEMON === 'true' && scene?.render_mode === 'cutout';
+          if (!scene?.unified && !isNarratorScene && !isDoraemonCutout && scene?.background_path && fs.existsSync(scene.background_path)) {
             const sceneId = scene.scene_id || visual.visual_id;
             const transparentPath = path.join(tmpDir, `${sceneId}_transparent.png`);
             if (!fs.existsSync(transparentPath)) {

@@ -37,6 +37,27 @@ import { requestContext } from '../server/utils/context.js';
 
 const INDIAN_AESTHETIC_SUFFIX = 'South Asian graphic novel illustration style, Hyderabad cyberpunk city 2031, warm terracotta and saffron architecture, teal neon accents, Indian street culture, autorickshaws with holographic overlays, Hindi signage, chai stall neon lights, bold flat colour illustration, Trigger Studio quality, NOT Japanese, NOT manga, NOT Tokyo aesthetic, South Asian urban environment';
 
+function characterHasPortraitAssets(charName: string, project: any): boolean {
+  const cutoutChar = charName.toLowerCase();
+  const hasPngs = (dir: string) =>
+    fs.existsSync(dir) && fs.readdirSync(dir).some((f: string) => f.endsWith('.png'));
+
+  const nameDir = path.join(process.cwd(), 'assets', 'characters', cutoutChar);
+  if (hasPngs(nameDir)) {
+    return fs.existsSync(path.join(nameDir, 'mouth_closed.png'));
+  }
+  // Name-based dir exists but no PNGs — resolve UUID dir from universe
+  const matchedChar = project?.universe?.characters
+    ?.find((c: any) => c.name?.toLowerCase() === cutoutChar);
+  if (matchedChar?.id) {
+    const uuidDir = path.join(process.cwd(), 'assets', 'characters', matchedChar.id);
+    if (hasPngs(uuidDir)) {
+      return fs.existsSync(path.join(uuidDir, 'mouth_closed.png'));
+    }
+  }
+  return false;
+}
+
 async function downloadFile(url: string, destPath: string): Promise<void> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`downloadFile failed: ${res.status} ${url}`);
@@ -793,6 +814,19 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
          console.log('[Orchestrator] NARRATOR scene — no background yet, skipping character generation (will render black)');
        }
        visual.status = 'completed';
+       return;
+     }
+
+     // Cutout scenes with portrait assets: skip LoRA/Gemini generation —
+     // the Doraemon engine reads character parts (mouth_closed.png etc.) from
+     // the assets directory directly and doesn't use the generated image at all.
+     // Set asset_path to background so renderVisualClip reaches the Doraemon block.
+     if (process.env.USE_DORAEMON === 'true' &&
+         (scene as any).render_mode === 'cutout' &&
+         charName && characterHasPortraitAssets(charName, project)) {
+       visual.asset_path = scene.background_path || undefined;
+       visual.status = 'completed';
+       console.log(`[Orchestrator] Cutout scene with portrait assets — skipping image generation, Doraemon engine will render ${charName} directly`);
        return;
      }
 
