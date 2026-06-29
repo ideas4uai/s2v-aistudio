@@ -22,6 +22,8 @@ import os
 import sys
 import time
 
+import math
+
 import cv2
 import numpy as np
 
@@ -123,26 +125,11 @@ def apply_depth_warp(frame: np.ndarray,
                      cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
 
 
-# Pan amplitude (px) per emotion for depth parallax camera motion.
-# Reduced to ±20px max (near layer) for atmospheric, not mechanical feel.
-DEPTH_PAN_AMP = {
-    'curious': 18,
-    'tense':   14,
-    'sad':     16,
-    'empty':    8,
-    'warm':    18,
-    'neutral': 20,
-}
+# Near-layer horizontal max displacement (px).
+DEPTH_PAN_AMP  = 40
 
-# Vertical drift amplitude (px) — far layer drifts opposite to horizontal pan.
-DEPTH_VERT_AMP = {
-    'curious': 4,
-    'tense':   3,
-    'sad':     4,
-    'empty':   2,
-    'warm':    4,
-    'neutral': 5,
-}
+# Far-layer vertical counter-drift max (px).
+DEPTH_VERT_AMP = 8
 
 
 def _smoothstep(t: float) -> float:
@@ -152,18 +139,17 @@ def _smoothstep(t: float) -> float:
 
 
 def depth_pan_position(t: float, duration: float, emotion: str) -> tuple[float, float]:
-    """Return (cam_tx_px, cam_ty_px) at time t with smoothstep easing.
+    """Return (cam_tx_px, cam_ty_px) at time t.
 
-    Horizontal: sweeps -amp -> +amp (near layer moves most).
-    Vertical: far layer drifts ±vert_amp opposite to horizontal (breathing quality).
+    Horizontal: sine oscillation over 0.15 cycles of the clip, with smoothstep
+    applied to the timeline first — starts slow, drifts right, eases back.
+    Vertical: smoothstep counter-drift on far layer for subtle breathing quality.
+    emotion is accepted for API compatibility but not used (flat amplitude).
     """
-    amp      = DEPTH_PAN_AMP.get(emotion, 15)
-    vert_amp = DEPTH_VERT_AMP.get(emotion, 4)
     progress = _smoothstep(t / max(duration, 0.001))
-    cam_tx   = amp * (2.0 * progress - 1.0)
-    # Vertical counter-drift: far moves up when cam pans right (and vice versa).
-    # (1 - speed_map) weight in apply_depth_warp means far layer gets full drift.
-    cam_ty   = vert_amp * (2.0 * progress - 1.0)
+    # 0.15-cycle sine: camera breathes rightward and gently returns
+    cam_tx = DEPTH_PAN_AMP  * math.sin(2.0 * math.pi * progress * 0.15)
+    cam_ty = DEPTH_VERT_AMP * (2.0 * progress - 1.0)
     return cam_tx, cam_ty
 
 
