@@ -74,9 +74,9 @@ export async function generateNarration(
 
       const voicesDir = process.env.PIPER_VOICES_DIR || path.dirname(piperBin);
       const VOICE_MAP: Record<string, string> = {
-        'VEER':     'en_US-joe-medium',
+        'VEER':     'en_US-ryan-high',
         'VEER_ALT': 'en_US-reza_ibrahim-medium',
-        'BYTE':     'en_US-ryan-high',
+        'BYTE':     'en_US-joe-medium',
         'NOVA':     'en_GB-alba-medium',
         'NARRATOR': 'en_US-lessac-medium',
       };
