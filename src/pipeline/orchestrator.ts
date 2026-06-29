@@ -1062,8 +1062,33 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
 
     if (finalScenes.length > 0) {
   // 3. Run FFmpeg concat (no re-encode)
-      const stitchedVideoPath = await stitchScenes(finalScenes, activeProject, signal);
-      
+      let stitchedVideoPath = await stitchScenes(finalScenes, activeProject, signal);
+
+      // Optional RIFE frame interpolation (USE_RIFE=true doubles fps: 24→48)
+      if (process.env.USE_RIFE === 'true') {
+        const rifeScript = path.join(process.cwd(), 'scripts', 'rife_interpolate.py');
+        const rifePath = stitchedVideoPath.replace('.mp4', '_48fps.mp4');
+        try {
+          await new Promise<void>((resolve, reject) => {
+            console.log('[RIFE] Interpolating frames: 24fps → 48fps');
+            const proc = spawn('py', [rifeScript, '--input', stitchedVideoPath, '--output', rifePath], {
+              env: { ...process.env },
+            });
+            proc.stdout?.on('data', (d: Buffer) => process.stdout.write(d));
+            proc.stderr?.on('data', (d: Buffer) => process.stderr.write(d));
+            proc.on('close', code => (code === 0 ? resolve() : reject(new Error(`RIFE exit ${code}`))));
+            proc.on('error', reject);
+          });
+          if (fs.existsSync(rifePath) && fs.statSync(rifePath).size > 10000) {
+            stitchedVideoPath = rifePath;
+          } else {
+            console.warn('[RIFE] Output missing or empty — using original');
+          }
+        } catch (rifeErr: any) {
+          console.warn('[RIFE] Interpolation failed (non-fatal) — using original:', rifeErr?.message);
+        }
+      }
+
       const fileName = isPreview ? `${activeProject.project_id}_preview.mp4` : `${activeProject.project_id}.mp4`;
       
       // Save local backup first — survives Supabase failures and server restarts
