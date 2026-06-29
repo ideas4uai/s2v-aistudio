@@ -67,6 +67,18 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+# Optional: Depth Anything 2.5D parallax for unified scenes (USE_DEPTH_PARALLAX != 'false')
+try:
+    import sys as _sys
+    _sys.path.insert(0, os.path.dirname(__file__))
+    from depth_parallax import (generate_depth_map as _gen_depth,
+                                 build_speed_map as _build_speed,
+                                 apply_depth_warp as _depth_warp,
+                                 depth_pan_position as _pan_pos)
+    _DEPTH_AVAILABLE = True
+except Exception as _depth_import_err:
+    _DEPTH_AVAILABLE = False
+
 # ═══════════════════════════════════════════════════════════════════════════
 # CONFIG
 # ═══════════════════════════════════════════════════════════════════════════
@@ -859,6 +871,24 @@ class SceneRendererV4:
                                                  power=cfg.vignette_power)
         self.grain_bank = build_grain_bank(self.W, self.H, amount=5, seed=seed)
 
+        # ── Depth parallax (unified scenes only, optional) ──
+        self.depth_speed_map = None
+        self.depth_grid_x    = None
+        self.depth_grid_y    = None
+        if self.unified and _DEPTH_AVAILABLE and os.environ.get('USE_DEPTH_PARALLAX', 'true') != 'false':
+            try:
+                cache_path = os.path.splitext(background_path)[0] + '_depth.npy'
+                depth_norm = _gen_depth(background_path, cache_path)
+                # Resize depth map to frame dimensions
+                depth_rsz  = cv2.resize(depth_norm, (self.W, self.H),
+                                        interpolation=cv2.INTER_LINEAR)
+                self.depth_speed_map = _build_speed(depth_rsz)
+                self.depth_grid_y, self.depth_grid_x = np.mgrid[
+                    0:self.H, 0:self.W].astype(np.float32)
+                print('[MetroV4] Depth parallax active — 2.5D pan enabled')
+            except Exception as _de:
+                print(f'[MetroV4] Depth parallax unavailable ({_de}) — using Ken Burns')
+
         # ── Transitions ──
         self.fx = TransitionFX(self.W, self.H)
         half = min(0.5, duration * 0.15)
@@ -993,11 +1023,17 @@ class SceneRendererV4:
         dt = 1.0 / self.FPS
         zoom, tx, vscroll, shx, shy = self.camera.at(t)
 
-        # 1. Background layer at 0.3x camera speed
+        # 1. Background layer — depth parallax (unified) or Ken Burns (character scenes)
         y_offset = vscroll * self.v_pan_room
         frame = vertical_parallax_crop(self.tall_canvas, y_offset, self.W, self.H)
-        frame = warp_zoom_translate(frame, zoom, 0.5, self.camera.cy,
-                                    -0.3 * tx, 0)
+        if self.unified and self.depth_speed_map is not None:
+            # 2.5D depth pan: per-pixel shift based on depth map
+            cam_tx_px = _pan_pos(t, self.duration, self.emotion) + shx
+            frame = _depth_warp(frame, self.depth_speed_map,
+                                self.depth_grid_x, self.depth_grid_y, cam_tx_px)
+        else:
+            frame = warp_zoom_translate(frame, zoom, 0.5, self.camera.cy,
+                                        -0.3 * tx, 0)
 
         # 2. Midground: AO + shadow + character (1.0x camera speed)
         if self.char is not None:
