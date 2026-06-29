@@ -109,34 +109,62 @@ def apply_depth_warp(frame: np.ndarray,
                      speed_map: np.ndarray,
                      grid_x: np.ndarray,
                      grid_y: np.ndarray,
-                     cam_tx_px: float) -> np.ndarray:
-    """Shift each pixel by cam_tx_px * speed_map[y,x].
+                     cam_tx_px: float,
+                     cam_ty_px: float = 0.0) -> np.ndarray:
+    """Shift each pixel by cam_tx_px * speed_map[y,x] (horizontal) and
+    cam_ty_px * (1 - speed_map)[y,x] (vertical counter-drift for near layers).
 
-    cam_tx_px > 0 → camera pans right → near content moves left (parallax).
+    cam_tx_px > 0 -> camera pans right -> near content moves left (parallax).
     grid_x/grid_y must be (H, W) float32 base coordinate maps.
     """
     map_x = grid_x + cam_tx_px * speed_map
-    return cv2.remap(frame, map_x, grid_y,
+    map_y = grid_y + cam_ty_px * (1.0 - speed_map)
+    return cv2.remap(frame, map_x, map_y,
                      cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
 
 
-# Pan amplitude (px) per emotion for depth parallax camera motion
+# Pan amplitude (px) per emotion for depth parallax camera motion.
+# Reduced to ±20px max (near layer) for atmospheric, not mechanical feel.
 DEPTH_PAN_AMP = {
-    'curious': 55,
-    'tense':   40,
-    'sad':     50,
-    'empty':   20,
-    'warm':    55,
-    'neutral': 60,
+    'curious': 18,
+    'tense':   14,
+    'sad':     16,
+    'empty':    8,
+    'warm':    18,
+    'neutral': 20,
+}
+
+# Vertical drift amplitude (px) — far layer drifts opposite to horizontal pan.
+DEPTH_VERT_AMP = {
+    'curious': 4,
+    'tense':   3,
+    'sad':     4,
+    'empty':   2,
+    'warm':    4,
+    'neutral': 5,
 }
 
 
-def depth_pan_position(t: float, duration: float, emotion: str) -> float:
-    """Return camera x position in [-amp, +amp] at time t (smooth linear pan)."""
-    amp = DEPTH_PAN_AMP.get(emotion, 50)
-    # linear sweep -amp → +amp over the full duration
-    progress = t / max(duration, 0.001)
-    return amp * (2.0 * progress - 1.0)
+def _smoothstep(t: float) -> float:
+    """Smoothstep easing: slow start, fast middle, slow end."""
+    t = max(0.0, min(1.0, t))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def depth_pan_position(t: float, duration: float, emotion: str) -> tuple[float, float]:
+    """Return (cam_tx_px, cam_ty_px) at time t with smoothstep easing.
+
+    Horizontal: sweeps -amp -> +amp (near layer moves most).
+    Vertical: far layer drifts ±vert_amp opposite to horizontal (breathing quality).
+    """
+    amp      = DEPTH_PAN_AMP.get(emotion, 15)
+    vert_amp = DEPTH_VERT_AMP.get(emotion, 4)
+    progress = _smoothstep(t / max(duration, 0.001))
+    cam_tx   = amp * (2.0 * progress - 1.0)
+    # Vertical counter-drift: far moves up when cam pans right (and vice versa).
+    # (1 - speed_map) weight in apply_depth_warp means far layer gets full drift.
+    cam_ty   = vert_amp * (2.0 * progress - 1.0)
+    return cam_tx, cam_ty
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -216,8 +244,8 @@ def main():
     print(f'[DepthParallax] Rendering {total_frames} frames...')
     for fi in range(total_frames):
         t = fi / args.fps
-        cam_tx = depth_pan_position(t, args.duration, args.emotion)
-        frame = apply_depth_warp(bg, speed_map, grid_x, grid_y, cam_tx)
+        cam_tx, cam_ty = depth_pan_position(t, args.duration, args.emotion)
+        frame = apply_depth_warp(bg, speed_map, grid_x, grid_y, cam_tx, cam_ty)
         writer.write(frame)
         if fi and fi % 96 == 0:
             print(f'[DepthParallax] ... {fi}/{total_frames}')

@@ -1028,9 +1028,10 @@ class SceneRendererV4:
         frame = vertical_parallax_crop(self.tall_canvas, y_offset, self.W, self.H)
         if self.unified and self.depth_speed_map is not None:
             # 2.5D depth pan: per-pixel shift based on depth map
-            cam_tx_px = _pan_pos(t, self.duration, self.emotion) + shx
+            cam_tx_px, cam_ty_px = _pan_pos(t, self.duration, self.emotion)
+            cam_tx_px += shx
             frame = _depth_warp(frame, self.depth_speed_map,
-                                self.depth_grid_x, self.depth_grid_y, cam_tx_px)
+                                self.depth_grid_x, self.depth_grid_y, cam_tx_px, cam_ty_px)
         else:
             frame = warp_zoom_translate(frame, zoom, 0.5, self.camera.cy,
                                         -0.3 * tx, 0)
