@@ -126,10 +126,34 @@ def apply_depth_warp(frame: np.ndarray,
 
 
 # Near-layer horizontal max displacement (px).
-DEPTH_PAN_AMP  = 40
+# Clip C (selected): depth-map speed ratios + ±60px sine/smoothstep pan.
+# Tested vs two alternatives on bg04_street_day; C chosen as most cinematic.
+DEPTH_PAN_AMP  = 60
 
 # Far-layer vertical counter-drift max (px).
 DEPTH_VERT_AMP = 8
+
+# ── Approach A: zoom-based depth parallax (camera push INTO scene) ────────────
+# Produces larger apparent separation (near zooms 15% more than far) but can
+# feel like a zoom-in rather than genuine parallax for illustrated content.
+# To try: replace apply_depth_warp call with the remap below.
+#
+#   cx, cy = W / 2.0, H / 2.0
+#   zoom   = 1.0 + 0.15 * depth_resized * progress   # near=1.15x, far=1.0x
+#   map_x  = (grid_x - cx) / zoom + cx
+#   map_y  = (grid_y - cy) / zoom + cy
+#   frame  = cv2.remap(frame, map_x, map_y, cv2.INTER_LINEAR,
+#                      borderMode=cv2.BORDER_REPLICATE)
+
+# ── Approach B: luminance-based layer separation ──────────────────────────────
+# Skips Depth Anything entirely; segments by pixel brightness instead.
+# Bright pixels (sky) = far (0.3x), mid-tone = mid (0.6x), dark = near (1.0x).
+# Cruder but zero model load time; can misfire on dark artistic shadows.
+# To try: replace build_speed_map(depth_resized) with the block below.
+#
+#   grey       = cv2.cvtColor(bg, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+#   speed_map  = np.where(grey > 0.65, 0.3,
+#                np.where(grey > 0.35, 0.6, 1.0)).astype(np.float32)
 
 
 def _smoothstep(t: float) -> float:
