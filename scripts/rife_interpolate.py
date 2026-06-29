@@ -149,6 +149,8 @@ def main():
             '-map', '0:v',
             '-map', '1:a?',          # optional — silent clips have no audio stream
             '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
             '-c:a', 'aac', '-b:a', '192k',
             '-shortest',
             '-y', args.output,
