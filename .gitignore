@@ -62,3 +62,6 @@ outputs/*.txt
 policy*.yaml
 **/__pycache__/
 *.pyc
+
+rife/
+test_veer_voice.txt
