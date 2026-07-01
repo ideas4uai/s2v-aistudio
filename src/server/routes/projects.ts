@@ -136,7 +136,7 @@ projectsRouter.get('/:id', async (req, res) => {
       world_entities: project.world_entities || project.worldEntities || { characters: [], locations: [], objects: [] },
       scenes: (project.scenes || []).map((s: any) => ({
         id: s.scene_id || s.id,
-        order: s.order || s.orderIndex,
+        order: s.order ?? s.orderIndex ?? 0,
         duration: s.duration_target || s.duration,
         narration_text: s.narration_text || s.narrationText,
         visual_prompt: s.visuals?.[0]?.prompt || s.visualPrompt,

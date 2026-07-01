@@ -809,11 +809,11 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
        if (scene.background_path && fs.existsSync(scene.background_path)) {
          visual.asset_path = scene.background_path;
          (scene as any).unified = true;
+         visual.status = 'completed';
          console.log('[Orchestrator] NARRATOR scene — using background as full scene, skipping character generation');
        } else {
-         console.log('[Orchestrator] NARRATOR scene — no background yet, skipping character generation (will render black)');
+         console.log('[Orchestrator] NARRATOR scene — no background yet, leaving visual pending for recovery');
        }
-       visual.status = 'completed';
        return;
      }
 

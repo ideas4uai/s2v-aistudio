@@ -279,15 +279,19 @@ export async function generateScenes(req: Request, res: Response) {
     console.log(`[ProjectController] Storyboard expansion complete. Generated ${scenesResult.length} scenes.`);
     
     console.log(`[ProjectController] Saving scenes and assets to DB for project ${id}...`);
-    project.scenes = scenesResult.map(s => {
+    project.scenes = scenesResult.map((s, idx) => {
       const sceneId = s.scene_id || uuidv4();
       return {
         scene_id: sceneId,
         projectId: id,
-        order: s.order,
+        order: s.order ?? s.orderIndex ?? idx,
         narration_text: s.narration_text,
         caption_text: s.caption_text,
         duration_target: s.duration_target,
+        background_prompt: s.background_prompt || s.backgroundPrompt || s.visual_prompt || s.visuals?.[0]?.prompt || '',
+        character: s.character || s.characterName || '',
+        scene_type: s.scene_type || s.sceneType || s.type || 'default',
+        emotion: s.emotion || 'neutral',
         status: 'pending',
         stage: 'audio',
         visuals: [
