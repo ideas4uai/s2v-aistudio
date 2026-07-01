@@ -756,9 +756,12 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   if (scene.background_prompt && !scene.background_path && !(scene as any).unified) {
     try {
       const bgArtStyle = (project.universe as any)?.backgroundArtStyle || '';
-      const fullBgPrompt = [scene.background_prompt, INDIAN_AESTHETIC_SUFFIX, bgArtStyle].filter(Boolean).join(', ');
+      const aestheticSuffix = project.universeId
+        ? INDIAN_AESTHETIC_SUFFIX
+        : 'cinematic lighting, clean professional style, suitable for educational content, 16:9 composition adapted to portrait';
+      const fullBgPrompt = [scene.background_prompt, aestheticSuffix, bgArtStyle].filter(Boolean).join(', ');
       console.log('[Orchestrator] Background full prompt:', fullBgPrompt.slice(0, 120));
-      const bgBase64 = await AIService.generateImageBase64(fullBgPrompt, { isStoryEpisode: true });
+      const bgBase64 = await AIService.generateImageBase64(fullBgPrompt, { isStoryEpisode: !!project.universeId });
       if (bgBase64) {
         const bgBuffer = Buffer.from(bgBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
         fs.writeFileSync(bgLocalPath, bgBuffer);
