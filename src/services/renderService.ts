@@ -126,9 +126,15 @@ async function callSceneAnimatorV3(
       '--height',     '1920',
     ];
     if (useV4 || useDoraemon) {
-      // Both engines accept (and tolerate) neighbour scene types.
-      args.push('--prev_scene_type', opts.prevSceneType || '');
-      args.push('--next_scene_type', opts.nextSceneType || '');
+      // Only forward scene types that Metro V4 has explicit transition rules for.
+      // Generic pipeline types ('hook', 'build', 'cta', 'default') fall through to
+      // choose_transition's default 'fade_black', creating unwanted dark frames.
+      // Passing '' causes choose_transition to return None → hard cut, no fade.
+      const V4_TRANSITION_TYPES = new Set(['street', 'black', 'grid', 'bedroom']);
+      const prevT = V4_TRANSITION_TYPES.has(opts.prevSceneType || '') ? (opts.prevSceneType || '') : '';
+      const nextT = V4_TRANSITION_TYPES.has(opts.nextSceneType || '') ? (opts.nextSceneType || '') : '';
+      args.push('--prev_scene_type', prevT);
+      args.push('--next_scene_type', nextT);
     }
     if (useDoraemon) {
       const charName = (opts.characterName || 'veer').toLowerCase();
@@ -840,7 +846,7 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
   console.log('[Stitch] Concat list contents:\n', fs.readFileSync(listFile, 'utf8'));
 
   try {
-     const stitchCmd = `"${ffmpeg}" -fflags +genpts -f concat -safe 0 -i "${listFile}" -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" -c:v libx264 -preset fast -crf 20 -c:a aac -ar 44100 -ac 2 -b:a 192k -y "${outputPath}"`;
+     const stitchCmd = `"${ffmpeg}" -f concat -safe 0 -i "${listFile}" -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" -vsync cfr -c:v libx264 -preset fast -crf 20 -c:a aac -ar 44100 -ac 2 -b:a 192k -y "${outputPath}"`;
      console.log('[Stitch] FFmpeg command:', stitchCmd);
      await guardedExec(stitchCmd, signal);
      try {

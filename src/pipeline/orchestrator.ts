@@ -91,6 +91,25 @@ function applyStyleToPrompt(prompt: string, style: StyleProfile): string {
 // Module-level Map persists across requests within a single server process.
 const projectMemoryStore = new Map<string, Project>();
 
+// On startup, re-hydrate completed projects from disk so renders survive
+// server restarts when running without Firestore (DISABLE_FIRESTORE=true).
+if (process.env.DISABLE_FIRESTORE === 'true') {
+  const _restoreDir = path.join(process.cwd(), 'outputs');
+  if (fs.existsSync(_restoreDir)) {
+    for (const _f of fs.readdirSync(_restoreDir)) {
+      if (_f.endsWith('.json')) {
+        try {
+          const _proj = JSON.parse(fs.readFileSync(path.join(_restoreDir, _f), 'utf-8'));
+          if (_proj.project_id && _proj.output_path) {
+            projectMemoryStore.set(_proj.project_id, _proj);
+            console.log(`[DB] Restored project ${_proj.project_id} from disk (status: ${_proj.status})`);
+          }
+        } catch {}
+      }
+    }
+  }
+}
+
 export async function loadProject(project_id: string): Promise<Project> {
   // Check in-memory store first (written by saveProjectState when DISABLE_FIRESTORE=true)
   const memProject = projectMemoryStore.get(project_id);
@@ -121,6 +140,17 @@ export async function saveProjectState(project: Project): Promise<void> {
     const pid = project.project_id!;
     projectMemoryStore.set(pid, project);
     console.log(`[DB] DISABLE_FIRESTORE=true — wrote to in-memory store (key: ${pid}, scenes: ${project.scenes?.length ?? 0})`);
+    // Persist completed projects to disk so output_path survives server restarts.
+    if (project.status === 'completed' && project.output_path) {
+      const _outDir = path.join(process.cwd(), 'outputs');
+      fs.mkdirSync(_outDir, { recursive: true });
+      try {
+        fs.writeFileSync(path.join(_outDir, `${pid}.json`), JSON.stringify(project, null, 2));
+        console.log(`[DB] Project JSON persisted to disk: outputs/${pid}.json`);
+      } catch (e: any) {
+        console.warn(`[DB] Could not persist project JSON:`, e?.message);
+      }
+    }
     return;
   }
 
