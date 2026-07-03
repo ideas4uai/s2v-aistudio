@@ -31,7 +31,7 @@ export const generateCaptions = async (scene: any, audioPath: string, mode: stri
   }));
 
   const chunks: CaptionChunk[] = blocks.map((blockText, i) => {
-    const colorTag = i % 2 === 0 ? '{\\c&H00FFFFFF&}' : '{\\c&H0000FFFF&}';
+    const colorTag = '{\\c&H00FFFFFF&}';
     return {
       words: blockText.split(' '),
       text: `${colorTag}${blockText}`,
@@ -66,7 +66,7 @@ export const fallbackCaptions = (scene: any, mode: string): { words: WordTimesta
   }));
 
   const chunks: CaptionChunk[] = blocks.map((blockText, i) => {
-    const colorTag = i % 2 === 0 ? '{\\c&H00FFFFFF&}' : '{\\c&H0000FFFF&}';
+    const colorTag = '{\\c&H00FFFFFF&}';
     return {
       words: blockText.split(' '),
       text: `${colorTag}${blockText}`,
