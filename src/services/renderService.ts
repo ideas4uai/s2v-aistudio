@@ -738,8 +738,18 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
     ? '-c:a aac -ar 44100 -ac 2 -b:a 192k'
     : '-c:a aac';
 
+  // Two command variants:
+  // audioValid=true  → silenceremove strips TTS trailing silence (Piper adds 0.33–0.57s/clip),
+  //                    apad=0.1 adds a consistent 100ms tail, -shortest ends at padded audio end.
+  // audioValid=false → generated anullsrc silence: silenceremove would eat it all, so fall
+  //                    back to -t so the silent segment lasts exactly the scene's target duration.
+  const audioFilterChain = audioValid
+    ? `-af "asetpts=PTS-STARTPTS,silenceremove=stop_periods=-1:stop_duration=0.05:stop_threshold=-40dB,apad=pad_dur=0.1"`
+    : `-af asetpts=PTS-STARTPTS`;
+  const durationArg = audioValid ? `-shortest` : `-t ${outputDuration}`;
+
   try {
-     await guardedExec(`"${ffmpeg}" -stream_loop -1 -i "${visualPath}" ${audioInputArg} -vf setpts=PTS-STARTPTS -af asetpts=PTS-STARTPTS -c:v libx264 -preset fast -crf 20 ${audioOutputOpts} -t ${outputDuration} -y "${outputPath}"`, signal);
+     await guardedExec(`"${ffmpeg}" -stream_loop -1 -i "${visualPath}" ${audioInputArg} -vf setpts=PTS-STARTPTS ${audioFilterChain} -c:v libx264 -preset fast -crf 20 ${audioOutputOpts} ${durationArg} -y "${outputPath}"`, signal);
      return outputPath;
   } catch(e: any) {
      if (e.message === 'PIPELINE_CANCELLED') throw e;
