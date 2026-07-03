@@ -30,7 +30,7 @@ import { toUrl } from '../../utils/path.js';
 
 import { AIService } from '../../services/aiService.js';
 import { FirestoreService } from '../db/firestore.js';
-import { loadProject } from '../../pipeline/orchestrator.js';
+import { loadProject, saveProjectState } from '../../pipeline/orchestrator.js';
 
 export const projectsRouter = Router();
 
@@ -57,6 +57,7 @@ projectsRouter.post('/clear-ai-quota', (req, res) => {
   AIService.clearQuotaFlags();
   res.json({ message: 'AI quota flags cleared. All models will be retried on next operation.' });
 });
+
 
 projectsRouter.post('/:id/retry-failed-assets', async (req, res) => {
   const { id } = req.params;
@@ -226,7 +227,11 @@ projectsRouter.post('/', async (req, res) => {
     if (featuredLocationId) newProject.featuredLocationId = featuredLocationId;
     
     console.log(`[API] Creating project: ${id} - ${title}`);
-    await FirestoreService.saveProject(newProject);
+    if (process.env.DISABLE_FIRESTORE === 'true') {
+      await saveProjectState(newProject as any);
+    } else {
+      await FirestoreService.saveProject(newProject);
+    }
     res.status(201).json(newProject);
   } catch (error) {
     console.error('Error creating project:', error);
