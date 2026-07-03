@@ -1,9 +1,99 @@
 import { Project } from '../../models/project.js';
 import { AIService } from '../../services/aiService.js';
 import { DirectorPlan } from './directorAgent.js';
+import { StoryArc } from './storyAgent.js';
 
 export const ScriptwriterAgent = {
-  writeScript: async (project: Project, plan: DirectorPlan) => {
+  writeScript: async (project: Project, plan: DirectorPlan, storyArc?: StoryArc) => {
+    if (storyArc) {
+      return ScriptwriterAgent._writeConversational(project, plan, storyArc);
+    }
+    return ScriptwriterAgent._writeLegacy(project, plan);
+  },
+
+  _writeConversational: async (project: Project, plan: DirectorPlan, storyArc: StoryArc) => {
+    const targetLength = project.settings?.targetLength || '60s';
+    const wordsPerSecond = 2.5;
+    const durationSeconds =
+      targetLength === '30s' ? 30 :
+      targetLength === '60s' ? 60 :
+      targetLength === '3m'  ? 180 :
+      targetLength === '5m'  ? 300 : 60;
+    const targetWords = Math.round(durationSeconds * wordsPerSecond);
+
+    const prompt = `You are writing narration for a YouTube Short about: "${project.topic}"
+
+STORY SPINE (expand this into a full script):
+Hook: ${storyArc.beat_1_hook}
+Context: ${storyArc.beat_2_context}
+Surprise: ${storyArc.beat_3_surprise}
+Insight: ${storyArc.beat_4_insight}
+CTA: ${storyArc.beat_5_cta}
+
+HARD RULES — every sentence must follow ALL of these:
+1. Max 15 words per sentence. Count before writing.
+2. Write as if speaking to ONE person, not an audience.
+3. No sentence starts with "This", "The", "It", "In this video", or "Today".
+4. Use contractions: you're, it's, that's, here's, don't, can't.
+5. No passive voice. Not "is used by" — say "people use".
+6. No definition openings. Not "${project.topic} is a..." — start with action or consequence.
+7. One idea per sentence.
+8. Include at least one moment that makes the viewer think "wait, really?" — a genuine surprise.
+9. Conversational, not academic. Sound like a person, not a textbook.
+
+SCENE REQUIREMENTS:
+- Scene 1: Use the hook verbatim as the OPENING LINE, then expand the hook's idea.
+- Scene 2: Beat 2 — context. Why now.
+- Scene 3: Beat 3 — the surprise or counterintuitive fact.
+- Scene 4: Beat 4 — simple explanation with analogy.
+- Scene 5+: Expand naturally. More detail, examples, or mini-story.
+- Final scene: Beat 5 — CTA that leaves them wanting more.
+- Every narration field: AT LEAST 20 words. Never one-sentence scenes.
+
+TARGET: ${targetWords} total words across ALL scenes (${targetLength} at 2.5 words/sec).
+
+Output ONLY valid JSON:
+{
+  "rawScript": "Full spoken text joined together.",
+  "scenes": [
+    {
+      "narration": "Spoken text for this scene. At least 20 words. Sounds like a person talking.",
+      "visual": "Detailed cinematic description — tech/AI visual relevant to the narration. Specific. No people unless needed.",
+      "duration": 5,
+      "order": 0
+    }
+  ]
+}`;
+
+    console.log(`[ScriptwriterAgent] Conversational mode — topic: ${project.topic}, target: ${targetWords} words`);
+
+    try {
+      const response = await AIService.generateText(prompt, { task: 'script' });
+      let parsed: any;
+      try {
+        parsed = JSON.parse(response);
+      } catch {
+        const jsonStr = response.replace(/```json\n?|```/g, '').trim();
+        const firstBrace = jsonStr.indexOf('{');
+        const lastBrace = jsonStr.lastIndexOf('}');
+        if (firstBrace === -1 || lastBrace === -1) throw new Error('Malformed JSON');
+        let cleaned = jsonStr.substring(firstBrace, lastBrace + 1).replace(/,(\s*[}\]])/g, '$1');
+        parsed = JSON.parse(cleaned);
+      }
+
+      const scenes: any[] = parsed.scenes || [];
+      const totalWords = scenes.reduce((sum: number, s: any) =>
+        sum + (s.narration || '').split(' ').filter(Boolean).length, 0);
+      console.log(`[ScriptwriterAgent] Conversational: ${totalWords} words / target ${targetWords}`);
+
+      return { rawScript: parsed.rawScript || '', scenes };
+    } catch (e) {
+      console.error('[ScriptwriterAgent] Conversational mode failed:', e);
+      throw e;
+    }
+  },
+
+  _writeLegacy: async (project: Project, plan: DirectorPlan) => {
     console.log(`[ScriptwriterAgent] Narrative arc: ${plan.narrative_arc}`);
     
     const characterContext = project.world_entities?.characters?.length 

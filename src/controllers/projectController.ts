@@ -5,6 +5,8 @@ import { requestContext } from '../server/utils/context.js';
 import { WorldAgent } from '../pipeline/agents/worldAgent.js';
 import { DirectorAgent } from '../pipeline/agents/directorAgent.js';
 import { ScriptwriterAgent } from '../pipeline/agents/scriptwriterAgent.js';
+import { HookAgent } from '../pipeline/agents/hookAgent.js';
+import { StoryAgent } from '../pipeline/agents/storyAgent.js';
 import { StoryboardAgent } from '../pipeline/agents/storyboardAgent.js';
 import { AIService } from '../services/aiService.js';
 import { hashCode } from '../utils/hash.js';
@@ -54,17 +56,30 @@ export async function generateScript(req: Request, res: Response) {
   try {
     const project = await loadProject(id);
     console.log(`[Pipeline] Stage 1: Planning and Scripting for project ${id}`);
-    
-    // 1. Director Planning
+
+    // 1. Director Planning (always runs)
     const plan = await DirectorAgent.planVideo(project);
-    
-    // 2. Scriptwriting
+
+    // 2. For generic/educational projects — pause for hook selection
+    const isGeneric = !project.universe && project.projectType !== 'story_episode';
+    if (isGeneric) {
+      console.log(`[Pipeline] Generic project — running HookAgent for hook selection`);
+      const hookOptions = await HookAgent.generateHooks(project.topic);
+
+      // Save state and pause pipeline for user to pick a hook
+      (project as any).hookOptions = hookOptions;
+      (project as any).selectedHook = null;
+      (project as any)._directorPlan = plan;
+      project.status = 'hook_selection';
+      await saveProjectState(project);
+
+      return res.json({ hookOptions, status: 'hook_selection' });
+    }
+
+    // Story/universe projects — use existing ScriptwriterAgent directly
     const scriptResult = await ScriptwriterAgent.writeScript(project, plan);
-    
-    // 3. World Analysis
     const entities = await WorldAgent.analyzeWorld(project, scriptResult.rawScript);
 
-    // 4. SEO Metadata Generation
     let seoMetadata = null;
     try {
       const seoPrompt = `Given this video script about "${project.topic}", generate:
@@ -73,7 +88,6 @@ export async function generateScript(req: Request, res: Response) {
 3. Tags (15 tags, mix of broad and specific)
 4. Thumbnail text overlay (5 words max, bold claim)
 Return as JSON: {title, description, tags, thumbnailText}`;
-
       const seoRaw = await AIService.generateText(seoPrompt, { task: 'seo' });
       const seoStr = seoRaw.replace(/```json\n?|```/g, '').trim();
       const fb = seoStr.indexOf('{');
@@ -83,7 +97,6 @@ Return as JSON: {title, description, tags, thumbnailText}`;
       console.warn('[generateScript] SEO metadata generation failed (non-fatal):', seoErr);
     }
 
-    // Save results
     project.script = scriptResult.rawScript;
     project.world_entities = entities;
     if (seoMetadata) project.seo_metadata = seoMetadata;
@@ -93,6 +106,74 @@ Return as JSON: {title, description, tags, thumbnailText}`;
   } catch (error: any) {
     console.error('generateScript error:', error);
     res.status(500).json({ error: 'Failed to generate script', details: error.message });
+  }
+}
+
+export async function selectHook(req: Request, res: Response) {
+  const { id } = req.params;
+  const { hookIndex } = req.body;
+
+  if (typeof hookIndex !== 'number' || hookIndex < 0 || hookIndex > 2) {
+    return res.status(400).json({ error: 'hookIndex must be 0, 1, or 2' });
+  }
+
+  try {
+    const project = await loadProject(id);
+    const hooks: Array<{ type: string; text: string }> = (project as any).hookOptions || [];
+    if (!hooks.length) {
+      return res.status(400).json({ error: 'No hooks found on project — run generate-script first' });
+    }
+
+    const chosen = hooks[hookIndex];
+    if (!chosen) {
+      return res.status(400).json({ error: `hookIndex ${hookIndex} out of range (${hooks.length} hooks available)` });
+    }
+
+    console.log(`[selectHook] Chosen: [${chosen.type}] ${chosen.text}`);
+
+    const directorPlan = (project as any)._directorPlan;
+    if (!directorPlan) {
+      return res.status(400).json({ error: 'Director plan missing — re-run generate-script' });
+    }
+
+    // StoryAgent: build 5-beat arc from chosen hook
+    const storyArc = await StoryAgent.buildArc(project.topic, chosen.text, directorPlan);
+
+    // ScriptAgent: write conversational script from arc
+    const scriptResult = await ScriptwriterAgent.writeScript(project, directorPlan, storyArc);
+
+    // World entities
+    const entities = await WorldAgent.analyzeWorld(project, scriptResult.rawScript);
+
+    // SEO
+    let seoMetadata = null;
+    try {
+      const seoPrompt = `Given this video script about "${project.topic}", generate:
+1. YouTube title (60 chars max, includes keyword, curiosity gap)
+2. Description (150 words, keyword-rich, includes timestamps)
+3. Tags (15 tags, mix of broad and specific)
+4. Thumbnail text overlay (5 words max, bold claim)
+Return as JSON: {title, description, tags, thumbnailText}`;
+      const seoRaw = await AIService.generateText(seoPrompt, { task: 'seo' });
+      const seoStr = seoRaw.replace(/```json\n?|```/g, '').trim();
+      const fb = seoStr.indexOf('{');
+      const lb = seoStr.lastIndexOf('}');
+      if (fb !== -1 && lb !== -1) seoMetadata = JSON.parse(seoStr.substring(fb, lb + 1));
+    } catch { /* non-fatal */ }
+
+    // Persist
+    (project as any).selectedHook = chosen.text;
+    (project as any).storyArc = storyArc;
+    project.script = scriptResult.rawScript;
+    project.world_entities = entities;
+    if (seoMetadata) project.seo_metadata = seoMetadata;
+    project.status = 'draft';
+    await saveProjectState(project);
+
+    res.json({ script: scriptResult.rawScript, storyArc, entities, seoMetadata });
+  } catch (error: any) {
+    console.error('selectHook error:', error);
+    res.status(500).json({ error: 'Failed to process hook selection', details: error.message });
   }
 }
 

@@ -50,7 +50,7 @@ export interface Project {
   hook_strategy: string;
   pacing_intensity: string;
   style_profile: string;
-  status: 'draft' | 'scripting' | 'scene_parsing' | 'generating_assets' | 'stitching_video' | 'completed' | 'failed' | 'cancelled' | string;
+  status: 'draft' | 'scripting' | 'scene_parsing' | 'generating_assets' | 'stitching_video' | 'completed' | 'failed' | 'cancelled' | 'hook_selection' | string;
   current_action?: string;
   progress_percent?: number;
   logs?: string[];
@@ -101,4 +101,14 @@ export interface Project {
   episodeNumber?: number;
   featuredCharacterIds?: string[];
   featuredLocationId?: string;
+  hookOptions?: Array<{ type: 'question' | 'statement' | 'story'; text: string }>;
+  selectedHook?: string;
+  storyArc?: {
+    beat_1_hook: string;
+    beat_2_context: string;
+    beat_3_surprise: string;
+    beat_4_insight: string;
+    beat_5_cta: string;
+  };
+  _directorPlan?: any;
 }

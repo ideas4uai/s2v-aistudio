@@ -141,6 +141,9 @@ export function ProjectEditor() {
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [activityLogs, setActivityLogs] = useState<string[]>([]);
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+
+  const [hookOptions, setHookOptions] = useState<Array<{ type: string; text: string }> | null>(null);
+  const [isSelectingHook, setIsSelectingHook] = useState(false);
   const [seoMetadata, setSeoMetadata] = useState<SeoMetadata | null>(null);
   const pollInterval = useRef<NodeJS.Timeout | null>(null);
 
@@ -151,7 +154,7 @@ export function ProjectEditor() {
   const [musicSaved, setMusicSaved] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const isBusyStatus = (status: string) => 
+  const isBusyStatus = (status: string) =>
     ['processing', 'scripting', 'scene_parsing', 'generating_assets', 'stitching_video'].includes(status);
 
   const saveSettings = async (newSettings: ProjectSettings) => {
@@ -349,6 +352,7 @@ export function ProjectEditor() {
   const handleGenerateScript = async () => {
     if (!project) return;
     setIsGeneratingScript(true);
+    setHookOptions(null);
     try {
       const res = await authenticatedFetch(`/api/projects/${id}/generate-script`, {
         method: 'POST',
@@ -356,6 +360,13 @@ export function ProjectEditor() {
       });
       if (!res.ok) throw new Error('Failed to generate script');
       const data = await res.json();
+
+      if (data.status === 'hook_selection' && data.hookOptions?.length) {
+        // Pause here — show hook selection cards, don't advance
+        setHookOptions(data.hookOptions);
+        return;
+      }
+
       setScriptText(data.script || '');
       if (data.seoMetadata) setSeoMetadata(data.seoMetadata);
       await fetchProject();
@@ -364,6 +375,29 @@ export function ProjectEditor() {
       alert(err.message);
     } finally {
       setIsGeneratingScript(false);
+    }
+  };
+
+  const handleSelectHook = async (hookIndex: number) => {
+    if (!project) return;
+    setIsSelectingHook(true);
+    try {
+      const res = await authenticatedFetch(`/api/projects/${id}/select-hook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hookIndex })
+      });
+      if (!res.ok) throw new Error('Failed to process hook selection');
+      const data = await res.json();
+      setHookOptions(null);
+      setScriptText(data.script || '');
+      if (data.seoMetadata) setSeoMetadata(data.seoMetadata);
+      await fetchProject();
+    } catch (err: any) {
+      console.error('handleSelectHook error:', err);
+      alert(err.message);
+    } finally {
+      setIsSelectingHook(false);
     }
   };
 
@@ -913,15 +947,67 @@ export function ProjectEditor() {
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-lg font-bold text-neutral-900">Script Editor</h2>
-                  <button 
+                  <button
                     onClick={handleGenerateScript}
-                    disabled={isGeneratingScript}
+                    disabled={isGeneratingScript || isSelectingHook}
                     className="text-sm font-bold text-indigo-600 flex items-center gap-2 hover:text-indigo-700 disabled:opacity-50"
                   >
-                    {isGeneratingScript ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />} 
+                    {isGeneratingScript ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                     AI Generate Script
                   </button>
                 </div>
+
+                {/* HOOK SELECTION — shown after generate-script for generic projects */}
+                {hookOptions && hookOptions.length > 0 && (
+                  <div className="mb-5">
+                    <div className="mb-3">
+                      <p className="text-sm font-bold text-neutral-900">Choose your opening hook</p>
+                      <p className="text-xs text-neutral-500 mt-0.5">Pick the one that feels most like you. The script will be built around it.</p>
+                    </div>
+                    <div className="flex flex-col gap-3">
+                      {hookOptions.map((hook, idx) => {
+                        const typeLabels: Record<string, string> = {
+                          question: 'Question',
+                          statement: 'Statement',
+                          story: 'Story opening',
+                        };
+                        const typeColors: Record<string, string> = {
+                          question: 'bg-blue-50 border-blue-200 hover:border-blue-400',
+                          statement: 'bg-amber-50 border-amber-200 hover:border-amber-400',
+                          story: 'bg-emerald-50 border-emerald-200 hover:border-emerald-400',
+                        };
+                        const labelColors: Record<string, string> = {
+                          question: 'bg-blue-100 text-blue-700',
+                          statement: 'bg-amber-100 text-amber-700',
+                          story: 'bg-emerald-100 text-emerald-700',
+                        };
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => handleSelectHook(idx)}
+                            disabled={isSelectingHook}
+                            className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all ${typeColors[hook.type] || 'bg-neutral-50 border-neutral-200 hover:border-neutral-400'} disabled:opacity-50`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <span className={`mt-0.5 shrink-0 text-xs font-bold px-2 py-0.5 rounded-full ${labelColors[hook.type] || 'bg-neutral-100 text-neutral-600'}`}>
+                                {typeLabels[hook.type] || hook.type}
+                              </span>
+                              <span className="text-sm font-medium text-neutral-800 leading-snug">
+                                {isSelectingHook ? <Loader2 className="w-4 h-4 animate-spin inline" /> : `"${hook.text}"`}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {isSelectingHook && (
+                      <p className="text-xs text-neutral-500 mt-3 flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Writing your story...
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <textarea
                   value={scriptText}
                   onChange={(e) => setScriptText(e.target.value)}

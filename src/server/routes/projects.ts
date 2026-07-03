@@ -1,14 +1,15 @@
 import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { 
-  previewProject, 
-  getProjectTimeline, 
-  generateScript, 
-  generateScenes, 
-  generateSceneAudio, 
-  generateSceneImage, 
-  renderProject, 
+import {
+  previewProject,
+  getProjectTimeline,
+  generateScript,
+  selectHook,
+  generateScenes,
+  generateSceneAudio,
+  generateSceneImage,
+  renderProject,
   getProjectStatus,
   updateSceneNarration,
   updateProjectCharacter,
@@ -143,7 +144,7 @@ projectsRouter.get('/:id', async (req, res) => {
         character: s.character || 'NARRATOR',
         emotion: s.emotion || 'neutral',
         scene_type: (s as any).scene_type || 'street',
-        image_path: toUrl(s.visuals?.[0]?.rendered_path || s.preview_path || ''),
+        image_path: toUrl(s.visuals?.[0]?.asset_path || s.visuals?.[0]?.rendered_path || s.preview_path || ''),
         audio_path: toUrl(s.narration_path || ''),
         preview_path: toUrl(s.preview_path || ''),
         segment_path: toUrl(s.segment_path || ''),
@@ -235,6 +236,7 @@ projectsRouter.post('/', async (req, res) => {
 
 // Pipeline actions
 projectsRouter.post('/:id/generate-script', generateScript);
+projectsRouter.post('/:id/select-hook', selectHook);
 projectsRouter.post('/:id/generate-scenes', generateScenes);
 projectsRouter.post('/:id/scenes/batch', createScenesBatch);
 projectsRouter.patch('/:id/script', updateProjectScript);
