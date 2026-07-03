@@ -301,7 +301,10 @@ export function ProjectEditor() {
       setProgressPercent(data.progress_percent || 0);
       setActivityLogs(data.logs || []);
       if (data.seo_metadata) setSeoMetadata(data.seo_metadata);
-      
+      if (data.status === 'hook_selection' && Array.isArray(data.hookOptions) && data.hookOptions.length > 0) {
+        setHookOptions(data.hookOptions);
+      }
+
       if (isBusyStatus(data.status)) {
         setIsRendering(true);
       } else {
