@@ -4,6 +4,7 @@ import os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import ffmpegStatic from 'ffmpeg-static';
+import { generateAudioHash } from '../../utils/hash.js';
 
 const execAsync = promisify(exec);
 
@@ -112,6 +113,18 @@ export async function generateNarration(
       const noiseW = (style.noise * 0.5).toFixed(3);
       console.log('[TTS] Scene character:', settings?.character, 'Voice model selected:', modelName, `speed=${style.speed} length_scale=${lengthScale} noise=${noiseScale}`);
 
+      // Narration cache: same text + voice model + style flags is deterministic
+      // output, so a repeat render skips Piper entirely. Keyed on the text itself,
+      // so any script edit is a cache miss.
+      const ttsCacheDir = path.join(process.cwd(), 'cache', 'tts');
+      const cachePath = path.join(ttsCacheDir, `${generateAudioHash(text, `${modelName}|ls${lengthScale}|ns${noiseScale}|nw${noiseW}`)}.wav`);
+      try {
+        await fs.access(cachePath);
+        console.log(`[TTS] Cache hit for scene ${sceneId}`);
+        await fs.unlink(textFilePath).catch(() => {});
+        return cachePath;
+      } catch { /* cache miss — synthesize below */ }
+
       const modelPath = path.join(voicesDir, `${modelName}.onnx`);
       const modelFile = path.basename(modelPath);
       const piperDir = path.dirname(piperBin);
@@ -129,6 +142,14 @@ export async function generateNarration(
       await fs.unlink(textFilePath).catch(() => {});
       const stats = await fs.stat(outputPath);
       console.log(`[TTS] Piper complete for scene: ${sceneId} size: ${stats.size} bytes`);
+      if (stats.size > 1000) { // don't cache a corrupt/empty synth (matches segment validity floor)
+        try {
+          await fs.mkdir(ttsCacheDir, { recursive: true });
+          await fs.copyFile(outputPath, cachePath);
+        } catch (cacheErr: any) {
+          console.warn(`[TTS] Failed to cache narration for scene ${sceneId}: ${cacheErr.message}`);
+        }
+      }
       return outputPath;
     } catch (piperErr: any) {
       const errMsg = (piperErr as any).stderr ? `${piperErr.message} | stderr: ${(piperErr as any).stderr}` : piperErr.message;
