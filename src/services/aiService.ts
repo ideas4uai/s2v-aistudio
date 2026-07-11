@@ -86,6 +86,26 @@ const dbgOk = (provider: string, model: string, base64: string) => {
   })}`);
 };
 
+// Circuit breaker for dead providers: 401/402/403 (bad key, out of credits,
+// forbidden) fails every call for the rest of the process, so stop walking that
+// rung after the first one. In-memory only by design — a restart retries, since
+// credits may have been topped up. 429/5xx never trip it (those recover).
+const deadProviders = new Set<string>();
+
+const providerDead = (provider: string): boolean => {
+  if (!deadProviders.has(provider)) return false;
+  console.log(`[AIService] Provider ${provider} skipped — circuit open`);
+  return true;
+};
+
+const tripBreakerIfDead = (provider: string, e: any) => {
+  const status = e?.status ?? e?.response?.status ?? e?.httpError?.statusCode;
+  if (status !== 401 && status !== 402 && status !== 403) return;
+  if (deadProviders.has(provider)) return;
+  deadProviders.add(provider);
+  console.warn(`[AIService] Provider ${provider} circuit-opened (status ${status}) — skipping for this session`);
+};
+
 async function generateImageWithLoRA(
   prompt: string,
   loraModelUrl: string,
@@ -166,6 +186,7 @@ async function generateImageWithLoRA(
     return Buffer.from(await imgRes.arrayBuffer()).toString('base64');
   } catch (err: any) {
     console.error('[LoRA Gen] Error:', err.message);
+    tripBreakerIfDead('0:ReplicateLoRA', err);
     return null;
   }
 }
@@ -230,6 +251,7 @@ async function generateImageWithVertexImagen(
   } catch (e: any) {
     console.warn('[ImageGen] Vertex Imagen failed:', e.message?.slice(0, 160), 'status:', e.status);
     dbgFail('1:VertexImagen', e, '1.5:GeminiImage');
+    tripBreakerIfDead('1:VertexImagen', e);
     return null;
   }
 }
@@ -277,6 +299,7 @@ async function generateImageWithGeminiNative(
     return null;
   } catch (err: any) {
     console.warn('[Gemini Native] Failed:', err.message?.slice(0, 100));
+    tripBreakerIfDead('1.75:GeminiNative', err);
     return null;
   }
 }
@@ -402,7 +425,7 @@ export const AIService = {
     }
 
     // Provider 0: Replicate LoRA (trained character model — highest identity fidelity)
-    if (options?.loraModelUrl && process.env.REPLICATE_API_TOKEN) {
+    if (options?.loraModelUrl && process.env.REPLICATE_API_TOKEN && !providerDead('0:ReplicateLoRA')) {
       const triggerWord = (options.loraTriggerWord as string | undefined) || 'CHARACTER';
       console.log('[ImageGen] Using LoRA model:', (options.loraModelUrl as string).slice(-40));
       dbgCall('0:ReplicateLoRA', {
@@ -426,7 +449,7 @@ export const AIService = {
     // Skipped when a character reference image is in play: Imagen generate takes no
     // reference input, so identity would drift. The Gemini multimodal image path
     // below owns that case.
-    if (isAdcMode && !referenceImage) {
+    if (isAdcMode && !referenceImage && !providerDead('1:VertexImagen')) {
       console.log('[ImageGen] Trying Vertex Imagen...');
       const imagenResult = await generateImageWithVertexImagen(styledPrompt, aspectRatio);
       if (imagenResult) return imagenResult;
@@ -436,7 +459,7 @@ export const AIService = {
     // path that can consume a character reference image for identity consistency.
     let imagenApiKey = '';
     try { imagenApiKey = getKeyForTask('image'); } catch { /* falls through to next provider */ }
-    if (imagenApiKey || isAdcMode) {
+    if ((imagenApiKey || isAdcMode) && !providerDead('1.5:GeminiImage')) {
       try {
         console.log('[ImageGen] Trying Gemini Flash Image...');
         const { GoogleGenAI } = await import('@google/genai');
@@ -480,11 +503,12 @@ export const AIService = {
       } catch (e: any) {
         console.warn('[ImageGen] Gemini Flash Image failed:', e.message, 'status:', e.status);
         dbgFail('1.5:GeminiImage', e, options?.referenceImageUrl ? '1.75:GeminiNative' : '2:Fal');
+        tripBreakerIfDead('1.5:GeminiImage', e);
       }
     }
 
     // Provider 1.75: Gemini 2.0 Flash Native (reference-image-aware, better character identity)
-    if (options?.referenceImageUrl) {
+    if (options?.referenceImageUrl && !providerDead('1.75:GeminiNative')) {
       dbgCall('1.75:GeminiNative', {
         provider: isAdcMode ? 'vertex-ai' : 'gemini-api',
         sdkCall: 'models.generateContent',
@@ -499,7 +523,7 @@ export const AIService = {
     }
 
     // Provider 2: Fal.ai FLUX.1 schnell
-    if (process.env.FAL_API_KEY) {
+    if (process.env.FAL_API_KEY && !providerDead('2:Fal')) {
       try {
         console.log('[ImageGen] FAL_API_KEY present:', !!process.env.FAL_API_KEY, 'prefix:', process.env.FAL_API_KEY?.substring(0, 8));
         console.log('[ImageGen] Trying Fal.ai FLUX.1...');
@@ -535,11 +559,12 @@ export const AIService = {
       } catch (e: any) {
         console.warn('[ImageGen] Fal.ai failed:', e.message, 'status:', e.status, 'body:', JSON.stringify(e.body || e.response || {}));
         dbgFail('2:Fal', e, '3:Together');
+        tripBreakerIfDead('2:Fal', e);
       }
     }
 
     // Provider 3: Together AI FLUX.1 schnell-Free
-    if (process.env.TOGETHER_API_KEY) {
+    if (process.env.TOGETHER_API_KEY && !providerDead('3:Together')) {
       try {
         console.log('[ImageGen] Trying Together AI...');
         dbgCall('3:Together', {
@@ -570,7 +595,11 @@ export const AIService = {
           }
         );
         const togetherData = await togetherRes.json();
-        if (!togetherRes.ok) throw new Error(togetherData.error?.message || `HTTP ${togetherRes.status}`);
+        if (!togetherRes.ok) {
+          // The thrown Error discards the HTTP status, so trip the breaker here.
+          tripBreakerIfDead('3:Together', { status: togetherRes.status });
+          throw new Error(togetherData.error?.message || `HTTP ${togetherRes.status}`);
+        }
         const base64 = togetherData.data?.[0]?.b64_json;
         if (!base64) throw new Error('No b64_json in response');
         console.log('[ImageGen] Together AI success! Size:', Math.round(base64.length * 0.75 / 1024), 'KB');
@@ -585,7 +614,7 @@ export const AIService = {
     // Provider 4: Gemini 2.5 flash image (when quota available)
     let geminiImageKey = '';
     try { geminiImageKey = getKeyForTask('image'); } catch { /* no key configured */ }
-    if (geminiImageKey || isAdcMode) {
+    if ((geminiImageKey || isAdcMode) && !providerDead('4:Gemini2.5')) {
       try {
         console.log('[ImageGen] Trying Gemini 2.5 flash image...');
         const ai = getAI(geminiImageKey);
@@ -611,6 +640,7 @@ export const AIService = {
       } catch (e: any) {
         console.warn('[ImageGen] Gemini failed:', e.message);
         dbgFail('4:Gemini2.5', e, '5:PicsumThrow');
+        tripBreakerIfDead('4:Gemini2.5', e);
       }
     }
 
