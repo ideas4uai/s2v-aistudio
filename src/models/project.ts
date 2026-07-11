@@ -102,6 +102,10 @@ export interface Project {
   featuredCharacterIds?: string[];
   featuredLocationId?: string;
   hookOptions?: Array<{ type: 'question' | 'statement' | 'story'; text: string }>;
+  // First generated image per character (Supabase URL, or local path when the
+  // upload failed) — seeded back into the pipeline on later runs so the
+  // character stays visually consistent across scenes and re-renders.
+  character_anchors?: Record<string, string>;
   selectedHook?: string;
   storyArc?: {
     beat_1_hook: string;

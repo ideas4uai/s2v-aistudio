@@ -1,0 +1,1292 @@
+{
+  "project_id": "739da895-177b-4ccc-9242-961f5510aed0",
+  "id": "739da895-177b-4ccc-9242-961f5510aed0",
+  "projectType": "educational",
+  "updatedAt": "2026-07-02T18:56:57.064Z",
+  "title": "What is Vibe Coding?",
+  "settings": {
+    "language": "en",
+    "hookStrategy": "curiosity",
+    "targetLength": "60s",
+    "aspectRatio": "16:9",
+    "visualStyle": "3d",
+    "exportPreset": "medium",
+    "pacingIntensity": "moderate",
+    "styleProfile": "documentary",
+    "voiceStyle": "dramatic",
+    "exportMode": "youtube",
+    "exportResolution": "1080p"
+  },
+  "script": "What if code possesses an unseen energy, a palpable force? This elusive quality profoundly influences every digital creation. From abstract algorithms to tangible applications, code isn't just about logic. It requires an intuitive understanding, bridging the gap between concept and function. This connection manifests as an instinct, a gut feeling guiding choices in complex systems. It's the moment understanding clicks, revealing elegant solutions to intricate problems. Vibe Coding is precisely this: the convergence of intuition and meticulous logic. It transforms abstract understanding into robust, functional software. Visualizing these digital currents, we apply our intuition to architecture, designing systems that resonate. The code flows harmoniously, achieving desired outcomes effortlessly. This holistic approach extends to collaboration, where shared understanding amplifies creative potential. Teams intuitively align, building innovative solutions with collective energy. Mastering Vibe Coding empowers developers with elegant control. It's about crafting impactful, resilient systems that feel inherently right, driving true innovation. Embrace Vibe Coding. Harmonize your intuition with technical mastery, creating powerful, innovative digital futures. Feel the flow, build the future.",
+  "scenes": [
+    {
+      "scene_id": "4c8c8066-34a7-4da8-8ef1-76552dabf844",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 0,
+      "narration_text": "What if code possesses an unseen energy, a palpable force?",
+      "caption_text": "What if code possesses an unseen energy, a palpable force?",
+      "duration_target": 5,
+      "background_prompt": "Wide shot of a holographic display showing complex code, with shimmering, glowing energy radiating outwards, causing a slight distortion in the surrounding air. Dark server room. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "hook",
+      "emotion": "confused",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "781f2675-5390-4cf2-b2b9-6aed9a461c79",
+          "prompt": "Wide shot of a holographic display showing complex code, with shimmering, glowing energy radiating outwards, causing a slight distortion in the surrounding air. Dark server room. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_781f2675-5390-4cf2-b2b9-6aed9a461c79.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\4c8c8066-34a7-4da8-8ef1-76552dabf844_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/4c8c8066-34a7-4da8-8ef1-76552dabf844_6e49be6d-1398-4a18-9ffc-6eaf90ef0633.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\4c8c8066-34a7-4da8-8ef1-76552dabf844_background.png",
+      "prev_scene_type": "",
+      "next_scene_type": "build",
+      "audio_hash": "75c73edf",
+      "duration_actual": 3.891973,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-4c8c8066-34a7-4da8-8ef1-76552dabf844.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/4c8c8066-34a7-4da8-8ef1-76552dabf844_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\4c8c8066-34a7-4da8-8ef1-76552dabf844_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\4c8c8066-34a7-4da8-8ef1-76552dabf844_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "What",
+            "if",
+            "code"
+          ],
+          "text": "{\\c&H00FFFFFF&}What if code",
+          "start": 0,
+          "end": 0.97299325
+        },
+        {
+          "words": [
+            "possesses",
+            "an",
+            "unseen"
+          ],
+          "text": "{\\c&H0000FFFF&}possesses an unseen",
+          "start": 0.97299325,
+          "end": 1.9459865
+        },
+        {
+          "words": [
+            "energy,",
+            "a",
+            "palpable"
+          ],
+          "text": "{\\c&H00FFFFFF&}energy, a palpable",
+          "start": 1.9459865,
+          "end": 2.91897975
+        },
+        {
+          "words": [
+            "force?"
+          ],
+          "text": "{\\c&H0000FFFF&}force?",
+          "start": 2.91897975,
+          "end": 3.891973
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\4c8c8066-34a7-4da8-8ef1-76552dabf844_captioned.mp4"
+    },
+    {
+      "scene_id": "2d658bd3-2ae3-4aaa-a9ff-ef020cf3d3ba",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 1,
+      "narration_text": "This elusive quality profoundly influences every digital creation.",
+      "caption_text": "This elusive quality profoundly influences every digital creation.",
+      "duration_target": 4,
+      "background_prompt": "Ethereal, glowing energy visibly flowing into and subtly shaping diverse digital creations like code, UI elements, and 3D models on a translucent screen, dark ambient lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "7b0a5695-513a-48c5-ba93-54e3eb66d7b8",
+          "prompt": "Ethereal, glowing energy visibly flowing into and subtly shaping diverse digital creations like code, UI elements, and 3D models on a translucent screen, dark ambient lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 4,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_7b0a5695-513a-48c5-ba93-54e3eb66d7b8.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\2d658bd3-2ae3-4aaa-a9ff-ef020cf3d3ba_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/2d658bd3-2ae3-4aaa-a9ff-ef020cf3d3ba_d52a3dbb-bb43-4bf9-ae2a-fe482efa88fc.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\2d658bd3-2ae3-4aaa-a9ff-ef020cf3d3ba_background.png",
+      "prev_scene_type": "hook",
+      "next_scene_type": "build",
+      "audio_hash": "44af0b4",
+      "duration_actual": 4.077732,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-2d658bd3-2ae3-4aaa-a9ff-ef020cf3d3ba.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/2d658bd3-2ae3-4aaa-a9ff-ef020cf3d3ba_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\2d658bd3-2ae3-4aaa-a9ff-ef020cf3d3ba_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\2d658bd3-2ae3-4aaa-a9ff-ef020cf3d3ba_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "This",
+            "elusive",
+            "quality"
+          ],
+          "text": "{\\c&H00FFFFFF&}This elusive quality",
+          "start": 0,
+          "end": 1.3592440000000001
+        },
+        {
+          "words": [
+            "profoundly",
+            "influences",
+            "every"
+          ],
+          "text": "{\\c&H0000FFFF&}profoundly influences every",
+          "start": 1.3592440000000001,
+          "end": 2.7184880000000002
+        },
+        {
+          "words": [
+            "digital",
+            "creation."
+          ],
+          "text": "{\\c&H00FFFFFF&}digital creation.",
+          "start": 2.7184880000000002,
+          "end": 4.077732
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\2d658bd3-2ae3-4aaa-a9ff-ef020cf3d3ba_captioned.mp4"
+    },
+    {
+      "scene_id": "345a53ce-37a6-44a1-bdbc-7e4e9b9fb83d",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 2,
+      "narration_text": "From abstract algorithms to tangible applications, code isn't just about logic.",
+      "caption_text": "From abstract algorithms to tangible applications, code isn't just about logic.",
+      "duration_target": 6,
+      "background_prompt": "Close-up of developer's hands; one hand typing abstract code on glowing screen, other hand holding sleek tangible electronic device, modern desk environment, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "7f4be6f4-8db0-49ef-8fd5-5a91d35a62da",
+          "prompt": "Close-up of developer's hands; one hand typing abstract code on glowing screen, other hand holding sleek tangible electronic device, modern desk environment, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 6,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_7f4be6f4-8db0-49ef-8fd5-5a91d35a62da.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\345a53ce-37a6-44a1-bdbc-7e4e9b9fb83d_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/345a53ce-37a6-44a1-bdbc-7e4e9b9fb83d_1c85f1d8-2dd6-40f6-a213-ec0608a45a0e.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\345a53ce-37a6-44a1-bdbc-7e4e9b9fb83d_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "69a82b29",
+      "duration_actual": 4.948481,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-345a53ce-37a6-44a1-bdbc-7e4e9b9fb83d.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/345a53ce-37a6-44a1-bdbc-7e4e9b9fb83d_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\345a53ce-37a6-44a1-bdbc-7e4e9b9fb83d_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\345a53ce-37a6-44a1-bdbc-7e4e9b9fb83d_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "From",
+            "abstract",
+            "algorithms"
+          ],
+          "text": "{\\c&H00FFFFFF&}From abstract algorithms",
+          "start": 0,
+          "end": 1.23712025
+        },
+        {
+          "words": [
+            "to",
+            "tangible",
+            "applications,"
+          ],
+          "text": "{\\c&H0000FFFF&}to tangible applications,",
+          "start": 1.23712025,
+          "end": 2.4742405
+        },
+        {
+          "words": [
+            "code",
+            "isn't",
+            "just"
+          ],
+          "text": "{\\c&H00FFFFFF&}code isn't just",
+          "start": 2.4742405,
+          "end": 3.71136075
+        },
+        {
+          "words": [
+            "about",
+            "logic."
+          ],
+          "text": "{\\c&H0000FFFF&}about logic.",
+          "start": 3.71136075,
+          "end": 4.948481
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\345a53ce-37a6-44a1-bdbc-7e4e9b9fb83d_captioned.mp4"
+    },
+    {
+      "scene_id": "b7341530-c80c-43f3-a7a4-7539c21dc8f4",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 3,
+      "narration_text": "It requires an intuitive understanding, bridging the gap between concept and function.",
+      "caption_text": "It requires an intuitive understanding, bridging the gap between concept and function.",
+      "duration_target": 5,
+      "background_prompt": "Close-up of a human hand gently connecting a glowing, ethereal concept blueprint to a detailed, intricate functional circuit board, dark background, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "786a17a6-04b6-448c-bb11-7d564f9f2671",
+          "prompt": "Close-up of a human hand gently connecting a glowing, ethereal concept blueprint to a detailed, intricate functional circuit board, dark background, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_786a17a6-04b6-448c-bb11-7d564f9f2671.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\b7341530-c80c-43f3-a7a4-7539c21dc8f4_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/b7341530-c80c-43f3-a7a4-7539c21dc8f4_f9fb5e85-ca6a-4970-8256-94a97984fd01.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\b7341530-c80c-43f3-a7a4-7539c21dc8f4_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "78cbf959",
+      "duration_actual": 5.14585,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-b7341530-c80c-43f3-a7a4-7539c21dc8f4.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/b7341530-c80c-43f3-a7a4-7539c21dc8f4_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\b7341530-c80c-43f3-a7a4-7539c21dc8f4_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\b7341530-c80c-43f3-a7a4-7539c21dc8f4_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "It",
+            "requires",
+            "an"
+          ],
+          "text": "{\\c&H00FFFFFF&}It requires an",
+          "start": 0,
+          "end": 1.2864625
+        },
+        {
+          "words": [
+            "intuitive",
+            "understanding,",
+            "bridging"
+          ],
+          "text": "{\\c&H0000FFFF&}intuitive understanding, bridging",
+          "start": 1.2864625,
+          "end": 2.572925
+        },
+        {
+          "words": [
+            "the",
+            "gap",
+            "between"
+          ],
+          "text": "{\\c&H00FFFFFF&}the gap between",
+          "start": 2.572925,
+          "end": 3.8593875000000004
+        },
+        {
+          "words": [
+            "concept",
+            "and",
+            "function."
+          ],
+          "text": "{\\c&H0000FFFF&}concept and function.",
+          "start": 3.8593875000000004,
+          "end": 5.14585
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\b7341530-c80c-43f3-a7a4-7539c21dc8f4_captioned.mp4"
+    },
+    {
+      "scene_id": "6504f49c-385d-4926-a560-4362154d3f5f",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 4,
+      "narration_text": "This connection manifests as an instinct, a gut feeling guiding choices in complex systems.",
+      "caption_text": "This connection manifests as an instinct, a gut feeling guiding choices in complex systems.",
+      "duration_target": 7,
+      "background_prompt": "Over-shoulder shot of a person's back, an ethereal glow around their torso extending towards a complex digital interface with intricate flowing data streams, hand poised for decision, dim environment, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "fe080802-eaa4-4aad-b10d-f672b083b0f8",
+          "prompt": "Over-shoulder shot of a person's back, an ethereal glow around their torso extending towards a complex digital interface with intricate flowing data streams, hand poised for decision, dim environment, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 7,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_fe080802-eaa4-4aad-b10d-f672b083b0f8.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\6504f49c-385d-4926-a560-4362154d3f5f_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/6504f49c-385d-4926-a560-4362154d3f5f_af90a85b-a676-4a82-bd7c-3a6bae57c0f1.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\6504f49c-385d-4926-a560-4362154d3f5f_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "4ac8c508",
+      "duration_actual": 5.23873,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-6504f49c-385d-4926-a560-4362154d3f5f.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/6504f49c-385d-4926-a560-4362154d3f5f_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\6504f49c-385d-4926-a560-4362154d3f5f_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\6504f49c-385d-4926-a560-4362154d3f5f_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "This",
+            "connection",
+            "manifests"
+          ],
+          "text": "{\\c&H00FFFFFF&}This connection manifests",
+          "start": 0,
+          "end": 1.047746
+        },
+        {
+          "words": [
+            "as",
+            "an",
+            "instinct,"
+          ],
+          "text": "{\\c&H0000FFFF&}as an instinct,",
+          "start": 1.047746,
+          "end": 2.095492
+        },
+        {
+          "words": [
+            "a",
+            "gut",
+            "feeling"
+          ],
+          "text": "{\\c&H00FFFFFF&}a gut feeling",
+          "start": 2.095492,
+          "end": 3.143238
+        },
+        {
+          "words": [
+            "guiding",
+            "choices",
+            "in"
+          ],
+          "text": "{\\c&H0000FFFF&}guiding choices in",
+          "start": 3.143238,
+          "end": 4.190984
+        },
+        {
+          "words": [
+            "complex",
+            "systems."
+          ],
+          "text": "{\\c&H00FFFFFF&}complex systems.",
+          "start": 4.190984,
+          "end": 5.23873
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\6504f49c-385d-4926-a560-4362154d3f5f_captioned.mp4"
+    },
+    {
+      "scene_id": "47b0fad0-4b2f-432f-8515-2116824d2570",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 5,
+      "narration_text": "It's the moment understanding clicks, revealing elegant solutions to intricate problems.",
+      "caption_text": "It's the moment understanding clicks, revealing elegant solutions to intricate problems.",
+      "duration_target": 5,
+      "background_prompt": "Close-up of a person's hands hovering over a screen displaying a chaotic, intricate problem, the problem suddenly clarifies into a glowing, elegant solution, modern workspace, dramatic spotlight, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "0479ae81-356f-4163-a23b-d4ca606958f6",
+          "prompt": "Close-up of a person's hands hovering over a screen displaying a chaotic, intricate problem, the problem suddenly clarifies into a glowing, elegant solution, modern workspace, dramatic spotlight, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_0479ae81-356f-4163-a23b-d4ca606958f6.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\47b0fad0-4b2f-432f-8515-2116824d2570_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/47b0fad0-4b2f-432f-8515-2116824d2570_d9ebcfbe-7efe-4a3b-b5c9-0debd67f3ce1.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\47b0fad0-4b2f-432f-8515-2116824d2570_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "3b49779a",
+      "duration_actual": 5.0878,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-47b0fad0-4b2f-432f-8515-2116824d2570.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/47b0fad0-4b2f-432f-8515-2116824d2570_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\47b0fad0-4b2f-432f-8515-2116824d2570_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\47b0fad0-4b2f-432f-8515-2116824d2570_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "It's",
+            "the",
+            "moment"
+          ],
+          "text": "{\\c&H00FFFFFF&}It's the moment",
+          "start": 0,
+          "end": 1.27195
+        },
+        {
+          "words": [
+            "understanding",
+            "clicks,",
+            "revealing"
+          ],
+          "text": "{\\c&H0000FFFF&}understanding clicks, revealing",
+          "start": 1.27195,
+          "end": 2.5439
+        },
+        {
+          "words": [
+            "elegant",
+            "solutions",
+            "to"
+          ],
+          "text": "{\\c&H00FFFFFF&}elegant solutions to",
+          "start": 2.5439,
+          "end": 3.8158499999999997
+        },
+        {
+          "words": [
+            "intricate",
+            "problems."
+          ],
+          "text": "{\\c&H0000FFFF&}intricate problems.",
+          "start": 3.8158499999999997,
+          "end": 5.0878
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\47b0fad0-4b2f-432f-8515-2116824d2570_captioned.mp4"
+    },
+    {
+      "scene_id": "d072d4c9-ebfd-40f8-a9e5-02e42b87bf38",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 6,
+      "narration_text": "Vibe Coding is precisely this: the convergence of intuition and meticulous logic.",
+      "caption_text": "Vibe Coding is precisely this: the convergence of intuition and meticulous logic.",
+      "duration_target": 6,
+      "background_prompt": "Flowing, luminous organic energy blending seamlessly with precise, glowing circuit board patterns, intertwining at their central meeting point, dark background, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "7e0d76ec-fb6c-45df-a47f-4cbc6bb2dfb7",
+          "prompt": "Flowing, luminous organic energy blending seamlessly with precise, glowing circuit board patterns, intertwining at their central meeting point, dark background, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 6,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_7e0d76ec-fb6c-45df-a47f-4cbc6bb2dfb7.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\d072d4c9-ebfd-40f8-a9e5-02e42b87bf38_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/d072d4c9-ebfd-40f8-a9e5-02e42b87bf38_dc1ada78-d5c7-4499-bb48-089d37074700.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\d072d4c9-ebfd-40f8-a9e5-02e42b87bf38_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "4df5901f",
+      "duration_actual": 5.09941,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-d072d4c9-ebfd-40f8-a9e5-02e42b87bf38.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/d072d4c9-ebfd-40f8-a9e5-02e42b87bf38_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\d072d4c9-ebfd-40f8-a9e5-02e42b87bf38_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\d072d4c9-ebfd-40f8-a9e5-02e42b87bf38_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Vibe",
+            "Coding",
+            "is"
+          ],
+          "text": "{\\c&H00FFFFFF&}Vibe Coding is",
+          "start": 0,
+          "end": 1.2748525
+        },
+        {
+          "words": [
+            "precisely",
+            "this:",
+            "the"
+          ],
+          "text": "{\\c&H0000FFFF&}precisely this: the",
+          "start": 1.2748525,
+          "end": 2.549705
+        },
+        {
+          "words": [
+            "convergence",
+            "of",
+            "intuition"
+          ],
+          "text": "{\\c&H00FFFFFF&}convergence of intuition",
+          "start": 2.549705,
+          "end": 3.8245575
+        },
+        {
+          "words": [
+            "and",
+            "meticulous",
+            "logic."
+          ],
+          "text": "{\\c&H0000FFFF&}and meticulous logic.",
+          "start": 3.8245575,
+          "end": 5.09941
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\d072d4c9-ebfd-40f8-a9e5-02e42b87bf38_captioned.mp4"
+    },
+    {
+      "scene_id": "3607e4cf-9dfa-471f-8b53-8c93868d80b6",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 7,
+      "narration_text": "It transforms abstract understanding into robust, functional software.",
+      "caption_text": "It transforms abstract understanding into robust, functional software.",
+      "duration_target": 5,
+      "background_prompt": "Close-up of a digital screen where chaotic, abstract conceptual diagrams visibly streamline and organize into clean, functional software code, glowing digital light, dark background, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "253b2813-761e-4f91-bef9-d16aa7ad8a81",
+          "prompt": "Close-up of a digital screen where chaotic, abstract conceptual diagrams visibly streamline and organize into clean, functional software code, glowing digital light, dark background, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_253b2813-761e-4f91-bef9-d16aa7ad8a81.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\3607e4cf-9dfa-471f-8b53-8c93868d80b6_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/3607e4cf-9dfa-471f-8b53-8c93868d80b6_cbaa0458-6ac9-45a8-9fd9-7ead6da0cef5.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\3607e4cf-9dfa-471f-8b53-8c93868d80b6_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "505c8141",
+      "duration_actual": 4.623401,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-3607e4cf-9dfa-471f-8b53-8c93868d80b6.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/3607e4cf-9dfa-471f-8b53-8c93868d80b6_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\3607e4cf-9dfa-471f-8b53-8c93868d80b6_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\3607e4cf-9dfa-471f-8b53-8c93868d80b6_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "It",
+            "transforms",
+            "abstract"
+          ],
+          "text": "{\\c&H00FFFFFF&}It transforms abstract",
+          "start": 0,
+          "end": 1.5411336666666668
+        },
+        {
+          "words": [
+            "understanding",
+            "into",
+            "robust,"
+          ],
+          "text": "{\\c&H0000FFFF&}understanding into robust,",
+          "start": 1.5411336666666668,
+          "end": 3.0822673333333337
+        },
+        {
+          "words": [
+            "functional",
+            "software."
+          ],
+          "text": "{\\c&H00FFFFFF&}functional software.",
+          "start": 3.0822673333333337,
+          "end": 4.623401
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\3607e4cf-9dfa-471f-8b53-8c93868d80b6_captioned.mp4"
+    },
+    {
+      "scene_id": "b768ec57-6203-4e64-b3c9-b9d7b5bf7fb3",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 8,
+      "narration_text": "Visualizing these digital currents, we apply our intuition to architecture, designing systems that resonate.",
+      "caption_text": "Visualizing these digital currents, we apply our intuition to architecture, designing systems that resonate.",
+      "duration_target": 7,
+      "background_prompt": "Close-up of hands pointing at transparent display showing intricate system architecture blueprint with glowing digital currents and harmonious energy flows, high-tech environment, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "2ca30bf2-fb1d-4acf-a5e5-86d7dbad6450",
+          "prompt": "Close-up of hands pointing at transparent display showing intricate system architecture blueprint with glowing digital currents and harmonious energy flows, high-tech environment, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 7,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_2ca30bf2-fb1d-4acf-a5e5-86d7dbad6450.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\b768ec57-6203-4e64-b3c9-b9d7b5bf7fb3_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/b768ec57-6203-4e64-b3c9-b9d7b5bf7fb3_3ef79e7e-2aa7-436e-b209-1eedacf55437.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\b768ec57-6203-4e64-b3c9-b9d7b5bf7fb3_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "79c8248d",
+      "duration_actual": 6.422948,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-b768ec57-6203-4e64-b3c9-b9d7b5bf7fb3.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/b768ec57-6203-4e64-b3c9-b9d7b5bf7fb3_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\b768ec57-6203-4e64-b3c9-b9d7b5bf7fb3_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\b768ec57-6203-4e64-b3c9-b9d7b5bf7fb3_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Visualizing",
+            "these",
+            "digital"
+          ],
+          "text": "{\\c&H00FFFFFF&}Visualizing these digital",
+          "start": 0,
+          "end": 1.2845895999999999
+        },
+        {
+          "words": [
+            "currents,",
+            "we",
+            "apply"
+          ],
+          "text": "{\\c&H0000FFFF&}currents, we apply",
+          "start": 1.2845895999999999,
+          "end": 2.5691791999999998
+        },
+        {
+          "words": [
+            "our",
+            "intuition",
+            "to"
+          ],
+          "text": "{\\c&H00FFFFFF&}our intuition to",
+          "start": 2.5691791999999998,
+          "end": 3.8537687999999997
+        },
+        {
+          "words": [
+            "architecture,",
+            "designing",
+            "systems"
+          ],
+          "text": "{\\c&H0000FFFF&}architecture, designing systems",
+          "start": 3.8537687999999997,
+          "end": 5.1383583999999995
+        },
+        {
+          "words": [
+            "that",
+            "resonate."
+          ],
+          "text": "{\\c&H00FFFFFF&}that resonate.",
+          "start": 5.1383583999999995,
+          "end": 6.422948
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\b768ec57-6203-4e64-b3c9-b9d7b5bf7fb3_captioned.mp4"
+    },
+    {
+      "scene_id": "5fd0ce28-a1f4-420e-9fcc-d53191738620",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 9,
+      "narration_text": "The code flows harmoniously, achieving desired outcomes effortlessly.",
+      "caption_text": "The code flows harmoniously, achieving desired outcomes effortlessly.",
+      "duration_target": 4,
+      "background_prompt": "Over-shoulder shot of a programmer watching lines of glowing code flowing smoothly on a monitor, elegant graphical results appearing instantly, warm ambient light. photorealistic, 9:16 vertical, cinematic lighting, sharp focus.",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "df4d3500-71bc-488b-96a3-ece05c95ea43",
+          "prompt": "Over-shoulder shot of a programmer watching lines of glowing code flowing smoothly on a monitor, elegant graphical results appearing instantly, warm ambient light. photorealistic, 9:16 vertical, cinematic lighting, sharp focus.",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 4,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_df4d3500-71bc-488b-96a3-ece05c95ea43.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\5fd0ce28-a1f4-420e-9fcc-d53191738620_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/5fd0ce28-a1f4-420e-9fcc-d53191738620_86b217ad-d6a5-454f-96cd-9fef9472154d.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\5fd0ce28-a1f4-420e-9fcc-d53191738620_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "60cda032",
+      "duration_actual": 4.367982,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-5fd0ce28-a1f4-420e-9fcc-d53191738620.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/5fd0ce28-a1f4-420e-9fcc-d53191738620_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\5fd0ce28-a1f4-420e-9fcc-d53191738620_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\5fd0ce28-a1f4-420e-9fcc-d53191738620_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "The",
+            "code",
+            "flows"
+          ],
+          "text": "{\\c&H00FFFFFF&}The code flows",
+          "start": 0,
+          "end": 1.4559939999999998
+        },
+        {
+          "words": [
+            "harmoniously,",
+            "achieving",
+            "desired"
+          ],
+          "text": "{\\c&H0000FFFF&}harmoniously, achieving desired",
+          "start": 1.4559939999999998,
+          "end": 2.9119879999999996
+        },
+        {
+          "words": [
+            "outcomes",
+            "effortlessly."
+          ],
+          "text": "{\\c&H00FFFFFF&}outcomes effortlessly.",
+          "start": 2.9119879999999996,
+          "end": 4.367982
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\5fd0ce28-a1f4-420e-9fcc-d53191738620_captioned.mp4"
+    },
+    {
+      "scene_id": "638b96ef-2cb0-4113-a079-d375856c108e",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 10,
+      "narration_text": "This holistic approach extends to collaboration, where shared understanding amplifies creative potential.",
+      "caption_text": "This holistic approach extends to collaboration, where shared understanding amplifies creative potential.",
+      "duration_target": 6,
+      "background_prompt": "A diverse team collaboratively brainstorming at an interactive digital whiteboard, interconnected ideas and glowing lines illustrating shared understanding and amplified creative potential, modern workspace, bright office lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "09e2255c-5289-4db6-a047-579a6576ccce",
+          "prompt": "A diverse team collaboratively brainstorming at an interactive digital whiteboard, interconnected ideas and glowing lines illustrating shared understanding and amplified creative potential, modern workspace, bright office lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 6,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_09e2255c-5289-4db6-a047-579a6576ccce.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\638b96ef-2cb0-4113-a079-d375856c108e_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/638b96ef-2cb0-4113-a079-d375856c108e_8b2cfd6a-a3e4-475d-9e34-f2927677cacd.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\638b96ef-2cb0-4113-a079-d375856c108e_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "479d4b91",
+      "duration_actual": 5.772789,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-638b96ef-2cb0-4113-a079-d375856c108e.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/638b96ef-2cb0-4113-a079-d375856c108e_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\638b96ef-2cb0-4113-a079-d375856c108e_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\638b96ef-2cb0-4113-a079-d375856c108e_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "This",
+            "holistic",
+            "approach"
+          ],
+          "text": "{\\c&H00FFFFFF&}This holistic approach",
+          "start": 0,
+          "end": 1.44319725
+        },
+        {
+          "words": [
+            "extends",
+            "to",
+            "collaboration,"
+          ],
+          "text": "{\\c&H0000FFFF&}extends to collaboration,",
+          "start": 1.44319725,
+          "end": 2.8863945
+        },
+        {
+          "words": [
+            "where",
+            "shared",
+            "understanding"
+          ],
+          "text": "{\\c&H00FFFFFF&}where shared understanding",
+          "start": 2.8863945,
+          "end": 4.3295917500000005
+        },
+        {
+          "words": [
+            "amplifies",
+            "creative",
+            "potential."
+          ],
+          "text": "{\\c&H0000FFFF&}amplifies creative potential.",
+          "start": 4.3295917500000005,
+          "end": 5.772789
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\638b96ef-2cb0-4113-a079-d375856c108e_captioned.mp4"
+    },
+    {
+      "scene_id": "b2dc4f45-6927-47c8-b6b0-5a6fcd89a1a4",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 11,
+      "narration_text": "Teams intuitively align, building innovative solutions with collective energy.",
+      "caption_text": "Teams intuitively align, building innovative solutions with collective energy.",
+      "duration_target": 5,
+      "background_prompt": "Medium shot of diverse team of professionals collaboratively brainstorming around a large glowing digital interface, focused expressions, unified gestures showing alignment, conveying collective energy in a modern workspace, dynamic lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "13ee1dce-7772-49e5-acb8-eb2b3943c141",
+          "prompt": "Medium shot of diverse team of professionals collaboratively brainstorming around a large glowing digital interface, focused expressions, unified gestures showing alignment, conveying collective energy in a modern workspace, dynamic lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_13ee1dce-7772-49e5-acb8-eb2b3943c141.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\b2dc4f45-6927-47c8-b6b0-5a6fcd89a1a4_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/b2dc4f45-6927-47c8-b6b0-5a6fcd89a1a4_583291c0-c5e1-42b6-bf67-dd9f59ba1cce.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\b2dc4f45-6927-47c8-b6b0-5a6fcd89a1a4_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "2ee139cc",
+      "duration_actual": 4.751111,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-b2dc4f45-6927-47c8-b6b0-5a6fcd89a1a4.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/b2dc4f45-6927-47c8-b6b0-5a6fcd89a1a4_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\b2dc4f45-6927-47c8-b6b0-5a6fcd89a1a4_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\b2dc4f45-6927-47c8-b6b0-5a6fcd89a1a4_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Teams",
+            "intuitively",
+            "align,"
+          ],
+          "text": "{\\c&H00FFFFFF&}Teams intuitively align,",
+          "start": 0,
+          "end": 1.5837036666666666
+        },
+        {
+          "words": [
+            "building",
+            "innovative",
+            "solutions"
+          ],
+          "text": "{\\c&H0000FFFF&}building innovative solutions",
+          "start": 1.5837036666666666,
+          "end": 3.1674073333333332
+        },
+        {
+          "words": [
+            "with",
+            "collective",
+            "energy."
+          ],
+          "text": "{\\c&H00FFFFFF&}with collective energy.",
+          "start": 3.1674073333333332,
+          "end": 4.751111
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\b2dc4f45-6927-47c8-b6b0-5a6fcd89a1a4_captioned.mp4"
+    },
+    {
+      "scene_id": "3f114c1f-826a-4d64-8851-b88cbd82422c",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 12,
+      "narration_text": "Mastering Vibe Coding empowers developers with elegant control.",
+      "caption_text": "Mastering Vibe Coding empowers developers with elegant control.",
+      "duration_target": 4,
+      "background_prompt": "Close-up of a developer's confident hands gracefully shaping and manipulating vibrant, flowing lines of code on a holographic display, dark room, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "cdee56d4-fae4-4d5a-a337-9edfaff4a660",
+          "prompt": "Close-up of a developer's confident hands gracefully shaping and manipulating vibrant, flowing lines of code on a holographic display, dark room, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 4,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_cdee56d4-fae4-4d5a-a337-9edfaff4a660.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\3f114c1f-826a-4d64-8851-b88cbd82422c_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/3f114c1f-826a-4d64-8851-b88cbd82422c_2b698851-26d3-4133-96ac-ffb46a0e28d9.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\3f114c1f-826a-4d64-8851-b88cbd82422c_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "1851defa",
+      "duration_actual": 3.845533,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-3f114c1f-826a-4d64-8851-b88cbd82422c.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/3f114c1f-826a-4d64-8851-b88cbd82422c_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\3f114c1f-826a-4d64-8851-b88cbd82422c_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\3f114c1f-826a-4d64-8851-b88cbd82422c_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Mastering",
+            "Vibe",
+            "Coding"
+          ],
+          "text": "{\\c&H00FFFFFF&}Mastering Vibe Coding",
+          "start": 0,
+          "end": 1.2818443333333334
+        },
+        {
+          "words": [
+            "empowers",
+            "developers",
+            "with"
+          ],
+          "text": "{\\c&H0000FFFF&}empowers developers with",
+          "start": 1.2818443333333334,
+          "end": 2.5636886666666667
+        },
+        {
+          "words": [
+            "elegant",
+            "control."
+          ],
+          "text": "{\\c&H00FFFFFF&}elegant control.",
+          "start": 2.5636886666666667,
+          "end": 3.845533
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\3f114c1f-826a-4d64-8851-b88cbd82422c_captioned.mp4"
+    },
+    {
+      "scene_id": "686a3167-b547-42c4-9546-f299914a52de",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 13,
+      "narration_text": "It's about crafting impactful, resilient systems that feel inherently right, driving true innovation.",
+      "caption_text": "It's about crafting impactful, resilient systems that feel inherently right, driving true innovation.",
+      "duration_target": 7,
+      "background_prompt": "Close-up of skilled hands precisely crafting powerful, resilient system components on a futuristic interface. Parts glow softly where they seamlessly interlock, showing true innovation. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "8ae9beaa-643e-42cd-96e8-97060d2e59c8",
+          "prompt": "Close-up of skilled hands precisely crafting powerful, resilient system components on a futuristic interface. Parts glow softly where they seamlessly interlock, showing true innovation. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 7,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_8ae9beaa-643e-42cd-96e8-97060d2e59c8.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\686a3167-b547-42c4-9546-f299914a52de_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/686a3167-b547-42c4-9546-f299914a52de_1c034ef2-5a2a-41f6-80a6-c1ec9cf3fa49.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\686a3167-b547-42c4-9546-f299914a52de_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "5bf9aaef",
+      "duration_actual": 6.283628,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-686a3167-b547-42c4-9546-f299914a52de.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/686a3167-b547-42c4-9546-f299914a52de_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\686a3167-b547-42c4-9546-f299914a52de_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\686a3167-b547-42c4-9546-f299914a52de_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "It's",
+            "about",
+            "crafting"
+          ],
+          "text": "{\\c&H00FFFFFF&}It's about crafting",
+          "start": 0,
+          "end": 1.2567256
+        },
+        {
+          "words": [
+            "impactful,",
+            "resilient",
+            "systems"
+          ],
+          "text": "{\\c&H0000FFFF&}impactful, resilient systems",
+          "start": 1.2567256,
+          "end": 2.5134512
+        },
+        {
+          "words": [
+            "that",
+            "feel",
+            "inherently"
+          ],
+          "text": "{\\c&H00FFFFFF&}that feel inherently",
+          "start": 2.5134512,
+          "end": 3.7701767999999998
+        },
+        {
+          "words": [
+            "right,",
+            "driving",
+            "true"
+          ],
+          "text": "{\\c&H0000FFFF&}right, driving true",
+          "start": 3.7701767999999998,
+          "end": 5.0269024
+        },
+        {
+          "words": [
+            "innovation."
+          ],
+          "text": "{\\c&H00FFFFFF&}innovation.",
+          "start": 5.0269024,
+          "end": 6.283628
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\686a3167-b547-42c4-9546-f299914a52de_captioned.mp4"
+    },
+    {
+      "scene_id": "8628706d-997d-442f-9673-d515a57eb4ae",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 14,
+      "narration_text": "Embrace Vibe Coding. Harmonize your intuition with technical mastery,",
+      "caption_text": "Embrace Vibe Coding. Harmonize your intuition with technical mastery,",
+      "duration_target": 5,
+      "background_prompt": "Over-shoulder shot of a programmer at a screen. Left side shows a glowing, organic neural network visualization (intuition). Right side shows complex code (technical mastery). Programmer's hands are visually merging both elements. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "1cd46a06-9496-4ad2-a15d-dadc4b32e533",
+          "prompt": "Over-shoulder shot of a programmer at a screen. Left side shows a glowing, organic neural network visualization (intuition). Right side shows complex code (technical mastery). Programmer's hands are visually merging both elements. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_1cd46a06-9496-4ad2-a15d-dadc4b32e533.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\8628706d-997d-442f-9673-d515a57eb4ae_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/8628706d-997d-442f-9673-d515a57eb4ae_a9aa8180-470f-4a47-9446-0994043e466e.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\8628706d-997d-442f-9673-d515a57eb4ae_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "cta",
+      "audio_hash": "4ab5cd4e",
+      "duration_actual": 4.428662,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-8628706d-997d-442f-9673-d515a57eb4ae.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/8628706d-997d-442f-9673-d515a57eb4ae_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\8628706d-997d-442f-9673-d515a57eb4ae_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\8628706d-997d-442f-9673-d515a57eb4ae_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Embrace",
+            "Vibe",
+            "Coding."
+          ],
+          "text": "{\\c&H00FFFFFF&}Embrace Vibe Coding.",
+          "start": 0,
+          "end": 1.4762206666666666
+        },
+        {
+          "words": [
+            "Harmonize",
+            "your",
+            "intuition"
+          ],
+          "text": "{\\c&H0000FFFF&}Harmonize your intuition",
+          "start": 1.4762206666666666,
+          "end": 2.9524413333333333
+        },
+        {
+          "words": [
+            "with",
+            "technical",
+            "mastery,"
+          ],
+          "text": "{\\c&H00FFFFFF&}with technical mastery,",
+          "start": 2.9524413333333333,
+          "end": 4.428662
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\8628706d-997d-442f-9673-d515a57eb4ae_captioned.mp4"
+    },
+    {
+      "scene_id": "c5b7035b-6291-4421-a8a5-186281626dbd",
+      "projectId": "739da895-177b-4ccc-9242-961f5510aed0",
+      "order": 15,
+      "narration_text": "creating powerful, innovative digital futures. Feel the flow, build the future.",
+      "caption_text": "creating powerful, innovative digital futures. Feel the flow, build the future.",
+      "duration_target": 5,
+      "background_prompt": "Wide shot of diverse developers in a sleek futuristic lab, immersed in glowing holographic interfaces, digital energy streams flowing effortlessly as they construct a vast, innovative digital city. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "cta",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "0c06dd0f-b261-4355-aed5-45e1dd216401",
+          "prompt": "Wide shot of diverse developers in a sleek futuristic lab, immersed in glowing holographic interfaces, digital energy streams flowing effortlessly as they construct a vast, innovative digital city. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0_visual_0c06dd0f-b261-4355-aed5-45e1dd216401.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\c5b7035b-6291-4421-a8a5-186281626dbd_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/c5b7035b-6291-4421-a8a5-186281626dbd_65919eac-f1f0-4eef-ab96-0db3a37cb455.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\739da895-177b-4ccc-9242-961f5510aed0\\c5b7035b-6291-4421-a8a5-186281626dbd_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "",
+      "audio_hash": "340a0307",
+      "duration_actual": 5.020771,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\739da895-177b-4ccc-9242-961f5510aed0\\narration-c5b7035b-6291-4421-a8a5-186281626dbd.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/backgrounds/c5b7035b-6291-4421-a8a5-186281626dbd_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\c5b7035b-6291-4421-a8a5-186281626dbd_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\c5b7035b-6291-4421-a8a5-186281626dbd_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "creating",
+            "powerful,",
+            "innovative"
+          ],
+          "text": "{\\c&H00FFFFFF&}creating powerful, innovative",
+          "start": 0,
+          "end": 1.25519275
+        },
+        {
+          "words": [
+            "digital",
+            "futures.",
+            "Feel"
+          ],
+          "text": "{\\c&H0000FFFF&}digital futures. Feel",
+          "start": 1.25519275,
+          "end": 2.5103855
+        },
+        {
+          "words": [
+            "the",
+            "flow,",
+            "build"
+          ],
+          "text": "{\\c&H00FFFFFF&}the flow, build",
+          "start": 2.5103855,
+          "end": 3.76557825
+        },
+        {
+          "words": [
+            "the",
+            "future."
+          ],
+          "text": "{\\c&H0000FFFF&}the future.",
+          "start": 3.76557825,
+          "end": 5.020771
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\c5b7035b-6291-4421-a8a5-186281626dbd_captioned.mp4"
+    }
+  ],
+  "topic": "What is Vibe Coding?",
+  "createdAt": "2026-07-02T18:56:57.062Z",
+  "characterDescription": "",
+  "userId": "sq2LfioDO9V6TNv3cLScVAbAtyD3",
+  "status": "completed",
+  "worldEntities": {
+    "characters": [],
+    "locations": [],
+    "objects": []
+  },
+  "description": "A beginner-friendly explanation \n  of Vibe Coding — the new trend where developers \n  use AI to write code by describing what they \n  want in plain English. What it is, why it's \n  taking off in 2026, and whether it's the future \n  of programming. Conversational, no jargon, \n  under 60 seconds.",
+  "referenceImages": [],
+  "mode": "long",
+  "style_profile": "cinematic",
+  "pacing_intensity": "moderate",
+  "hook_strategy": "default",
+  "world_entities": {
+    "characters": [],
+    "locations": [],
+    "objects": [
+      {
+        "name": "Vibe Code Flow",
+        "description": "The unseen, palpable energy and intuitive flow within digital code, representing the harmony of logic and intuition.",
+        "prompt": "Luminous, ethereal data streams, swirling and pulsating with interconnected nodes, flowing harmoniously through a dark, abstract digital space."
+      }
+    ]
+  },
+  "is_cancelled": false,
+  "logs": [
+    "[12:39:17 AM] Initializing pipeline...",
+    "[12:39:17 AM] Testing cloud connectivity...",
+    "[12:39:18 AM] Generating AI assets (Images & Audio)...",
+    "[12:39:18 AM] Processing scene batch 1 of 6...",
+    "[12:44:24 AM] Processing scene batch 2 of 6...",
+    "[12:50:33 AM] Processing scene batch 3 of 6...",
+    "[12:55:58 AM] Processing scene batch 4 of 6...",
+    "[01:01:39 AM] Processing scene batch 5 of 6...",
+    "[01:06:18 AM] Processing scene batch 6 of 6...",
+    "[01:08:06 AM] Stitching scenes together into final video...",
+    "[01:11:37 AM] Video generation complete!"
+  ],
+  "current_action": "Video generation complete!",
+  "progress_percent": 100,
+  "output_path": "E:\\s2v-aistudio\\outputs\\739da895-177b-4ccc-9242-961f5510aed0.mp4",
+  "thumbnail_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/739da895-177b-4ccc-9242-961f5510aed0/739da895-177b-4ccc-9242-961f5510aed0_thumbnail.jpg",
+  "completed_at": "2026-07-02T19:41:37.176Z",
+  "quality_score": 100,
+  "updated_at": "2026-07-02T19:41:37.178Z"
+}

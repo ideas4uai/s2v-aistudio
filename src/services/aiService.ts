@@ -1,5 +1,6 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
 import { getKeyForTask, getGeminiKey, type KeyTask } from '../utils/geminiAuth.js';
+import { loadImageAsBase64 } from '../utils/imageRef.js';
 
 const isAdcMode = !!process.env.GOOGLE_CLOUD_PROJECT;
 const gcpProject = process.env.GOOGLE_CLOUD_PROJECT || '';
@@ -154,12 +155,10 @@ async function generateImageWithGeminiNative(
     const parts: any[] = [];
 
     if (referenceImageUrl) {
-      const imgResponse = await fetch(referenceImageUrl);
-      if (!imgResponse.ok) throw new Error(`Reference fetch failed: ${imgResponse.status}`);
-      const imgBuffer = await imgResponse.arrayBuffer();
-      const base64ref = Buffer.from(imgBuffer).toString('base64');
-      const mimeType = referenceImageUrl.includes('.png') ? 'image/png' : 'image/jpeg';
-      parts.push({ inlineData: { data: base64ref, mimeType } });
+      // Handles both http(s) URLs and local file paths (anchor fallback)
+      const ref = await loadImageAsBase64(referenceImageUrl);
+      if (!ref) throw new Error(`Reference load failed: ${referenceImageUrl.slice(-60)}`);
+      parts.push({ inlineData: { data: ref.data, mimeType: ref.mimeType } });
       parts.push({
         text: `This is the character reference. ${prompt}. Keep the exact same character face, outfit, and art style.`
       });
@@ -302,16 +301,9 @@ export const AIService = {
     }
 
     const referenceImageUrl = options?.referenceImageUrl as string | undefined;
-    let referenceImageBytes: string | undefined;
-    if (referenceImageUrl) {
-      try {
-        const res = await fetch(referenceImageUrl);
-        if (res.ok) referenceImageBytes = Buffer.from(await res.arrayBuffer()).toString('base64');
-        console.log('[ImageGen] Reference image loaded for character consistency');
-      } catch (e) {
-        console.warn('[ImageGen] Could not load reference image:', e);
-      }
-    }
+    // Handles both http(s) URLs and local file paths (anchor fallback)
+    const referenceImage = referenceImageUrl ? await loadImageAsBase64(referenceImageUrl) : null;
+    if (referenceImage) console.log('[ImageGen] Reference image loaded for character consistency');
 
     // Provider 1: Gemini 3.1 Flash Image (replaces Imagen 4 — deprecated Aug 17 2026)
     let imagenApiKey = '';
@@ -325,9 +317,8 @@ export const AIService = {
           : new GoogleGenAI({ apiKey: imagenApiKey });
 
         const imgParts: any[] = [];
-        if (referenceImageBytes) {
-          const mimeType = referenceImageUrl?.includes('.png') ? 'image/png' : 'image/jpeg';
-          imgParts.push({ inlineData: { data: referenceImageBytes, mimeType } });
+        if (referenceImage) {
+          imgParts.push({ inlineData: { data: referenceImage.data, mimeType: referenceImage.mimeType } });
         }
         imgParts.push({ text: styledPrompt });
 

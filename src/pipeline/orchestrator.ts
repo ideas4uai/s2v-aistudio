@@ -33,6 +33,8 @@ import { StoryboardAgent } from './agents/storyboardAgent.js';
 import { WorldAgent } from './agents/worldAgent.js';
 import { abortManager } from './abortManager.js';
 import { requestContext } from '../server/utils/context.js';
+import { persistProjectToDisk, restoreProjectsFromDisk } from './projectDiskStore.js';
+import { seedAnchorsFromProject, recordAnchor, anchorSummary } from './anchorStore.js';
 
 
 const INDIAN_AESTHETIC_SUFFIX = 'South Asian graphic novel illustration style, Hyderabad cyberpunk city 2031, warm terracotta and saffron architecture, teal neon accents, Indian street culture, autorickshaws with holographic overlays, Hindi signage, chai stall neon lights, bold flat colour illustration, Trigger Studio quality, NOT Japanese, NOT manga, NOT Tokyo aesthetic, South Asian urban environment';
@@ -91,22 +93,14 @@ function applyStyleToPrompt(prompt: string, style: StyleProfile): string {
 // Module-level Map persists across requests within a single server process.
 const projectMemoryStore = new Map<string, Project>();
 
-// On startup, re-hydrate completed projects from disk so renders survive
-// server restarts when running without Firestore (DISABLE_FIRESTORE=true).
+// On startup, re-hydrate ALL projects from disk (completed AND mid-render)
+// so renders survive server restarts when running without Firestore
+// (DISABLE_FIRESTORE=true). Stale local artifact paths are cleared so the
+// pipeline regenerates exactly the missing pieces on resume.
 if (process.env.DISABLE_FIRESTORE === 'true') {
-  const _restoreDir = path.join(process.cwd(), 'outputs');
-  if (fs.existsSync(_restoreDir)) {
-    for (const _f of fs.readdirSync(_restoreDir)) {
-      if (_f.endsWith('.json')) {
-        try {
-          const _proj = JSON.parse(fs.readFileSync(path.join(_restoreDir, _f), 'utf-8'));
-          if (_proj.project_id && _proj.output_path) {
-            projectMemoryStore.set(_proj.project_id, _proj);
-            console.log(`[DB] Restored project ${_proj.project_id} from disk (status: ${_proj.status})`);
-          }
-        } catch {}
-      }
-    }
+  for (const _proj of restoreProjectsFromDisk()) {
+    projectMemoryStore.set(_proj.project_id!, _proj);
+    console.log(`[DB] Restored project ${_proj.project_id} from disk (status: ${_proj.status})`);
   }
 }
 
@@ -140,16 +134,13 @@ export async function saveProjectState(project: Project): Promise<void> {
     const pid = project.project_id!;
     projectMemoryStore.set(pid, project);
     console.log(`[DB] DISABLE_FIRESTORE=true — wrote to in-memory store (key: ${pid}, scenes: ${project.scenes?.length ?? 0})`);
-    // Persist completed projects to disk so output_path survives server restarts.
-    if (project.status === 'completed' && project.output_path) {
-      const _outDir = path.join(process.cwd(), 'outputs');
-      fs.mkdirSync(_outDir, { recursive: true });
-      try {
-        fs.writeFileSync(path.join(_outDir, `${pid}.json`), JSON.stringify(project, null, 2));
-        console.log(`[DB] Project JSON persisted to disk: outputs/${pid}.json`);
-      } catch (e: any) {
-        console.warn(`[DB] Could not persist project JSON:`, e?.message);
-      }
+    // Persist on EVERY save (not just completion) so a crash or restart
+    // mid-render resumes from the last stage boundary instead of losing
+    // all per-scene progress held only in memory.
+    try {
+      persistProjectToDisk(project);
+    } catch (e: any) {
+      console.warn(`[DB] Could not persist project JSON:`, e?.message);
     }
     return;
   }
@@ -392,6 +383,11 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       }
     }
 
+    // Restore character anchors persisted by a previous run so characters
+    // stay visually consistent across re-renders and follow-up requests
+    // (the Map above is per-run and starts empty on every call).
+    seedAnchorsFromProject(project, characterAnchors);
+
     // Allow re-runs from any terminal state — reset to draft so path-clearing runs
     if (project.status === 'completed' || project.status === 'cancelled' || project.status === 'failed') {
       console.log(`[Orchestrator] Resetting project ${project.project_id} from '${project.status}' to 'draft' for re-run.`);
@@ -605,11 +601,17 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
           await Promise.all(batch.map(processScene));
         }
 
+        // Persist per-scene progress after each batch so a crash or restart
+        // resumes from here instead of re-running every scene.
+        await guardedSaveProjectState(project, signal);
+
         // Small delay between batches
         if (i + batchSize < scenesToProcess.length) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
+
+      console.log('[Orchestrator] Character anchor summary:', anchorSummary(characterAnchors));
 
       const allAssetsSuccess = project.scenes.every(s => s.status === 'completed' || s.status === 'degraded');
 
@@ -786,12 +788,12 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   if (scene.background_prompt && !scene.background_path && !(scene as any).unified) {
     try {
       const bgArtStyle = (project.universe as any)?.backgroundArtStyle || '';
-      const aestheticSuffix = project.universeId
+      const aestheticSuffix = (project as any).universeId
         ? INDIAN_AESTHETIC_SUFFIX
-        : 'cinematic lighting, clean professional style, suitable for educational content, 16:9 composition adapted to portrait';
+        : 'cinematic lighting, clean professional style, suitable for educational content, main subject centered with generous margins on all sides (frame edges will be cropped to 9:16 vertical), absolutely no text, no words, no numbers, no lettering, no typography anywhere in the image';
       const fullBgPrompt = [scene.background_prompt, aestheticSuffix, bgArtStyle].filter(Boolean).join(', ');
       console.log('[Orchestrator] Background full prompt:', fullBgPrompt.slice(0, 120));
-      const bgBase64 = await AIService.generateImageBase64(fullBgPrompt, { isStoryEpisode: !!project.universeId });
+      const bgBase64 = await AIService.generateImageBase64(fullBgPrompt, { isStoryEpisode: !!(project as any).universeId });
       if (bgBase64) {
         const bgBuffer = Buffer.from(bgBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
         fs.writeFileSync(bgLocalPath, bgBuffer);
@@ -896,8 +898,8 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
           visual.asset_path = localAsset;
           if (i === 0 && !localAsset.endsWith('.mp4')) scene.image_path = localAsset;
           // Store as anchor for subsequent scenes of the same character.
-          // Must be a public URL — consumers pass it to fetch() in aiService,
-          // which fails on local file paths.
+          // Prefer the Supabase URL (survives restarts); fall back to the
+          // local file — aiService loads either form via imageRef.
           const sceneCharName = (scene as any).character as string | undefined;
           if (sceneCharName && sceneCharName !== 'NARRATOR' && i === 0 && !localAsset.endsWith('.mp4')) {
             const charKey = sceneCharName + '_' + project.project_id!;
@@ -909,12 +911,14 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
                   fs.readFileSync(localAsset),
                   'image/png'
                 );
-                characterAnchors.set(charKey, anchorUrl);
+                recordAnchor(project, characterAnchors, sceneCharName, anchorUrl);
                 console.log('[Orchestrator] Anchor uploaded for:', sceneCharName, anchorUrl.slice(-50));
               } catch (anchorErr: any) {
-                // Do NOT store the local path — a non-URL anchor poisons the
-                // fetch() in aiService's reference-image path.
-                console.warn('[Orchestrator] Anchor upload failed for:', sceneCharName, anchorErr?.message);
+                // Upload failed — fall back to the local file. aiService loads
+                // references via imageRef (fs for local paths), so a dead
+                // Supabase link no longer drops the anchor entirely.
+                recordAnchor(project, characterAnchors, sceneCharName, localAsset);
+                console.warn('[Orchestrator] Anchor upload failed for:', sceneCharName, '— using local file fallback:', anchorErr?.message);
               }
             }
           }

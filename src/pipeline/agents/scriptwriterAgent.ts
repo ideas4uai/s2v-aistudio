@@ -49,6 +49,7 @@ SCENE REQUIREMENTS:
 - Scene 5+: Expand naturally. More detail, examples, or mini-story.
 - Final scene: Beat 5 — CTA that leaves them wanting more.
 - Every narration field: AT LEAST 20 words. Never one-sentence scenes.
+- Visual fields: objects, scenes, atmosphere only — NEVER written text, numbers, labels, charts with figures, signs, or UI screenshots in the image. Rendered text gets clipped by the vertical crop and fights the burned-in captions. Convey data through visual metaphor (scale, glow, contrast) instead.
 
 TARGET: ${targetWords} total words across ALL scenes (${targetLength} at 2.5 words/sec).
 
@@ -58,7 +59,7 @@ Output ONLY valid JSON:
   "scenes": [
     {
       "narration": "Spoken text for this scene. At least 20 words. Sounds like a person talking.",
-      "visual": "Detailed cinematic description — tech/AI visual relevant to the narration. Specific. No people unless needed.",
+      "visual": "Detailed cinematic description — tech/AI visual relevant to the narration. Specific. No people unless needed. No written text or numbers anywhere in the image.",
       "duration": 5,
       "order": 0
     }

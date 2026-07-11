@@ -1,0 +1,138 @@
+- generic [ref=f1e3]:
+  - banner [ref=f1e4]:
+    - generic [ref=f1e5]:
+      - link "S Script2Video" [ref=f1e6] [cursor=pointer]:
+        - /url: /
+        - generic [ref=f1e8]: S
+        - generic [ref=f1e9]: Script2Video
+      - navigation [ref=f1e10]:
+        - button "Sign In" [ref=f1e11]:
+          - img [ref=f1e12]
+          - generic [ref=f1e15]: Sign In
+  - main [ref=f1e16]:
+    - generic [ref=f1e17]:
+      - generic [ref=f1e18]:
+        - generic [ref=f1e19]:
+          - button [ref=f1e20]:
+            - img [ref=f1e21]
+          - heading "what is multi agents workframe" [level=1] [ref=f1e23]
+        - generic [ref=f1e24]:
+          - generic [ref=f1e25]:
+            - generic [ref=f1e26] [cursor=pointer]:
+              - checkbox "Music" [checked] [ref=f1e27]
+              - img [ref=f1e28]
+              - generic [ref=f1e32]: Music
+            - generic [ref=f1e33] [cursor=pointer]:
+              - checkbox "Ambient" [checked] [ref=f1e34]
+              - img [ref=f1e35]
+              - generic [ref=f1e39]: Ambient
+          - button "Preview" [ref=f1e40]
+          - button "Render" [ref=f1e41]:
+            - img [ref=f1e42]
+            - text: Render
+      - generic [ref=f1e44]:
+        - button "1. Script" [ref=f1e45]:
+          - img [ref=f1e46]
+          - text: 1. Script
+        - button "2. World & Casting" [ref=f1e49]:
+          - img [ref=f1e50]
+          - text: 2. World & Casting
+        - button "3. Scenes" [ref=f1e53]:
+          - img [ref=f1e54]
+          - text: 3. Scenes
+        - button "4. Media" [ref=f1e56]:
+          - img [ref=f1e57]
+          - text: 4. Media
+        - button "5. Export" [ref=f1e61]:
+          - img [ref=f1e62]
+          - text: 5. Export
+        - button "6. Timeline" [ref=f1e65]:
+          - img [ref=f1e66]
+          - text: 6. Timeline
+      - main [ref=f1e69]:
+        - generic [ref=f1e71]:
+          - generic [ref=f1e73]:
+            - img [ref=f1e75]
+            - heading "Image as Reference (New Feature)" [level=3] [ref=f1e79]
+            - paragraph [ref=f1e80]: Upload an image and the AI will analyze its objects, characters, and mood to build a unique story and visual script.
+            - generic [ref=f1e81] [cursor=pointer]:
+              - img [ref=f1e82]
+              - text: Upload Image as Story Seed
+          - generic [ref=f1e85]:
+            - generic [ref=f1e86]:
+              - heading "Script Editor" [level=2] [ref=f1e87]
+              - button "AI Generate Script" [ref=f1e88]:
+                - img [ref=f1e89]
+                - text: AI Generate Script
+            - generic [ref=f1e92]:
+              - generic [ref=f1e93]:
+                - paragraph [ref=f1e94]: Choose your opening hook
+                - paragraph [ref=f1e95]: Pick the one that feels most like you. The script will be built around it.
+              - generic [ref=f1e96]:
+                - button "Question \"What if your AI helpers started teamwork to get things done?\"" [ref=f1e97]:
+                  - generic [ref=f1e98]:
+                    - generic [ref=f1e99]: Question
+                    - generic [ref=f1e100]: "\"What if your AI helpers started teamwork to get things done?\""
+                - button "Statement \"Your AI is smart, but imagine if it had smart friends helping.\"" [ref=f1e101]:
+                  - generic [ref=f1e102]:
+                    - generic [ref=f1e103]: Statement
+                    - generic [ref=f1e104]: "\"Your AI is smart, but imagine if it had smart friends helping.\""
+                - button "Story opening \"I gave my AIs a tough problem; they called friends and solved it!\"" [ref=f1e105]:
+                  - generic [ref=f1e106]:
+                    - generic [ref=f1e107]: Story opening
+                    - generic [ref=f1e108]: "\"I gave my AIs a tough problem; they called friends and solved it!\""
+            - textbox "Write or paste your script here..." [ref=f1e109]
+          - generic [ref=f1e110]:
+            - generic [ref=f1e111]:
+              - heading "Video Format" [level=3] [ref=f1e112]
+              - generic [ref=f1e113]:
+                - button "16:9 YouTube" [ref=f1e114]:
+                  - generic [ref=f1e115]: 16:9
+                  - generic [ref=f1e116]: YouTube
+                - button "9:16 Shorts" [ref=f1e117]:
+                  - generic [ref=f1e118]: 9:16
+                  - generic [ref=f1e119]: Shorts
+              - generic [ref=f1e120]:
+                - generic [ref=f1e121]: Language
+                - combobox [ref=f1e122]:
+                  - option "English" [selected]
+                  - option "Telugu (తెలుగు)"
+                  - option "Hindi (हिन्दी)"
+                  - option "Spanish (Español)"
+              - generic [ref=f1e123]:
+                - generic [ref=f1e124]: Resolution
+                - combobox [ref=f1e125]:
+                  - option "720p (HD)"
+                  - option "1080p (Full HD)" [selected]
+                  - option "4K (Ultra HD - Best for Big Screens)"
+              - generic [ref=f1e126]:
+                - generic [ref=f1e127]: Motion Intensity
+                - combobox [ref=f1e128]:
+                  - option "Low (Subtle)"
+                  - option "Medium (Standard)" [selected]
+                  - option "High (Dramatic)"
+            - generic [ref=f1e129]:
+              - generic [ref=f1e130]:
+                - heading "Hook Options" [level=3] [ref=f1e131]
+                - button "Generate 3 Options" [ref=f1e132]
+              - generic [ref=f1e133]:
+                - generic [ref=f1e134]: Hook Strategy
+                - combobox [ref=f1e135]:
+                  - option "Curiosity" [selected]
+                  - option "Dramatic"
+                  - option "Informative"
+                  - option "Inspirational"
+              - generic [ref=f1e136]:
+                - generic [ref=f1e137]: Cinematic Effect
+                - combobox [ref=f1e138]:
+                  - option "No Motion"
+                  - 'option "Ken Burns: Zoom In" [selected]'
+                  - 'option "Ken Burns: Zoom Out"'
+                  - 'option "Pan: Right"'
+                  - 'option "Pan: Left"'
+                  - option "AI Recommended (Mixed)"
+          - button "Generate Scenes" [disabled] [ref=f1e140]:
+            - img [ref=f1e141]
+            - text: Generate Scenes
+  - contentinfo [ref=f1e143]:
+    - paragraph [ref=f1e145]: © 2026 Script2Video AI. All rights reserved.

@@ -1,0 +1,1147 @@
+{
+  "project_id": "721f91a2-f0b8-42b5-9d49-8677993e37b3",
+  "id": "721f91a2-f0b8-42b5-9d49-8677993e37b3",
+  "userId": "sq2LfioDO9V6TNv3cLScVAbAtyD3",
+  "title": "What is AI Orchestration?",
+  "topic": "What is AI Orchestration?",
+  "description": "What is AI Orchestration?",
+  "script": "Your favorite AI tools are about to get a smart supervisor. Imagine them working together flawlessly now. They'll understand your goals automatically. You're entering a new era of AI control. Hundreds of specialized AIs exist today. Managing each one creates huge bottlenecks. You're likely drowning in individual tasks. Your valuable time disappears quickly. You'd think more AIs mean more efficiency. Many organizations experience diminishing returns. 70% face chaos from integration issues. That's a surprising, inefficient reality. AI Orchestration acts like a conductor. Your conductor directs specialized AI instruments seamlessly. They play their parts in a unified performance. That's beautiful, coordinated automation. Think of your marketing campaign now. Your image AI creates visuals instantly. Another AI writes compelling copy for you. Then a scheduling AI plans distribution perfectly. Imagine your entire digital ecosystem. It anticipates your needs automatically. Your system executes tasks without a single prompt. You're free to focus on bigger visions.",
+  "settings": {
+    "aspectRatio": "16:9",
+    "targetLength": "60s",
+    "voiceStyle": "energetic",
+    "visualStyle": "3d",
+    "language": "en",
+    "hookStrategy": "curiosity",
+    "pacingIntensity": "moderate",
+    "styleProfile": "minimal",
+    "exportMode": "youtube",
+    "exportResolution": "1080p",
+    "exportPreset": "medium"
+  },
+  "referenceImages": [],
+  "status": "completed",
+  "characterDescription": "",
+  "worldEntities": {
+    "characters": [],
+    "locations": [],
+    "objects": []
+  },
+  "projectType": "standard",
+  "createdAt": "2026-07-04T07:10:58.941Z",
+  "updatedAt": "2026-07-04T07:10:58.941Z",
+  "scenes": [
+    {
+      "scene_id": "3e4bade5-150e-43c4-8d82-0b27c984c2c2",
+      "projectId": "721f91a2-f0b8-42b5-9d49-8677993e37b3",
+      "order": 0,
+      "narration_text": "Your favorite AI tools are about to get a smart supervisor. Imagine them working together flawlessly now.",
+      "caption_text": "Your favorite AI tools are about to get a smart supervisor. Imagine them working together flawlessly now.",
+      "duration_target": 5,
+      "background_prompt": "Wide shot of diverse AI tool icons and interfaces arranged neatly, a central glowing AI orb supervising, interconnected by soft light beams, futuristic control room, ambient glow, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "hook",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "f5edd4f7-ea2b-437b-8b1d-b9c4759f6922",
+          "prompt": "Wide shot of diverse AI tool icons and interfaces arranged neatly, a central glowing AI orb supervising, interconnected by soft light beams, futuristic control room, ambient glow, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3_visual_f5edd4f7-ea2b-437b-8b1d-b9c4759f6922.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\3e4bade5-150e-43c4-8d82-0b27c984c2c2_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/3e4bade5-150e-43c4-8d82-0b27c984c2c2_7473bb98-8730-433c-b5b3-48c5ffcdfc80.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\3e4bade5-150e-43c4-8d82-0b27c984c2c2_background.png",
+      "prev_scene_type": "",
+      "next_scene_type": "build",
+      "audio_hash": "319aae65",
+      "duration_actual": 5.7522,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\narration-3e4bade5-150e-43c4-8d82-0b27c984c2c2.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/backgrounds/3e4bade5-150e-43c4-8d82-0b27c984c2c2_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\3e4bade5-150e-43c4-8d82-0b27c984c2c2_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\3e4bade5-150e-43c4-8d82-0b27c984c2c2_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Your",
+            "favorite",
+            "AI"
+          ],
+          "text": "{\\c&H00FFFFFF&}Your favorite AI",
+          "start": 0,
+          "end": 0.9587
+        },
+        {
+          "words": [
+            "tools",
+            "are",
+            "about"
+          ],
+          "text": "{\\c&H00FFFFFF&}tools are about",
+          "start": 0.9587,
+          "end": 1.9174
+        },
+        {
+          "words": [
+            "to",
+            "get",
+            "a"
+          ],
+          "text": "{\\c&H00FFFFFF&}to get a",
+          "start": 1.9174,
+          "end": 2.8761
+        },
+        {
+          "words": [
+            "smart",
+            "supervisor.",
+            "Imagine"
+          ],
+          "text": "{\\c&H00FFFFFF&}smart supervisor. Imagine",
+          "start": 2.8761,
+          "end": 3.8348
+        },
+        {
+          "words": [
+            "them",
+            "working",
+            "together"
+          ],
+          "text": "{\\c&H00FFFFFF&}them working together",
+          "start": 3.8348,
+          "end": 4.7935
+        },
+        {
+          "words": [
+            "flawlessly",
+            "now."
+          ],
+          "text": "{\\c&H00FFFFFF&}flawlessly now.",
+          "start": 4.7935,
+          "end": 5.7522
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\3e4bade5-150e-43c4-8d82-0b27c984c2c2_captioned.mp4"
+    },
+    {
+      "scene_id": "1ba6dfc8-fa32-4006-bdad-b772d25c08d9",
+      "projectId": "721f91a2-f0b8-42b5-9d49-8677993e37b3",
+      "order": 1,
+      "narration_text": "They'll understand your goals automatically. You're entering a new era of AI control.",
+      "caption_text": "They'll understand your goals automatically. You're entering a new era of AI control.",
+      "duration_target": 5,
+      "background_prompt": "Medium shot of a person observing a translucent display where abstract data visually transforms into clearly defined objectives, an advanced AI system symbol glowing, futuristic control room. photorealistic, 9:16 vertical, cinematic lighting, sharp focus.",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "c8e34c6e-ebbe-4762-abff-6c8f41d5820a",
+          "prompt": "Medium shot of a person observing a translucent display where abstract data visually transforms into clearly defined objectives, an advanced AI system symbol glowing, futuristic control room. photorealistic, 9:16 vertical, cinematic lighting, sharp focus.",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3_visual_c8e34c6e-ebbe-4762-abff-6c8f41d5820a.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\1ba6dfc8-fa32-4006-bdad-b772d25c08d9_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/1ba6dfc8-fa32-4006-bdad-b772d25c08d9_a704862c-8012-4695-8695-c0db21350df6.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\1ba6dfc8-fa32-4006-bdad-b772d25c08d9_background.png",
+      "prev_scene_type": "hook",
+      "next_scene_type": "build",
+      "audio_hash": "633e00b5",
+      "duration_actual": 4.835011,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\narration-1ba6dfc8-fa32-4006-bdad-b772d25c08d9.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/backgrounds/1ba6dfc8-fa32-4006-bdad-b772d25c08d9_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\1ba6dfc8-fa32-4006-bdad-b772d25c08d9_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\1ba6dfc8-fa32-4006-bdad-b772d25c08d9_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "They'll",
+            "understand",
+            "your"
+          ],
+          "text": "{\\c&H00FFFFFF&}They'll understand your",
+          "start": 0,
+          "end": 0.9670021999999999
+        },
+        {
+          "words": [
+            "goals",
+            "automatically.",
+            "You're"
+          ],
+          "text": "{\\c&H00FFFFFF&}goals automatically. You're",
+          "start": 0.9670021999999999,
+          "end": 1.9340043999999998
+        },
+        {
+          "words": [
+            "entering",
+            "a",
+            "new"
+          ],
+          "text": "{\\c&H00FFFFFF&}entering a new",
+          "start": 1.9340043999999998,
+          "end": 2.9010065999999997
+        },
+        {
+          "words": [
+            "era",
+            "of",
+            "AI"
+          ],
+          "text": "{\\c&H00FFFFFF&}era of AI",
+          "start": 2.9010065999999997,
+          "end": 3.8680087999999997
+        },
+        {
+          "words": [
+            "control."
+          ],
+          "text": "{\\c&H00FFFFFF&}control.",
+          "start": 3.8680087999999997,
+          "end": 4.835011
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\1ba6dfc8-fa32-4006-bdad-b772d25c08d9_captioned.mp4"
+    },
+    {
+      "scene_id": "263ad837-5859-4c7b-98ec-f34f5c494115",
+      "projectId": "721f91a2-f0b8-42b5-9d49-8677993e37b3",
+      "order": 2,
+      "narration_text": "Hundreds of specialized AIs exist today. Managing each one creates huge bottlenecks.",
+      "caption_text": "Hundreds of specialized AIs exist today. Managing each one creates huge bottlenecks.",
+      "duration_target": 6,
+      "background_prompt": "Close-up of human hands stressed, hovering over a holographic control panel showing hundreds of tiny glowing AI program interfaces, a central data pipeline visibly bottlenecked with glowing data traffic, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "50bff5fb-40ad-40eb-956b-b3764cba1d9e",
+          "prompt": "Close-up of human hands stressed, hovering over a holographic control panel showing hundreds of tiny glowing AI program interfaces, a central data pipeline visibly bottlenecked with glowing data traffic, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 6,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3_visual_50bff5fb-40ad-40eb-956b-b3764cba1d9e.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\263ad837-5859-4c7b-98ec-f34f5c494115_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/263ad837-5859-4c7b-98ec-f34f5c494115_d5c824d6-3a6e-4bc6-9573-9d399d4bd80b.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\263ad837-5859-4c7b-98ec-f34f5c494115_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "6bd26f27",
+      "duration_actual": 5.43873,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\narration-263ad837-5859-4c7b-98ec-f34f5c494115.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/backgrounds/263ad837-5859-4c7b-98ec-f34f5c494115_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\263ad837-5859-4c7b-98ec-f34f5c494115_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\263ad837-5859-4c7b-98ec-f34f5c494115_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Hundreds",
+            "of",
+            "specialized"
+          ],
+          "text": "{\\c&H00FFFFFF&}Hundreds of specialized",
+          "start": 0,
+          "end": 1.3596825
+        },
+        {
+          "words": [
+            "AIs",
+            "exist",
+            "today."
+          ],
+          "text": "{\\c&H00FFFFFF&}AIs exist today.",
+          "start": 1.3596825,
+          "end": 2.719365
+        },
+        {
+          "words": [
+            "Managing",
+            "each",
+            "one"
+          ],
+          "text": "{\\c&H00FFFFFF&}Managing each one",
+          "start": 2.719365,
+          "end": 4.0790475
+        },
+        {
+          "words": [
+            "creates",
+            "huge",
+            "bottlenecks."
+          ],
+          "text": "{\\c&H00FFFFFF&}creates huge bottlenecks.",
+          "start": 4.0790475,
+          "end": 5.43873
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\263ad837-5859-4c7b-98ec-f34f5c494115_captioned.mp4"
+    },
+    {
+      "scene_id": "8ced5d4e-603e-47a4-b4a1-07ed657fdaf6",
+      "projectId": "721f91a2-f0b8-42b5-9d49-8677993e37b3",
+      "order": 3,
+      "narration_text": "You're likely drowning in individual tasks. Your valuable time disappears quickly.",
+      "caption_text": "You're likely drowning in individual tasks. Your valuable time disappears quickly.",
+      "duration_target": 6,
+      "background_prompt": "Close-up of a person's head partially submerged in a mountain of overflowing papers, documents, and glowing computer screens. An old pocket watch with blurred, fast-spinning hands lies on the desk. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "ad071d9f-6619-451d-816c-6eee987d2fe5",
+          "prompt": "Close-up of a person's head partially submerged in a mountain of overflowing papers, documents, and glowing computer screens. An old pocket watch with blurred, fast-spinning hands lies on the desk. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 6,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3_visual_ad071d9f-6619-451d-816c-6eee987d2fe5.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\8ced5d4e-603e-47a4-b4a1-07ed657fdaf6_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/8ced5d4e-603e-47a4-b4a1-07ed657fdaf6_90a5ed90-b35a-4e31-a360-d662f7cfb70b.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\8ced5d4e-603e-47a4-b4a1-07ed657fdaf6_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "55267ab1",
+      "duration_actual": 5.043991,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\narration-8ced5d4e-603e-47a4-b4a1-07ed657fdaf6.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/backgrounds/8ced5d4e-603e-47a4-b4a1-07ed657fdaf6_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\8ced5d4e-603e-47a4-b4a1-07ed657fdaf6_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\8ced5d4e-603e-47a4-b4a1-07ed657fdaf6_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "You're",
+            "likely",
+            "drowning"
+          ],
+          "text": "{\\c&H00FFFFFF&}You're likely drowning",
+          "start": 0,
+          "end": 1.26099775
+        },
+        {
+          "words": [
+            "in",
+            "individual",
+            "tasks."
+          ],
+          "text": "{\\c&H00FFFFFF&}in individual tasks.",
+          "start": 1.26099775,
+          "end": 2.5219955
+        },
+        {
+          "words": [
+            "Your",
+            "valuable",
+            "time"
+          ],
+          "text": "{\\c&H00FFFFFF&}Your valuable time",
+          "start": 2.5219955,
+          "end": 3.78299325
+        },
+        {
+          "words": [
+            "disappears",
+            "quickly."
+          ],
+          "text": "{\\c&H00FFFFFF&}disappears quickly.",
+          "start": 3.78299325,
+          "end": 5.043991
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\8ced5d4e-603e-47a4-b4a1-07ed657fdaf6_captioned.mp4"
+    },
+    {
+      "scene_id": "1ce67202-c8c5-49f6-8ac6-b9382dbdf285",
+      "projectId": "721f91a2-f0b8-42b5-9d49-8677993e37b3",
+      "order": 4,
+      "narration_text": "You'd think more AIs mean more efficiency. Many organizations experience diminishing returns.",
+      "caption_text": "You'd think more AIs mean more efficiency. Many organizations experience diminishing returns.",
+      "duration_target": 5,
+      "background_prompt": "Over-shoulder shot of an individual observing numerous glowing AI screens displaying stagnating efficiency graphs, cluttered modern office, harsh overhead light, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "thinking",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "bc4fe21e-c62a-4aee-b328-cae30e765a34",
+          "prompt": "Over-shoulder shot of an individual observing numerous glowing AI screens displaying stagnating efficiency graphs, cluttered modern office, harsh overhead light, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3_visual_bc4fe21e-c62a-4aee-b328-cae30e765a34.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\1ce67202-c8c5-49f6-8ac6-b9382dbdf285_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/1ce67202-c8c5-49f6-8ac6-b9382dbdf285_71766ed4-4a62-427b-b003-5ff490895f0d.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\1ce67202-c8c5-49f6-8ac6-b9382dbdf285_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "5f54b34e",
+      "duration_actual": 5.798639,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\narration-1ce67202-c8c5-49f6-8ac6-b9382dbdf285.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/backgrounds/1ce67202-c8c5-49f6-8ac6-b9382dbdf285_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\1ce67202-c8c5-49f6-8ac6-b9382dbdf285_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\1ce67202-c8c5-49f6-8ac6-b9382dbdf285_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "You'd",
+            "think",
+            "more"
+          ],
+          "text": "{\\c&H00FFFFFF&}You'd think more",
+          "start": 0,
+          "end": 1.44965975
+        },
+        {
+          "words": [
+            "AIs",
+            "mean",
+            "more"
+          ],
+          "text": "{\\c&H00FFFFFF&}AIs mean more",
+          "start": 1.44965975,
+          "end": 2.8993195
+        },
+        {
+          "words": [
+            "efficiency.",
+            "Many",
+            "organizations"
+          ],
+          "text": "{\\c&H00FFFFFF&}efficiency. Many organizations",
+          "start": 2.8993195,
+          "end": 4.348979249999999
+        },
+        {
+          "words": [
+            "experience",
+            "diminishing",
+            "returns."
+          ],
+          "text": "{\\c&H00FFFFFF&}experience diminishing returns.",
+          "start": 4.348979249999999,
+          "end": 5.798639
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\1ce67202-c8c5-49f6-8ac6-b9382dbdf285_captioned.mp4"
+    },
+    {
+      "scene_id": "f843d93f-7761-417b-b323-0170dcbb0f0f",
+      "projectId": "721f91a2-f0b8-42b5-9d49-8677993e37b3",
+      "order": 5,
+      "narration_text": "70% face chaos from integration issues. That's a surprising, inefficient reality.",
+      "caption_text": "70% face chaos from integration issues. That's a surprising, inefficient reality.",
+      "duration_target": 6,
+      "background_prompt": "Wide shot of a chaotic open-plan office. Numerous office workers are visibly stressed, surrounded by tangled wires, malfunctioning monitors displaying error messages, portraying widespread inefficiency and surprise, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "8b387a39-35da-49fb-b635-dd157a76dea0",
+          "prompt": "Wide shot of a chaotic open-plan office. Numerous office workers are visibly stressed, surrounded by tangled wires, malfunctioning monitors displaying error messages, portraying widespread inefficiency and surprise, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 6,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3_visual_8b387a39-35da-49fb-b635-dd157a76dea0.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\f843d93f-7761-417b-b323-0170dcbb0f0f_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/f843d93f-7761-417b-b323-0170dcbb0f0f_c6cb037e-e1ce-42a6-ad9c-5946a905a37a.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\f843d93f-7761-417b-b323-0170dcbb0f0f_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "2e2251af",
+      "duration_actual": 5.72898,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\narration-f843d93f-7761-417b-b323-0170dcbb0f0f.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/backgrounds/f843d93f-7761-417b-b323-0170dcbb0f0f_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\f843d93f-7761-417b-b323-0170dcbb0f0f_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\f843d93f-7761-417b-b323-0170dcbb0f0f_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "70%",
+            "face",
+            "chaos"
+          ],
+          "text": "{\\c&H00FFFFFF&}70% face chaos",
+          "start": 0,
+          "end": 1.432245
+        },
+        {
+          "words": [
+            "from",
+            "integration",
+            "issues."
+          ],
+          "text": "{\\c&H00FFFFFF&}from integration issues.",
+          "start": 1.432245,
+          "end": 2.86449
+        },
+        {
+          "words": [
+            "That's",
+            "a",
+            "surprising,"
+          ],
+          "text": "{\\c&H00FFFFFF&}That's a surprising,",
+          "start": 2.86449,
+          "end": 4.296735
+        },
+        {
+          "words": [
+            "inefficient",
+            "reality."
+          ],
+          "text": "{\\c&H00FFFFFF&}inefficient reality.",
+          "start": 4.296735,
+          "end": 5.72898
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\f843d93f-7761-417b-b323-0170dcbb0f0f_captioned.mp4"
+    },
+    {
+      "scene_id": "e923f832-f28b-4e27-8939-a058d8536c38",
+      "projectId": "721f91a2-f0b8-42b5-9d49-8677993e37b3",
+      "order": 6,
+      "narration_text": "AI Orchestration acts like a conductor. Your conductor directs specialized AI instruments seamlessly.",
+      "caption_text": "AI Orchestration acts like a conductor. Your conductor directs specialized AI instruments seamlessly.",
+      "duration_target": 7,
+      "background_prompt": "Conductor on podium, raising baton, leading orchestra of glowing, futuristic AI instruments, illuminated stage, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "62b14a42-116b-4ede-9d67-542d7d866820",
+          "prompt": "Conductor on podium, raising baton, leading orchestra of glowing, futuristic AI instruments, illuminated stage, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 7,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3_visual_62b14a42-116b-4ede-9d67-542d7d866820.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\e923f832-f28b-4e27-8939-a058d8536c38_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/e923f832-f28b-4e27-8939-a058d8536c38_9b01780d-7599-4346-a723-1f000427bc6a.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\e923f832-f28b-4e27-8939-a058d8536c38_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "904499e",
+      "duration_actual": 6.251429,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\narration-e923f832-f28b-4e27-8939-a058d8536c38.wav",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\e923f832-f28b-4e27-8939-a058d8536c38_captioned.mp4",
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\e923f832-f28b-4e27-8939-a058d8536c38_captioned.mp4",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/backgrounds/e923f832-f28b-4e27-8939-a058d8536c38_background.png",
+      "unified": true,
+      "caption_chunks": [
+        {
+          "words": [
+            "AI",
+            "Orchestration",
+            "acts"
+          ],
+          "text": "{\\c&H00FFFFFF&}AI Orchestration acts",
+          "start": 0,
+          "end": 1.2502858
+        },
+        {
+          "words": [
+            "like",
+            "a",
+            "conductor."
+          ],
+          "text": "{\\c&H00FFFFFF&}like a conductor.",
+          "start": 1.2502858,
+          "end": 2.5005716
+        },
+        {
+          "words": [
+            "Your",
+            "conductor",
+            "directs"
+          ],
+          "text": "{\\c&H00FFFFFF&}Your conductor directs",
+          "start": 2.5005716,
+          "end": 3.7508573999999997
+        },
+        {
+          "words": [
+            "specialized",
+            "AI",
+            "instruments"
+          ],
+          "text": "{\\c&H00FFFFFF&}specialized AI instruments",
+          "start": 3.7508573999999997,
+          "end": 5.0011432
+        },
+        {
+          "words": [
+            "seamlessly."
+          ],
+          "text": "{\\c&H00FFFFFF&}seamlessly.",
+          "start": 5.0011432,
+          "end": 6.251429
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\e923f832-f28b-4e27-8939-a058d8536c38_captioned.mp4"
+    },
+    {
+      "scene_id": "8b85cb97-4b25-4d07-871f-33e1cbd67ca2",
+      "projectId": "721f91a2-f0b8-42b5-9d49-8677993e37b3",
+      "order": 7,
+      "narration_text": "They play their parts in a unified performance. That's beautiful, coordinated automation.",
+      "caption_text": "They play their parts in a unified performance. That's beautiful, coordinated automation.",
+      "duration_target": 6,
+      "background_prompt": "Close-up of multiple robotic arms precisely moving glowing components in perfect synchronized patterns on an assembly line, dark high-tech factory environment, sharp focused beams of light. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "7a3220ef-3d8d-4d29-af8b-ffe0d62b26b1",
+          "prompt": "Close-up of multiple robotic arms precisely moving glowing components in perfect synchronized patterns on an assembly line, dark high-tech factory environment, sharp focused beams of light. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 6,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3_visual_7a3220ef-3d8d-4d29-af8b-ffe0d62b26b1.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\8b85cb97-4b25-4d07-871f-33e1cbd67ca2_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/8b85cb97-4b25-4d07-871f-33e1cbd67ca2_49bff270-d230-4ce0-b11f-547def29b93d.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\8b85cb97-4b25-4d07-871f-33e1cbd67ca2_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "2080541d",
+      "duration_actual": 5.067211,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\narration-8b85cb97-4b25-4d07-871f-33e1cbd67ca2.wav",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\8b85cb97-4b25-4d07-871f-33e1cbd67ca2_captioned.mp4",
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\8b85cb97-4b25-4d07-871f-33e1cbd67ca2_captioned.mp4",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/backgrounds/8b85cb97-4b25-4d07-871f-33e1cbd67ca2_background.png",
+      "unified": true,
+      "caption_chunks": [
+        {
+          "words": [
+            "They",
+            "play",
+            "their"
+          ],
+          "text": "{\\c&H00FFFFFF&}They play their",
+          "start": 0,
+          "end": 1.26680275
+        },
+        {
+          "words": [
+            "parts",
+            "in",
+            "a"
+          ],
+          "text": "{\\c&H00FFFFFF&}parts in a",
+          "start": 1.26680275,
+          "end": 2.5336055
+        },
+        {
+          "words": [
+            "unified",
+            "performance.",
+            "That's"
+          ],
+          "text": "{\\c&H00FFFFFF&}unified performance. That's",
+          "start": 2.5336055,
+          "end": 3.8004082500000003
+        },
+        {
+          "words": [
+            "beautiful,",
+            "coordinated",
+            "automation."
+          ],
+          "text": "{\\c&H00FFFFFF&}beautiful, coordinated automation.",
+          "start": 3.8004082500000003,
+          "end": 5.067211
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\8b85cb97-4b25-4d07-871f-33e1cbd67ca2_captioned.mp4"
+    },
+    {
+      "scene_id": "967b1423-967a-4d7f-bf0e-442fa05d0b85",
+      "projectId": "721f91a2-f0b8-42b5-9d49-8677993e37b3",
+      "order": 8,
+      "narration_text": "Think of your marketing campaign now. Your image AI creates visuals instantly.",
+      "caption_text": "Think of your marketing campaign now. Your image AI creates visuals instantly.",
+      "duration_target": 5,
+      "background_prompt": "Close-up of a computer screen displaying an AI image generator interface, multiple diverse marketing visuals rapidly appearing on the canvas, glowing 'Generating' text. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "thinking",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "ae082656-ac38-464a-ac35-e7bcb27dcc7a",
+          "prompt": "Close-up of a computer screen displaying an AI image generator interface, multiple diverse marketing visuals rapidly appearing on the canvas, glowing 'Generating' text. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3_visual_ae082656-ac38-464a-ac35-e7bcb27dcc7a.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\967b1423-967a-4d7f-bf0e-442fa05d0b85_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/967b1423-967a-4d7f-bf0e-442fa05d0b85_f32b7c30-6f3a-42b6-8ded-e16570b1dffd.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\967b1423-967a-4d7f-bf0e-442fa05d0b85_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "3a6e5b66",
+      "duration_actual": 4.835011,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\narration-967b1423-967a-4d7f-bf0e-442fa05d0b85.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/backgrounds/967b1423-967a-4d7f-bf0e-442fa05d0b85_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\967b1423-967a-4d7f-bf0e-442fa05d0b85_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\967b1423-967a-4d7f-bf0e-442fa05d0b85_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Think",
+            "of",
+            "your"
+          ],
+          "text": "{\\c&H00FFFFFF&}Think of your",
+          "start": 0,
+          "end": 1.20875275
+        },
+        {
+          "words": [
+            "marketing",
+            "campaign",
+            "now."
+          ],
+          "text": "{\\c&H00FFFFFF&}marketing campaign now.",
+          "start": 1.20875275,
+          "end": 2.4175055
+        },
+        {
+          "words": [
+            "Your",
+            "image",
+            "AI"
+          ],
+          "text": "{\\c&H00FFFFFF&}Your image AI",
+          "start": 2.4175055,
+          "end": 3.62625825
+        },
+        {
+          "words": [
+            "creates",
+            "visuals",
+            "instantly."
+          ],
+          "text": "{\\c&H00FFFFFF&}creates visuals instantly.",
+          "start": 3.62625825,
+          "end": 4.835011
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\967b1423-967a-4d7f-bf0e-442fa05d0b85_captioned.mp4"
+    },
+    {
+      "scene_id": "185a2273-29a3-4890-a43b-544da522d038",
+      "projectId": "721f91a2-f0b8-42b5-9d49-8677993e37b3",
+      "order": 9,
+      "narration_text": "Another AI writes compelling copy for you. Then a scheduling AI plans distribution perfectly.",
+      "caption_text": "Another AI writes compelling copy for you. Then a scheduling AI plans distribution perfectly.",
+      "duration_target": 6,
+      "background_prompt": "Over-shoulder view of person viewing two digital screens. Left screen displays AI-generated compelling marketing copy, right screen shows a detailed multi-platform distribution schedule. Modern desk, ambient screen light, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "8c4c2df0-ff84-4499-b973-b335b29b451e",
+          "prompt": "Over-shoulder view of person viewing two digital screens. Left screen displays AI-generated compelling marketing copy, right screen shows a detailed multi-platform distribution schedule. Modern desk, ambient screen light, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 6,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3_visual_8c4c2df0-ff84-4499-b973-b335b29b451e.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\185a2273-29a3-4890-a43b-544da522d038_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/185a2273-29a3-4890-a43b-544da522d038_bc02cf54-d92e-43c9-aeb9-d18e1813f157.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\185a2273-29a3-4890-a43b-544da522d038_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "621137a4",
+      "duration_actual": 5.798639,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\narration-185a2273-29a3-4890-a43b-544da522d038.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/backgrounds/185a2273-29a3-4890-a43b-544da522d038_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\185a2273-29a3-4890-a43b-544da522d038_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\185a2273-29a3-4890-a43b-544da522d038_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Another",
+            "AI",
+            "writes"
+          ],
+          "text": "{\\c&H00FFFFFF&}Another AI writes",
+          "start": 0,
+          "end": 1.1597278
+        },
+        {
+          "words": [
+            "compelling",
+            "copy",
+            "for"
+          ],
+          "text": "{\\c&H00FFFFFF&}compelling copy for",
+          "start": 1.1597278,
+          "end": 2.3194556
+        },
+        {
+          "words": [
+            "you.",
+            "Then",
+            "a"
+          ],
+          "text": "{\\c&H00FFFFFF&}you. Then a",
+          "start": 2.3194556,
+          "end": 3.4791834
+        },
+        {
+          "words": [
+            "scheduling",
+            "AI",
+            "plans"
+          ],
+          "text": "{\\c&H00FFFFFF&}scheduling AI plans",
+          "start": 3.4791834,
+          "end": 4.6389112
+        },
+        {
+          "words": [
+            "distribution",
+            "perfectly."
+          ],
+          "text": "{\\c&H00FFFFFF&}distribution perfectly.",
+          "start": 4.6389112,
+          "end": 5.798639
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\185a2273-29a3-4890-a43b-544da522d038_captioned.mp4"
+    },
+    {
+      "scene_id": "eb4d5aac-fee4-4730-ba1e-39cc0f21a795",
+      "projectId": "721f91a2-f0b8-42b5-9d49-8677993e37b3",
+      "order": 10,
+      "narration_text": "Imagine your entire digital ecosystem. It anticipates your needs automatically.",
+      "caption_text": "Imagine your entire digital ecosystem. It anticipates your needs automatically.",
+      "duration_target": 6,
+      "background_prompt": "Wide shot of a person observing multiple interconnected glowing smart devices (laptop, phone, tablet) displaying personalized content and predictive notifications, data streams flowing between them, modern tech-enabled home. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "03b2a1b9-9ff8-44af-91d0-ecb67a433e71",
+          "prompt": "Wide shot of a person observing multiple interconnected glowing smart devices (laptop, phone, tablet) displaying personalized content and predictive notifications, data streams flowing between them, modern tech-enabled home. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 6,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3_visual_03b2a1b9-9ff8-44af-91d0-ecb67a433e71.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\eb4d5aac-fee4-4730-ba1e-39cc0f21a795_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/eb4d5aac-fee4-4730-ba1e-39cc0f21a795_c945fd74-3776-406b-876b-80b9f3db61e5.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\eb4d5aac-fee4-4730-ba1e-39cc0f21a795_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "cta",
+      "audio_hash": "447d0013",
+      "duration_actual": 4.742132,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\narration-eb4d5aac-fee4-4730-ba1e-39cc0f21a795.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/backgrounds/eb4d5aac-fee4-4730-ba1e-39cc0f21a795_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\eb4d5aac-fee4-4730-ba1e-39cc0f21a795_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\eb4d5aac-fee4-4730-ba1e-39cc0f21a795_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Imagine",
+            "your",
+            "entire"
+          ],
+          "text": "{\\c&H00FFFFFF&}Imagine your entire",
+          "start": 0,
+          "end": 1.185533
+        },
+        {
+          "words": [
+            "digital",
+            "ecosystem.",
+            "It"
+          ],
+          "text": "{\\c&H00FFFFFF&}digital ecosystem. It",
+          "start": 1.185533,
+          "end": 2.371066
+        },
+        {
+          "words": [
+            "anticipates",
+            "your",
+            "needs"
+          ],
+          "text": "{\\c&H00FFFFFF&}anticipates your needs",
+          "start": 2.371066,
+          "end": 3.556599
+        },
+        {
+          "words": [
+            "automatically."
+          ],
+          "text": "{\\c&H00FFFFFF&}automatically.",
+          "start": 3.556599,
+          "end": 4.742132
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\eb4d5aac-fee4-4730-ba1e-39cc0f21a795_captioned.mp4"
+    },
+    {
+      "scene_id": "4abd8573-6c64-4e23-9117-898bce017008",
+      "projectId": "721f91a2-f0b8-42b5-9d49-8677993e37b3",
+      "order": 11,
+      "narration_text": "Your system executes tasks without a single prompt. You're free to focus on bigger visions.",
+      "caption_text": "Your system executes tasks without a single prompt. You're free to focus on bigger visions.",
+      "duration_target": 7,
+      "background_prompt": "Medium shot of a person thoughtfully gazing at a large whiteboard with complex diagrams, a monitor nearby displays tasks completing automatically with green checkmarks, no visible prompt fields, modern office, professional lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "cta",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "040b05dc-45ff-462c-b640-c7233490948b",
+          "prompt": "Medium shot of a person thoughtfully gazing at a large whiteboard with complex diagrams, a monitor nearby displays tasks completing automatically with green checkmarks, no visible prompt fields, modern office, professional lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 7,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3_visual_040b05dc-45ff-462c-b640-c7233490948b.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\4abd8573-6c64-4e23-9117-898bce017008_background.png"
+        }
+      ],
+      "image_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/4abd8573-6c64-4e23-9117-898bce017008_e20cff1a-6f90-4fbd-938b-d64128666c9d.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\4abd8573-6c64-4e23-9117-898bce017008_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "",
+      "audio_hash": "4be168ab",
+      "duration_actual": 5.113651,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\721f91a2-f0b8-42b5-9d49-8677993e37b3\\narration-4abd8573-6c64-4e23-9117-898bce017008.wav",
+      "background_url": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/backgrounds/4abd8573-6c64-4e23-9117-898bce017008_background.png",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\4abd8573-6c64-4e23-9117-898bce017008_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\4abd8573-6c64-4e23-9117-898bce017008_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Your",
+            "system",
+            "executes"
+          ],
+          "text": "{\\c&H00FFFFFF&}Your system executes",
+          "start": 0,
+          "end": 1.0227302
+        },
+        {
+          "words": [
+            "tasks",
+            "without",
+            "a"
+          ],
+          "text": "{\\c&H00FFFFFF&}tasks without a",
+          "start": 1.0227302,
+          "end": 2.0454604
+        },
+        {
+          "words": [
+            "single",
+            "prompt.",
+            "You're"
+          ],
+          "text": "{\\c&H00FFFFFF&}single prompt. You're",
+          "start": 2.0454604,
+          "end": 3.0681906000000003
+        },
+        {
+          "words": [
+            "free",
+            "to",
+            "focus"
+          ],
+          "text": "{\\c&H00FFFFFF&}free to focus",
+          "start": 3.0681906000000003,
+          "end": 4.0909208
+        },
+        {
+          "words": [
+            "on",
+            "bigger",
+            "visions."
+          ],
+          "text": "{\\c&H00FFFFFF&}on bigger visions.",
+          "start": 4.0909208,
+          "end": 5.113651
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\4abd8573-6c64-4e23-9117-898bce017008_captioned.mp4"
+    }
+  ],
+  "hookOptions": [
+    {
+      "type": "question",
+      "text": "Did you know AI apps can work together like a team?"
+    },
+    {
+      "type": "statement",
+      "text": "Your favorite AI tools are about to get a smart supervisor."
+    },
+    {
+      "type": "story",
+      "text": "I just saw an AI make other AIs complete a complex task."
+    }
+  ],
+  "selectedHook": "Your favorite AI tools are about to get a smart supervisor.",
+  "_directorPlan": {
+    "visual_style": "Sleek, minimalist 3D motion graphics blended with high-definition live-action. Emphasis on clean lines, glowing interfaces, and subtle textural depth.",
+    "color_palette": [
+      "#081A2F",
+      "#5DE4C7",
+      "#FFD700",
+      "#E0E5EC"
+    ],
+    "camera_language": "Smooth, controlled cinematic movements. Orbital tracking shots revealing interconnected systems. Deliberate slow zooms into intricate details. Steady tracking shots following data streams. Grounded, eye-level shots for human elements, emphasizing focus and control.",
+    "pacing_notes": "Starts with a slow, contemplative rhythm to establish complexity (Concept). Gradually accelerates with the introduction of orchestration, using dynamic cuts synchronized with the flow of data streams (Real World, Concept). Transitions to a steady, rhythmic pace for real-world examples, reflecting efficiency (Character, Real World). Concludes with an expansive, uplifting reveal, allowing space for impact (Data/Text, Concept/Real World Blend). Scene transitions will alternate between conceptual abstractions, grounded real-world examples, focused human interaction, and clear data visualization, ensuring visual variety and maintaining engagement.",
+    "overall_mood": "Intelligent, sophisticated, and empowering. A journey from complex ambiguity to elegant clarity and seamless efficiency.",
+    "narrative_arc": "Begin with the visual representation of disconnected, chaotic AI elements, highlighting the challenge of unmanaged complexity. Introduce the orchestrator as a unifying force, progressively building a luminous, interconnected network. Transition to showing its practical application in real-world scenarios, demonstrating efficiency and human control. Conclude with a grand, expansive vision of a harmonized future where disparate AI systems work seamlessly as one, driving progress and innovation."
+  },
+  "storyArc": {
+    "beat_1_hook": "Your favorite AI tools are about to get a smart supervisor.",
+    "beat_2_context": "With hundreds of specialized AIs now flooding the market, individual management is creating complex, inefficient bottlenecks right now.",
+    "beat_3_surprise": "Many believe more AIs mean more efficiency, but 70% of organizations actually see diminishing returns due to integration chaos.",
+    "beat_4_insight": "AI Orchestration acts like a symphony conductor, seamlessly directing each specialized AI instrument to play its part in a harmonious, unified performance.",
+    "beat_5_cta": "What if your entire digital ecosystem could anticipate your needs and execute tasks, all without a single prompt from you?"
+  },
+  "world_entities": {
+    "characters": [
+      {
+        "name": "The User",
+        "description": "The central figure addressed in the script, representing anyone overwhelmed by managing multiple AI tools.",
+        "prompt": "A busy professional, mid-career, looking overwhelmed at a desk with multiple screens, surrounded by digital chaos."
+      },
+      {
+        "name": "The AI Conductor",
+        "description": "An intelligent system personified as a conductor, expertly managing and harmonizing various AI tools.",
+        "prompt": "A futuristic, glowing humanoid figure with a baton, standing on a podium, gracefully directing a symphony of AI interfaces."
+      }
+    ],
+    "locations": [
+      {
+        "name": "The Digital Ecosystem",
+        "description": "A vast, interconnected digital environment where various AI tools and processes operate in harmony.",
+        "prompt": "A sprawling, luminous network of interconnected data streams and holographic interfaces, representing a complex digital world in motion."
+      },
+      {
+        "name": "The Unified AI Performance",
+        "description": "An abstract stage where diverse AI tools collaboratively execute tasks in a perfectly synchronized, harmonious display.",
+        "prompt": "A grand, ethereal stage with glowing, abstract AI entities, performing a synchronized ballet of data and light, perfectly orchestrated."
+      }
+    ],
+    "objects": [
+      {
+        "name": "Specialized AI Tools",
+        "description": "Individual artificial intelligence applications designed for specific tasks, operating as instruments in a larger system.",
+        "prompt": "Multiple distinct, glowing holographic screens or small robot-like entities, performing unique digital tasks, ready for coordination."
+      },
+      {
+        "name": "Marketing Campaign",
+        "description": "A strategic effort involving various digital assets and actions, managed by different AI tools.",
+        "prompt": "A vibrant digital dashboard displaying real-time metrics, visuals, and copy, all seamlessly generated and distributed for an online campaign."
+      }
+    ]
+  },
+  "seo_metadata": {
+    "title": "AI Orchestration: Your AI's Secret Weapon? (Explained)",
+    "description": "Ever wondered how complex AI systems are built and managed efficiently? Dive into the world of **AI Orchestration**! This video explains what **AI Orchestration** is, why it's becoming indispensable for modern **machine learning** operations, and how it streamlines your **AI workflows**. Learn about key components like **data pipelines**, **model training**, and seamless **model deployment**. We'll cover the immense benefits, from boosting **scalability** and **efficiency** to ensuring reliable **AI automation**. Discover how **AI Orchestration** connects everything, making your **MLOps** journey smoother. Don't miss out on understanding this crucial aspect of AI development.\n\n**Timestamps:**\n0:00 What is AI Orchestration?\n0:45 Why You Need AI Orchestration\n1:30 Core Components Explained\n2:15 Boost Your AI: Benefits\n3:00 Essential Orchestration Tools\n3:45 The Future of AI Integration",
+    "tags": [
+      "AI Orchestration",
+      "MLOps",
+      "Machine Learning",
+      "Artificial Intelligence",
+      "Data Science",
+      "AI Workflow",
+      "Model Deployment",
+      "Data Pipelines",
+      "Kubeflow",
+      "MLflow",
+      "AI Automation",
+      "Scalable AI",
+      "AI Management",
+      "Enterprise AI",
+      "Tech Explained"
+    ],
+    "thumbnailText": "Unlock AI's Full Power"
+  },
+  "is_cancelled": false,
+  "logs": [
+    "[01:48:17 PM] Initializing pipeline...",
+    "[01:48:17 PM] Testing cloud connectivity...",
+    "[01:48:18 PM] Generating AI assets (Images & Audio)...",
+    "[01:48:18 PM] Processing scene batch 1 of 4...",
+    "[01:53:46 PM] Processing scene batch 2 of 4...",
+    "[02:00:52 PM] Processing scene batch 3 of 4...",
+    "[02:02:23 PM] Processing scene batch 4 of 4...",
+    "[02:11:00 PM] Stitching scenes together into final video...",
+    "[02:13:20 PM] Video generation complete!"
+  ],
+  "current_action": "Video generation complete!",
+  "progress_percent": 100,
+  "output_path": "E:\\s2v-aistudio\\outputs\\721f91a2-f0b8-42b5-9d49-8677993e37b3.mp4",
+  "thumbnail_path": "https://euldcyaubdskbnrjsuyu.supabase.co/storage/v1/object/public/aivideogen/projects/721f91a2-f0b8-42b5-9d49-8677993e37b3/721f91a2-f0b8-42b5-9d49-8677993e37b3_thumbnail.jpg",
+  "completed_at": "2026-07-04T08:43:20.415Z",
+  "quality_score": 100,
+  "updated_at": "2026-07-04T08:43:20.418Z"
+}

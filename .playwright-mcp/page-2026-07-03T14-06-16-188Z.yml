@@ -1,0 +1,121 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - link "S Script2Video" [ref=e6] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e8]: S
+        - generic [ref=e9]: Script2Video
+      - navigation [ref=e10]:
+        - button "Sign In" [ref=e11]:
+          - img [ref=e12]
+          - generic [ref=e15]: Sign In
+  - main [ref=e16]:
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - button [ref=e20]:
+            - img [ref=e21]
+          - heading "what is multi agents workframe" [level=1] [ref=e23]
+        - generic [ref=e24]:
+          - generic [ref=e25]:
+            - generic [ref=e26] [cursor=pointer]:
+              - checkbox "Music" [checked] [ref=e27]
+              - img [ref=e28]
+              - generic [ref=e32]: Music
+            - generic [ref=e33] [cursor=pointer]:
+              - checkbox "Ambient" [checked] [ref=e34]
+              - img [ref=e35]
+              - generic [ref=e39]: Ambient
+          - button "Preview" [ref=e40]
+          - button "Render" [ref=e41]:
+            - img [ref=e42]
+            - text: Render
+      - generic [ref=e44]:
+        - button "1. Script" [ref=e45]:
+          - img [ref=e46]
+          - text: 1. Script
+        - button "2. World & Casting" [ref=e49]:
+          - img [ref=e50]
+          - text: 2. World & Casting
+        - button "3. Scenes" [ref=e53]:
+          - img [ref=e54]
+          - text: 3. Scenes
+        - button "4. Media" [ref=e56]:
+          - img [ref=e57]
+          - text: 4. Media
+        - button "5. Export" [ref=e61]:
+          - img [ref=e62]
+          - text: 5. Export
+        - button "6. Timeline" [ref=e65]:
+          - img [ref=e66]
+          - text: 6. Timeline
+      - main [ref=e69]:
+        - generic [ref=e71]:
+          - generic [ref=e73]:
+            - img [ref=e75]
+            - heading "Image as Reference (New Feature)" [level=3] [ref=e79]
+            - paragraph [ref=e80]: Upload an image and the AI will analyze its objects, characters, and mood to build a unique story and visual script.
+            - generic [ref=e81] [cursor=pointer]:
+              - img [ref=e82]
+              - text: Upload Image as Story Seed
+          - generic [ref=e85]:
+            - generic [ref=e86]:
+              - heading "Script Editor" [level=2] [ref=e87]
+              - button "AI Generate Script" [ref=e88]:
+                - img [ref=e89]
+                - text: AI Generate Script
+            - textbox "Write or paste your script here..." [ref=e92]
+          - generic [ref=e93]:
+            - generic [ref=e94]:
+              - heading "Video Format" [level=3] [ref=e95]
+              - generic [ref=e96]:
+                - button "16:9 YouTube" [ref=e97]:
+                  - generic [ref=e98]: 16:9
+                  - generic [ref=e99]: YouTube
+                - button "9:16 Shorts" [ref=e100]:
+                  - generic [ref=e101]: 9:16
+                  - generic [ref=e102]: Shorts
+              - generic [ref=e103]:
+                - generic [ref=e104]: Language
+                - combobox [ref=e105]:
+                  - option "English" [selected]
+                  - option "Telugu (తెలుగు)"
+                  - option "Hindi (हिन्दी)"
+                  - option "Spanish (Español)"
+              - generic [ref=e106]:
+                - generic [ref=e107]: Resolution
+                - combobox [ref=e108]:
+                  - option "720p (HD)"
+                  - option "1080p (Full HD)" [selected]
+                  - option "4K (Ultra HD - Best for Big Screens)"
+              - generic [ref=e109]:
+                - generic [ref=e110]: Motion Intensity
+                - combobox [ref=e111]:
+                  - option "Low (Subtle)"
+                  - option "Medium (Standard)" [selected]
+                  - option "High (Dramatic)"
+            - generic [ref=e112]:
+              - generic [ref=e113]:
+                - heading "Hook Options" [level=3] [ref=e114]
+                - button "Generate 3 Options" [ref=e115]
+              - generic [ref=e116]:
+                - generic [ref=e117]: Hook Strategy
+                - combobox [ref=e118]:
+                  - option "Curiosity" [selected]
+                  - option "Dramatic"
+                  - option "Informative"
+                  - option "Inspirational"
+              - generic [ref=e119]:
+                - generic [ref=e120]: Cinematic Effect
+                - combobox [ref=e121]:
+                  - option "No Motion"
+                  - 'option "Ken Burns: Zoom In" [selected]'
+                  - 'option "Ken Burns: Zoom Out"'
+                  - 'option "Pan: Right"'
+                  - 'option "Pan: Left"'
+                  - option "AI Recommended (Mixed)"
+          - button "Generate Scenes" [disabled] [ref=e123]:
+            - img [ref=e124]
+            - text: Generate Scenes
+  - contentinfo [ref=e126]:
+    - paragraph [ref=e128]: © 2026 Script2Video AI. All rights reserved.

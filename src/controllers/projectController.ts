@@ -360,7 +360,8 @@ export async function generateScenes(req: Request, res: Response) {
     console.log(`[ProjectController] Storyboard expansion complete. Generated ${scenesResult.length} scenes.`);
     
     console.log(`[ProjectController] Saving scenes and assets to DB for project ${id}...`);
-    project.scenes = scenesResult.map((s, idx) => {
+    // Agent JSON is loosely shaped — legacy/camelCase aliases handled below
+    project.scenes = scenesResult.map((s: any, idx) => {
       const sceneId = s.scene_id || uuidv4();
       return {
         scene_id: sceneId,

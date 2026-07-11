@@ -70,6 +70,7 @@ RULES:
 4. Always end with: "photorealistic, 9:16 vertical, cinematic lighting, sharp focus"
 5. Max 50 words total.
 6. Do NOT mention any character names or story archetypes.
+7. NEVER include readable text, numbers, words, logos, charts with figures, or signage in the image — rendered text gets clipped by the vertical crop and fights the burned-in captions. Convey data visually (scale, glow, contrast) instead of with written figures.
 
 FEW-SHOT EXAMPLES:
 Narration: "Instagram has 2 billion daily users"
@@ -79,7 +80,7 @@ Narration: "Most students fail because they never practice"
 Prompt: "Student sitting at desk surrounded by textbooks looking frustrated, pen down, head in hands, warm study lamp light, realistic classroom background, photorealistic, 9:16 vertical, cinematic lighting, sharp focus"
 
 Narration: "The human brain processes images 60,000 times faster than text"
-Prompt: "Split screen: left side dense text document, right side colorful brain with glowing neural connections, scientific visualization style, deep blue background, photorealistic, 9:16 vertical, cinematic lighting, sharp focus"
+Prompt: "Split screen: left side towering stack of paper documents in dim grey light, right side colorful brain with glowing neural connections, scientific visualization style, deep blue background, photorealistic, 9:16 vertical, cinematic lighting, sharp focus"
 
 Narration: "Every successful YouTuber posts consistently"
 Prompt: "Content creator at modern desk setup with ring light and camera recording, multiple monitors showing YouTube analytics with upward trending graphs, motivated expression, photorealistic, 9:16 vertical, cinematic lighting, sharp focus"
@@ -132,6 +133,7 @@ Rules:
 3. Include character appearance details where relevant.
 4. End every prompt with: "photorealistic, 9:16 vertical, cinematic lighting, sharp focus"
 5. Max 50 words per prompt.
+6. NEVER include readable text, numbers, words, logos, or signage in any frame — rendered text gets clipped by the vertical crop.
 
 Return ONLY a JSON array (no extra text):
 [
