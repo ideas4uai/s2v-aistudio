@@ -762,6 +762,14 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
 
   try {
      await guardedExec(`"${ffmpeg}" -stream_loop -1 -i "${visualPath}" ${audioInputArg} -vf setpts=PTS-STARTPTS ${audioFilterChain} -c:v libx264 -preset fast -crf 20 ${audioOutputOpts} ${durationArg} -y "${outputPath}"`, signal);
+     // Captions and drift correction must track the SEGMENT length, not the raw
+     // WAV: silenceremove strips pauses/tails, so segment audio runs shorter than
+     // the narration file. Anchoring to the raw duration made captions lag.
+     const segmentDuration = await getAudioDuration(outputPath);
+     if (segmentDuration > 0) {
+       scene.duration_actual = segmentDuration;
+       console.log(`[RenderService] Scene ${scene.scene_id} segment duration: ${segmentDuration.toFixed(3)}s (captions anchored here)`);
+     }
      return outputPath;
   } catch(e: any) {
      if (e.message === 'PIPELINE_CANCELLED') throw e;
