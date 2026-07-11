@@ -42,6 +42,10 @@ const TASK_MODELS: Record<string, string> = {
   'default': 'gemini-2.5-flash'
 };
 
+// Gemini's multimodal image model — verified working on this project. Used for the
+// reference-image (character consistency) path, which Imagen cannot serve.
+const GEMINI_IMAGE_MODEL = 'gemini-2.5-flash-image';
+
 const TASK_KEY_MAP: Record<string, KeyTask> = {
   'planning':         'script',
   'script':           'script',
@@ -53,6 +57,34 @@ const TASK_KEY_MAP: Record<string, KeyTask> = {
 };
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+// Image-provider tracing. Set DEBUG_IMAGEGEN=1 to see which provider is tried,
+// with what model/region/payload shape, and why each one falls through.
+const DEBUG_IMAGEGEN = process.env.DEBUG_IMAGEGEN === '1';
+
+const dbgCall = (provider: string, detail: Record<string, unknown>) => {
+  if (!DEBUG_IMAGEGEN) return;
+  console.log(`[ImageGen:DEBUG] → CALL ${provider} ${JSON.stringify(detail)}`);
+};
+
+const dbgFail = (provider: string, e: any, nextProvider: string) => {
+  if (!DEBUG_IMAGEGEN) return;
+  console.log(`[ImageGen:DEBUG] ✗ FAIL ${provider} ${JSON.stringify({
+    errorClass: e?.constructor?.name ?? typeof e,
+    status: e?.status ?? e?.httpError?.statusCode ?? null,
+    code: e?.code ?? null,
+    message: String(e?.message ?? e).slice(0, 400),
+    fallbackTriggered: true,
+    nextProvider,
+  })}`);
+};
+
+const dbgOk = (provider: string, model: string, base64: string) => {
+  if (!DEBUG_IMAGEGEN) return;
+  console.log(`[ImageGen:DEBUG] ✓ OK ${provider} ${JSON.stringify({
+    model, sizeKB: Math.round(base64.length * 0.75 / 1024), fallbackTriggered: false,
+  })}`);
+};
 
 async function generateImageWithLoRA(
   prompt: string,
@@ -134,6 +166,70 @@ async function generateImageWithLoRA(
     return Buffer.from(await imgRes.arrayBuffer()).toString('base64');
   } catch (err: any) {
     console.error('[LoRA Gen] Error:', err.message);
+    return null;
+  }
+}
+
+// Vertex AI Imagen — the only true text-to-image model we call. Everything else
+// on the Google side is a Gemini chat model in image mode via generateContent.
+// The id is env-driven so it can roll forward without a deploy, but it must be a
+// string we have actually verified against this GCP project: an unverified id
+// (e.g. the old hardcoded `gemini-3.1-flash-image`, or `imagen-3.0-*` which this
+// project is not allowlisted for) returns 404 on every single request and burns
+// a round trip before silently falling through to a stock photo.
+export const VERIFIED_IMAGEN_MODELS = [
+  'imagen-4.0-fast-generate-001',   // ✓ verified 2026-07-11 on this project / us-central1
+  'imagen-4.0-generate-001',
+  'imagen-4.0-ultra-generate-001',
+  'imagen-3.0-generate-002',
+  'imagen-3.0-fast-generate-001',
+] as const;
+
+export const DEFAULT_IMAGEN_MODEL = 'imagen-4.0-fast-generate-001';
+
+export const resolveImagenModel = (env: NodeJS.ProcessEnv = process.env): string =>
+  env.VERTEX_IMAGEN_MODEL || DEFAULT_IMAGEN_MODEL;
+
+export const isVerifiedImagenModel = (model: string): boolean =>
+  (VERIFIED_IMAGEN_MODELS as readonly string[]).includes(model);
+
+async function generateImageWithVertexImagen(
+  prompt: string,
+  aspectRatio: string
+): Promise<string | null> {
+  const model = resolveImagenModel();
+  if (!isVerifiedImagenModel(model)) {
+    console.error(
+      `[Imagen] VERTEX_IMAGEN_MODEL="${model}" is not a verified Imagen model. ` +
+      `Expected one of: ${VERIFIED_IMAGEN_MODELS.join(', ')}. Skipping Vertex Imagen.`
+    );
+    return null;
+  }
+
+  dbgCall('1:VertexImagen', {
+    provider: 'vertex-ai',
+    sdkCall: 'models.generateImages',
+    model,
+    region: gcpLocation,
+    isImagenModel: true,
+    payload: { prompt: `<${prompt.length} chars> ${prompt.slice(0, 80)}…`, config: { numberOfImages: 1, aspectRatio } },
+  });
+
+  try {
+    const ai = getAI('');
+    const response: any = await ai.models.generateImages({
+      model,
+      prompt,
+      config: { numberOfImages: 1, aspectRatio } as any,
+    });
+    const bytes = response.generatedImages?.[0]?.image?.imageBytes as string | undefined;
+    if (!bytes) throw new Error('No imageBytes in Imagen response');
+    console.log('[ImageGen] Vertex Imagen success! Size:', Math.round(bytes.length * 0.75 / 1024), 'KB');
+    dbgOk('1:VertexImagen', model, bytes);
+    return bytes;
+  } catch (e: any) {
+    console.warn('[ImageGen] Vertex Imagen failed:', e.message?.slice(0, 160), 'status:', e.status);
+    dbgFail('1:VertexImagen', e, '1.5:GeminiImage');
     return null;
   }
 }
@@ -291,12 +387,33 @@ export const AIService = {
       ? finalPrompt
       : `${finalPrompt}, semi-realistic anime style, flat colour shading, bold clean outlines`;
 
+    if (DEBUG_IMAGEGEN) {
+      console.log(`[ImageGen:DEBUG] ── ENTRY ${JSON.stringify({
+        authMode: isAdcMode ? 'ADC/Vertex' : 'API-key/AI-Studio',
+        gcpProject: gcpProject ? `${gcpProject.slice(0, 6)}…` : null,
+        region: isAdcMode ? gcpLocation : 'n/a',
+        aspectRatio,
+        hasLora: !!options?.loraModelUrl,
+        hasReferenceImage: !!options?.referenceImageUrl,
+        imagenModel: resolveImagenModel(),
+        imagenModelVerified: isVerifiedImagenModel(resolveImagenModel()),
+        providerOrder: ['0:ReplicateLoRA', '1:VertexImagen', '1.5:GeminiImage', '1.75:GeminiNative', '2:Fal', '3:Together', '4:Gemini2.5', '5:PicsumThrow'],
+      })}`);
+    }
+
     // Provider 0: Replicate LoRA (trained character model — highest identity fidelity)
     if (options?.loraModelUrl && process.env.REPLICATE_API_TOKEN) {
       const triggerWord = (options.loraTriggerWord as string | undefined) || 'CHARACTER';
       console.log('[ImageGen] Using LoRA model:', (options.loraModelUrl as string).slice(-40));
+      dbgCall('0:ReplicateLoRA', {
+        provider: 'replicate',
+        model: options.loraModelUrl,
+        region: 'n/a',
+        payload: { promptChars: prompt.length, aspect_ratio: aspectRatio, steps: 28, lora_scale: 0.9 },
+      });
       const loraResult = await generateImageWithLoRA(prompt, options.loraModelUrl as string, triggerWord, aspectRatio);
-      if (loraResult) return loraResult;
+      if (loraResult) { dbgOk('0:ReplicateLoRA', String(options.loraModelUrl), loraResult); return loraResult; }
+      dbgFail('0:ReplicateLoRA', new Error('generateImageWithLoRA returned null (see [LoRA] logs above)'), '1:GoogleImage');
       console.log('[ImageGen] LoRA failed, falling back to Gemini 3.1 Flash Image');
     }
 
@@ -305,12 +422,23 @@ export const AIService = {
     const referenceImage = referenceImageUrl ? await loadImageAsBase64(referenceImageUrl) : null;
     if (referenceImage) console.log('[ImageGen] Reference image loaded for character consistency');
 
-    // Provider 1: Gemini 3.1 Flash Image (replaces Imagen 4 — deprecated Aug 17 2026)
+    // Provider 1: Vertex AI Imagen — the real text-to-image model, best quality.
+    // Skipped when a character reference image is in play: Imagen generate takes no
+    // reference input, so identity would drift. The Gemini multimodal image path
+    // below owns that case.
+    if (isAdcMode && !referenceImage) {
+      console.log('[ImageGen] Trying Vertex Imagen...');
+      const imagenResult = await generateImageWithVertexImagen(styledPrompt, aspectRatio);
+      if (imagenResult) return imagenResult;
+    }
+
+    // Provider 1.5: Gemini image via generateContent — multimodal, so this is the
+    // path that can consume a character reference image for identity consistency.
     let imagenApiKey = '';
     try { imagenApiKey = getKeyForTask('image'); } catch { /* falls through to next provider */ }
     if (imagenApiKey || isAdcMode) {
       try {
-        console.log('[ImageGen] Trying Gemini 3.1 Flash Image...');
+        console.log('[ImageGen] Trying Gemini Flash Image...');
         const { GoogleGenAI } = await import('@google/genai');
         const geminiImageAI = isAdcMode
           ? new GoogleGenAI({ vertexai: true, project: gcpProject, location: gcpLocation } as any)
@@ -322,8 +450,22 @@ export const AIService = {
         }
         imgParts.push({ text: styledPrompt });
 
+        dbgCall('1.5:GeminiImage', {
+          provider: isAdcMode ? 'vertex-ai' : 'gemini-api',
+          sdkCall: 'models.generateContent',
+          model: GEMINI_IMAGE_MODEL,
+          region: isAdcMode ? gcpLocation : 'n/a',
+          isImagenModel: false,
+          payload: {
+            contents: [{ role: 'user', parts: imgParts.map((p: any) => p.inlineData
+              ? { inlineData: { mimeType: p.inlineData.mimeType, data: `<${p.inlineData.data.length} b64 chars>` } }
+              : { text: `<${p.text.length} chars> ${String(p.text).slice(0, 80)}…` }) }],
+            config: { responseModalities: ['IMAGE', 'TEXT'] },
+          },
+        });
+
         const geminiImgResponse = await geminiImageAI.models.generateContent({
-          model: 'gemini-3.1-flash-image',
+          model: GEMINI_IMAGE_MODEL,
           contents: [{ role: 'user', parts: imgParts }],
           config: { responseModalities: ['IMAGE', 'TEXT'] } as any,
         });
@@ -332,17 +474,28 @@ export const AIService = {
         const imgPart = responseParts.find((p: any) => p.inlineData?.mimeType?.startsWith('image/'));
         if (!imgPart?.inlineData?.data) throw new Error('No image in response');
         const base64 = imgPart.inlineData.data as string;
-        console.log('[ImageGen] Gemini 3.1 Flash Image success! Size:', Math.round(base64.length * 0.75 / 1024), 'KB');
+        console.log('[ImageGen] Gemini Flash Image success! Size:', Math.round(base64.length * 0.75 / 1024), 'KB');
+        dbgOk('1.5:GeminiImage', GEMINI_IMAGE_MODEL, base64);
         return base64;
       } catch (e: any) {
-        console.warn('[ImageGen] Gemini 3.1 Flash Image failed:', e.message, 'status:', e.status);
+        console.warn('[ImageGen] Gemini Flash Image failed:', e.message, 'status:', e.status);
+        dbgFail('1.5:GeminiImage', e, options?.referenceImageUrl ? '1.75:GeminiNative' : '2:Fal');
       }
     }
 
-    // Provider 1.5: Gemini 2.0 Flash Native (reference-image-aware, better character identity)
+    // Provider 1.75: Gemini 2.0 Flash Native (reference-image-aware, better character identity)
     if (options?.referenceImageUrl) {
+      dbgCall('1.75:GeminiNative', {
+        provider: isAdcMode ? 'vertex-ai' : 'gemini-api',
+        sdkCall: 'models.generateContent',
+        model: 'gemini-2.0-flash-preview-image-generation',
+        region: isAdcMode ? gcpLocation : 'n/a',
+        isImagenModel: false,
+        payload: { parts: ['<reference inlineData>', `<prompt ${styledPrompt.length} chars>`], config: { responseModalities: ['IMAGE', 'TEXT'] } },
+      });
       const nativeResult = await generateImageWithGeminiNative(styledPrompt, options.referenceImageUrl);
-      if (nativeResult) return nativeResult;
+      if (nativeResult) { dbgOk('1.75:GeminiNative', 'gemini-2.0-flash-preview-image-generation', nativeResult); return nativeResult; }
+      dbgFail('1.75:GeminiNative', new Error('returned null (see [Gemini Native] warn above)'), '2:Fal');
     }
 
     // Provider 2: Fal.ai FLUX.1 schnell
@@ -350,6 +503,14 @@ export const AIService = {
       try {
         console.log('[ImageGen] FAL_API_KEY present:', !!process.env.FAL_API_KEY, 'prefix:', process.env.FAL_API_KEY?.substring(0, 8));
         console.log('[ImageGen] Trying Fal.ai FLUX.1...');
+        dbgCall('2:Fal', {
+          provider: 'fal.ai',
+          sdkCall: 'fal.subscribe',
+          model: 'fal-ai/flux/schnell',
+          region: 'n/a',
+          isImagenModel: false,
+          payload: { promptChars: finalPrompt.length, image_size: isLandscape ? '1920x1080' : '1080x1920', num_inference_steps: 4 },
+        });
         const falModule = await import('@fal-ai/client');
         const falClient = (falModule as any).fal || (falModule as any).default || falModule;
         falClient.config({ credentials: process.env.FAL_API_KEY });
@@ -369,9 +530,11 @@ export const AIService = {
         if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
         const base64 = Buffer.from(await res.arrayBuffer()).toString('base64');
         console.log('[ImageGen] Fal.ai success! Size:', Math.round(base64.length * 0.75 / 1024), 'KB');
+        dbgOk('2:Fal', 'fal-ai/flux/schnell', base64);
         return base64;
       } catch (e: any) {
         console.warn('[ImageGen] Fal.ai failed:', e.message, 'status:', e.status, 'body:', JSON.stringify(e.body || e.response || {}));
+        dbgFail('2:Fal', e, '3:Together');
       }
     }
 
@@ -379,6 +542,14 @@ export const AIService = {
     if (process.env.TOGETHER_API_KEY) {
       try {
         console.log('[ImageGen] Trying Together AI...');
+        dbgCall('3:Together', {
+          provider: 'together.ai',
+          sdkCall: 'POST /v1/images/generations',
+          model: 'black-forest-labs/FLUX.1-schnell-Free',
+          region: 'n/a',
+          isImagenModel: false,
+          payload: { promptChars: finalPrompt.length, width: isLandscape ? 1920 : 1080, height: isLandscape ? 1080 : 1920, steps: 4 },
+        });
         const togetherRes = await fetch(
           'https://api.together.xyz/v1/images/generations',
           {
@@ -403,9 +574,11 @@ export const AIService = {
         const base64 = togetherData.data?.[0]?.b64_json;
         if (!base64) throw new Error('No b64_json in response');
         console.log('[ImageGen] Together AI success! Size:', Math.round(base64.length * 0.75 / 1024), 'KB');
+        dbgOk('3:Together', 'black-forest-labs/FLUX.1-schnell-Free', base64);
         return base64;
       } catch (e: any) {
         console.warn('[ImageGen] Together AI failed:', e.message);
+        dbgFail('3:Together', e, '4:Gemini2.5');
       }
     }
 
@@ -416,6 +589,14 @@ export const AIService = {
       try {
         console.log('[ImageGen] Trying Gemini 2.5 flash image...');
         const ai = getAI(geminiImageKey);
+        dbgCall('4:Gemini2.5', {
+          provider: isAdcMode ? 'vertex-ai' : 'gemini-api',
+          sdkCall: 'models.generateContent',
+          model: 'gemini-2.5-flash-image',
+          region: isAdcMode ? gcpLocation : 'n/a',
+          isImagenModel: false,
+          payload: { parts: [`<prompt ${finalPrompt.length} chars>`], config: { responseModalities: ['TEXT', 'IMAGE'] } },
+        });
         const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash-image',
           contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
@@ -425,13 +606,16 @@ export const AIService = {
         const imagePart = parts?.find((p: any) => p.inlineData);
         if (!imagePart?.inlineData?.data) throw new Error('No image in response');
         console.log('[ImageGen] Gemini success!');
+        dbgOk('4:Gemini2.5', 'gemini-2.5-flash-image', imagePart.inlineData.data as string);
         return imagePart.inlineData.data as string;
       } catch (e: any) {
         console.warn('[ImageGen] Gemini failed:', e.message);
+        dbgFail('4:Gemini2.5', e, '5:PicsumThrow');
       }
     }
 
     // Provider 5: Picsum (always works)
+    if (DEBUG_IMAGEGEN) console.log('[ImageGen:DEBUG] ── EXHAUSTED — all providers failed, throwing to Picsum fallback in assetService');
     throw new Error('All AI providers failed - use Picsum fallback');
   },
   generateImageWithNative: generateImageWithGeminiNative,
