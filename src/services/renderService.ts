@@ -99,6 +99,8 @@ async function callSceneAnimatorV3(
     characterName?: string;
     audioPath?: string;
     partsDir?: string;
+    width?: number;
+    height?: number;
   } = {}
 ): Promise<boolean> {
   return new Promise((resolve) => {
@@ -122,8 +124,8 @@ async function callSceneAnimatorV3(
       '--emotion',    emotion,
       '--scene_type', sceneType,
       '--fps',        fps,
-      '--width',      '1080',
-      '--height',     '1920',
+      '--width',      String(opts.width || 1080),
+      '--height',     String(opts.height || 1920),
     ];
     if (useV4 || useDoraemon) {
       // Only forward scene types that Metro V4 has explicit transition rules for.
@@ -436,6 +438,10 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                   : is4k      ? (isShorts ? 3840 : 2160)
                   :              (isShorts ? 1920 : 1080);
 
+          // Metro/Doraemon engines always render at 1080p-class; only the aspect follows settings.
+          const engineW = isShorts ? 1080 : 1920;
+          const engineH = isShorts ? 1920 : 1080;
+
           // For 4K use explicit output dimensions; for 1080p scale to 4000px on the long axis for Ken Burns headroom
           const scaleFilter = is4k
             ? (isShorts ? 'scale=2160:3840' : 'scale=3840:2160')
@@ -550,6 +556,8 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                   characterName: scene.character,
                   partsDir: cutoutPartsDir,
                   audioPath: scene.narration_path,
+                  width: engineW,
+                  height: engineH,
                 }
               );
               if (cutoutSuccess) {
@@ -587,6 +595,8 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 renderMode: scene.render_mode,
                 characterName: scene.character,
                 audioPath: scene.narration_path,
+                width: engineW,
+                height: engineH,
               }
             );
             if (unifiedSuccess) {
@@ -621,6 +631,8 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 renderMode: scene.render_mode,
                 characterName: scene.character,
                 audioPath: scene.narration_path,
+                width: engineW,
+                height: engineH,
               }
             );
             if (compositeSuccess) {
@@ -776,10 +788,19 @@ export const renderCaptions = async (scene: any, signal?: AbortSignal) => {
     return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
   };
 
+  // PlayRes must match the segment's real dimensions or libass stretches the
+  // caption geometry (e.g. portrait canvas mapped onto a 16:9 video).
+  let playResX = 1080, playResY = 1920;
+  try {
+    const { stdout } = await execAsync(`ffprobe -v quiet -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "${inputPath}"`, { timeout: 10000 });
+    const [vw, vh] = stdout.trim().split(',').map(Number);
+    if (vw > 0 && vh > 0) { playResX = vw; playResY = vh; }
+  } catch { /* keep portrait default */ }
+
   const assHeader = `[Script Info]
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
+PlayResX: ${playResX}
+PlayResY: ${playResY}
 WrapStyle: 0
 
 [V4+ Styles]
