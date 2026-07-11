@@ -26,6 +26,7 @@ import { buildSceneTimeline } from '../utils/timeline.js';
 import { QuotaService } from '../server/services/quotaService.js';
 import { AIService } from '../services/aiService.js';
 import { FirestoreService } from '../server/db/firestore.js';
+import { storageMode } from '../services/sceneImageStore.js';
 import { createClient } from '@supabase/supabase-js';
 import { DirectorAgent } from './agents/directorAgent.js';
 import { ScriptwriterAgent } from './agents/scriptwriterAgent.js';
@@ -454,7 +455,9 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
     await updateProgress(project, 'Initializing pipeline...', 5, signal);
 
     // --- PHASE 0: Storage Connectivity Probe ---
-    if (!isTestMode) {
+    if (!isTestMode && storageMode() === 'local') {
+      console.log('[Orchestrator] STORAGE_MODE=local — skipping cloud storage probe');
+    } else if (!isTestMode) {
       try {
         await updateProgress(project, 'Testing cloud connectivity...', 7, signal);
         const probeData = Buffer.from(`probe-${Date.now()}`);

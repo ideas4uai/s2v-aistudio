@@ -1,0 +1,1101 @@
+{
+  "project_id": "fabb3fc7-95f8-447a-8f53-8d55a41d0c58",
+  "id": "fabb3fc7-95f8-447a-8f53-8d55a41d0c58",
+  "userId": "sq2LfioDO9V6TNv3cLScVAbAtyD3",
+  "title": "The 3-Second Habit Killing Your Focus",
+  "topic": "The 3-Second Habit Killing Your Focus",
+  "description": "The 3-Second Habit Killing Your Focus",
+  "script": "This 3-second habit is secretly making you less productive. You're losing precious momentum throughout your day. You feel drained, but don't know why. Your attention faces a fierce battle. AI-driven feeds optimize constant engagement. Staying focused in 2025 feels harder. Distractions are simply everywhere now. You think a quick notification check is harmless. You check your phone for three tiny seconds. Research shows you lose 23 minutes of focus. Your brain needs to fully reset afterward. Imagine your brain is a sports car. Glancing at your phone slams the brakes. You stop all your mental momentum. It requires full re-acceleration afterward. Think about your productive flow state. You can't achieve it by stopping constantly. You're breaking concentration unconsciously. Your best work needs sustained attention. You can master this one micro-habit. Imagine unlocking hours of creative flow. Achieve deep work every single day. You'll reclaim your most valuable resource.",
+  "settings": {
+    "aspectRatio": "9:16",
+    "targetLength": "60s",
+    "voiceStyle": "dramatic",
+    "visualStyle": "cinematic",
+    "language": "en",
+    "hookStrategy": "shocking",
+    "pacingIntensity": "aggressive",
+    "styleProfile": "minimal",
+    "exportMode": "shorts",
+    "exportResolution": "1080p",
+    "exportPreset": "medium",
+    "motionEffect": "random"
+  },
+  "referenceImages": [],
+  "status": "completed",
+  "characterDescription": "",
+  "worldEntities": {
+    "characters": [],
+    "locations": [],
+    "objects": [
+      {
+        "name": "Phone",
+        "description": "A mobile device that is a primary source of short, disruptive distractions.",
+        "prompt": "A modern smartphone, screen illuminated with a tempting notification, held by a person's hand, briefly diverting their gaze from work."
+      },
+      {
+        "name": "Brain (Sports Car Metaphor)",
+        "description": "A powerful metaphor representing the human brain's focus and momentum as a high-performance vehicle.",
+        "prompt": "A sleek, futuristic sports car, speeding down a digital highway, emitting trails of bright focus and energy, symbolizing peak mental performance."
+      },
+      {
+        "name": "AI-driven Feeds",
+        "description": "Algorithmic content streams optimized to capture and maintain user engagement, contributing to distraction.",
+        "prompt": "Interconnected, glowing digital streams of information and notifications, forming a captivating and infinite loop on a screen, drawing in a user's attention."
+      }
+    ]
+  },
+  "projectType": "educational",
+  "createdAt": "2026-07-11T08:31:49.139Z",
+  "updatedAt": "2026-07-11T08:31:49.139Z",
+  "scenes": [
+    {
+      "scene_id": "171885fa-c5b5-4d48-9959-2bcae25e6043",
+      "projectId": "fabb3fc7-95f8-447a-8f53-8d55a41d0c58",
+      "order": 0,
+      "narration_text": "This 3-second habit is secretly making you less productive.",
+      "caption_text": "This 3-second habit is secretly making you less productive.",
+      "duration_target": 4,
+      "background_prompt": "Wide shot of person at cluttered desk, hand reaching for a glowing smartphone, unfinished work on laptop and papers, subtle office lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "hook",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "ee9800fe-4f6f-4192-b281-c46ad83e4d29",
+          "prompt": "Wide shot of person at cluttered desk, hand reaching for a glowing smartphone, unfinished work on laptop and papers, subtle office lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 4,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58_visual_ee9800fe-4f6f-4192-b281-c46ad83e4d29.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\171885fa-c5b5-4d48-9959-2bcae25e6043_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\171885fa-c5b5-4d48-9959-2bcae25e6043_cc592df2-0413-4b84-9201-6fffb273b495.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\171885fa-c5b5-4d48-9959-2bcae25e6043_background.png",
+      "prev_scene_type": "",
+      "next_scene_type": "build",
+      "audio_hash": "6725c951",
+      "duration_actual": 3.206984,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\narration-171885fa-c5b5-4d48-9959-2bcae25e6043.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\171885fa-c5b5-4d48-9959-2bcae25e6043_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\171885fa-c5b5-4d48-9959-2bcae25e6043_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "This",
+            "3-second",
+            "habit"
+          ],
+          "text": "{\\c&H00FFFFFF&}This 3-second habit",
+          "start": 0,
+          "end": 1.0689946666666665
+        },
+        {
+          "words": [
+            "is",
+            "secretly",
+            "making"
+          ],
+          "text": "{\\c&H00FFFFFF&}is secretly making",
+          "start": 1.0689946666666665,
+          "end": 2.137989333333333
+        },
+        {
+          "words": [
+            "you",
+            "less",
+            "productive."
+          ],
+          "text": "{\\c&H00FFFFFF&}you less productive.",
+          "start": 2.137989333333333,
+          "end": 3.2069839999999994
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\171885fa-c5b5-4d48-9959-2bcae25e6043_captioned.mp4"
+    },
+    {
+      "scene_id": "ef966e20-0e3f-4c39-bd26-4161387ac874",
+      "projectId": "fabb3fc7-95f8-447a-8f53-8d55a41d0c58",
+      "order": 1,
+      "narration_text": "You're losing precious momentum throughout your day. You feel drained, but don't know why.",
+      "caption_text": "You're losing precious momentum throughout your day. You feel drained, but don't know why.",
+      "duration_target": 6,
+      "background_prompt": "Person slumped at a desk, head in hands, looking utterly drained and unmotivated amidst unfinished tasks, dim office lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "confused",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "8671bfb9-97f3-4190-94ef-3f16111c2d1a",
+          "prompt": "Person slumped at a desk, head in hands, looking utterly drained and unmotivated amidst unfinished tasks, dim office lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 6,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58_visual_8671bfb9-97f3-4190-94ef-3f16111c2d1a.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\ef966e20-0e3f-4c39-bd26-4161387ac874_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\ef966e20-0e3f-4c39-bd26-4161387ac874_2f670c1b-ff5b-473f-9ca8-431c3a6f78d3.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\ef966e20-0e3f-4c39-bd26-4161387ac874_background.png",
+      "prev_scene_type": "hook",
+      "next_scene_type": "build",
+      "audio_hash": "532075a3",
+      "duration_actual": 4.916281,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\narration-ef966e20-0e3f-4c39-bd26-4161387ac874.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\ef966e20-0e3f-4c39-bd26-4161387ac874_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\ef966e20-0e3f-4c39-bd26-4161387ac874_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "You're",
+            "losing",
+            "precious"
+          ],
+          "text": "{\\c&H00FFFFFF&}You're losing precious",
+          "start": 0,
+          "end": 0.9832561999999999
+        },
+        {
+          "words": [
+            "momentum",
+            "throughout",
+            "your"
+          ],
+          "text": "{\\c&H00FFFFFF&}momentum throughout your",
+          "start": 0.9832561999999999,
+          "end": 1.9665123999999998
+        },
+        {
+          "words": [
+            "day.",
+            "You",
+            "feel"
+          ],
+          "text": "{\\c&H00FFFFFF&}day. You feel",
+          "start": 1.9665123999999998,
+          "end": 2.9497685999999996
+        },
+        {
+          "words": [
+            "drained,",
+            "but",
+            "don't"
+          ],
+          "text": "{\\c&H00FFFFFF&}drained, but don't",
+          "start": 2.9497685999999996,
+          "end": 3.9330247999999997
+        },
+        {
+          "words": [
+            "know",
+            "why."
+          ],
+          "text": "{\\c&H00FFFFFF&}know why.",
+          "start": 3.9330247999999997,
+          "end": 4.916281
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\ef966e20-0e3f-4c39-bd26-4161387ac874_captioned.mp4"
+    },
+    {
+      "scene_id": "fac25ca6-088f-432f-a533-f30bdae49f8e",
+      "projectId": "fabb3fc7-95f8-447a-8f53-8d55a41d0c58",
+      "order": 2,
+      "narration_text": "Your attention faces a fierce battle. AI-driven feeds optimize constant engagement.",
+      "caption_text": "Your attention faces a fierce battle. AI-driven feeds optimize constant engagement.",
+      "duration_target": 5,
+      "background_prompt": "Close-up of a person's eye intensely focused on a smartphone screen, the screen displaying a rapid, colorful, scrolling feed of diverse content, with subtle glowing digital threads emanating from the content towards the eye, pulling attention. The phone screen brightly illuminates the face. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "2f4cde45-8173-4fc9-be44-58d8ab5d7d0e",
+          "prompt": "Close-up of a person's eye intensely focused on a smartphone screen, the screen displaying a rapid, colorful, scrolling feed of diverse content, with subtle glowing digital threads emanating from the content towards the eye, pulling attention. The phone screen brightly illuminates the face. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58_visual_2f4cde45-8173-4fc9-be44-58d8ab5d7d0e.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\fac25ca6-088f-432f-a533-f30bdae49f8e_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\fac25ca6-088f-432f-a533-f30bdae49f8e_cfbe70fe-5f86-4aa2-9be2-14ff2e57a9ec.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\fac25ca6-088f-432f-a533-f30bdae49f8e_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "2e8c8fa6",
+      "duration_actual": 5.26458,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\narration-fac25ca6-088f-432f-a533-f30bdae49f8e.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fac25ca6-088f-432f-a533-f30bdae49f8e_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fac25ca6-088f-432f-a533-f30bdae49f8e_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Your",
+            "attention",
+            "faces"
+          ],
+          "text": "{\\c&H00FFFFFF&}Your attention faces",
+          "start": 0,
+          "end": 1.316145
+        },
+        {
+          "words": [
+            "a",
+            "fierce",
+            "battle."
+          ],
+          "text": "{\\c&H00FFFFFF&}a fierce battle.",
+          "start": 1.316145,
+          "end": 2.63229
+        },
+        {
+          "words": [
+            "AI-driven",
+            "feeds",
+            "optimize"
+          ],
+          "text": "{\\c&H00FFFFFF&}AI-driven feeds optimize",
+          "start": 2.63229,
+          "end": 3.948435
+        },
+        {
+          "words": [
+            "constant",
+            "engagement."
+          ],
+          "text": "{\\c&H00FFFFFF&}constant engagement.",
+          "start": 3.948435,
+          "end": 5.26458
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fac25ca6-088f-432f-a533-f30bdae49f8e_captioned.mp4"
+    },
+    {
+      "scene_id": "f62175dc-d731-4506-8793-d75f86699af8",
+      "projectId": "fabb3fc7-95f8-447a-8f53-8d55a41d0c58",
+      "order": 3,
+      "narration_text": "Staying focused in 2025 feels harder. Distractions are simply everywhere now.",
+      "caption_text": "Staying focused in 2025 feels harder. Distractions are simply everywhere now.",
+      "duration_target": 5,
+      "background_prompt": "Close-up of person's head, eyes darting between multiple glowing phone, tablet, and computer screens reflecting on their face, intense artificial light, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "192fb180-f7c8-4581-aa62-d0b76e4e1fd2",
+          "prompt": "Close-up of person's head, eyes darting between multiple glowing phone, tablet, and computer screens reflecting on their face, intense artificial light, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58_visual_192fb180-f7c8-4581-aa62-d0b76e4e1fd2.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\f62175dc-d731-4506-8793-d75f86699af8_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\f62175dc-d731-4506-8793-d75f86699af8_16469663-f783-4293-ba3a-dd67c93a56f6.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\f62175dc-d731-4506-8793-d75f86699af8_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "1a662e4e",
+      "duration_actual": 5.32263,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\narration-f62175dc-d731-4506-8793-d75f86699af8.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\f62175dc-d731-4506-8793-d75f86699af8_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\f62175dc-d731-4506-8793-d75f86699af8_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Staying",
+            "focused",
+            "in"
+          ],
+          "text": "{\\c&H00FFFFFF&}Staying focused in",
+          "start": 0,
+          "end": 1.3306575
+        },
+        {
+          "words": [
+            "2025",
+            "feels",
+            "harder."
+          ],
+          "text": "{\\c&H00FFFFFF&}2025 feels harder.",
+          "start": 1.3306575,
+          "end": 2.661315
+        },
+        {
+          "words": [
+            "Distractions",
+            "are",
+            "simply"
+          ],
+          "text": "{\\c&H00FFFFFF&}Distractions are simply",
+          "start": 2.661315,
+          "end": 3.9919725
+        },
+        {
+          "words": [
+            "everywhere",
+            "now."
+          ],
+          "text": "{\\c&H00FFFFFF&}everywhere now.",
+          "start": 3.9919725,
+          "end": 5.32263
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\f62175dc-d731-4506-8793-d75f86699af8_captioned.mp4"
+    },
+    {
+      "scene_id": "93b35f76-2f69-460f-890e-7f385c2a226f",
+      "projectId": "fabb3fc7-95f8-447a-8f53-8d55a41d0c58",
+      "order": 4,
+      "narration_text": "You think a quick notification check is harmless. You check your phone for three tiny seconds.",
+      "caption_text": "You think a quick notification check is harmless. You check your phone for three tiny seconds.",
+      "duration_target": 6,
+      "background_prompt": "Over-shoulder shot of a person holding a smartphone, looking at a generic notification screen, soft ambient light, neutral background, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "thinking",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "233b6049-75b0-48b0-ba89-bc19123dfb0d",
+          "prompt": "Over-shoulder shot of a person holding a smartphone, looking at a generic notification screen, soft ambient light, neutral background, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 6,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58_visual_233b6049-75b0-48b0-ba89-bc19123dfb0d.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\93b35f76-2f69-460f-890e-7f385c2a226f_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\93b35f76-2f69-460f-890e-7f385c2a226f_5eba0993-4064-4d89-9207-b64ab34ba1a1.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\93b35f76-2f69-460f-890e-7f385c2a226f_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "dc8777f",
+      "duration_actual": 5.078821,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\narration-93b35f76-2f69-460f-890e-7f385c2a226f.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\93b35f76-2f69-460f-890e-7f385c2a226f_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\93b35f76-2f69-460f-890e-7f385c2a226f_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "You",
+            "think",
+            "a"
+          ],
+          "text": "{\\c&H00FFFFFF&}You think a",
+          "start": 0,
+          "end": 0.8464701666666666
+        },
+        {
+          "words": [
+            "quick",
+            "notification",
+            "check"
+          ],
+          "text": "{\\c&H00FFFFFF&}quick notification check",
+          "start": 0.8464701666666666,
+          "end": 1.6929403333333333
+        },
+        {
+          "words": [
+            "is",
+            "harmless.",
+            "You"
+          ],
+          "text": "{\\c&H00FFFFFF&}is harmless. You",
+          "start": 1.6929403333333333,
+          "end": 2.5394105
+        },
+        {
+          "words": [
+            "check",
+            "your",
+            "phone"
+          ],
+          "text": "{\\c&H00FFFFFF&}check your phone",
+          "start": 2.5394105,
+          "end": 3.3858806666666665
+        },
+        {
+          "words": [
+            "for",
+            "three",
+            "tiny"
+          ],
+          "text": "{\\c&H00FFFFFF&}for three tiny",
+          "start": 3.3858806666666665,
+          "end": 4.232350833333333
+        },
+        {
+          "words": [
+            "seconds."
+          ],
+          "text": "{\\c&H00FFFFFF&}seconds.",
+          "start": 4.232350833333333,
+          "end": 5.078821
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\93b35f76-2f69-460f-890e-7f385c2a226f_captioned.mp4"
+    },
+    {
+      "scene_id": "5dee4bb0-8556-4406-93f3-f727372c7b30",
+      "projectId": "fabb3fc7-95f8-447a-8f53-8d55a41d0c58",
+      "order": 5,
+      "narration_text": "Research shows you lose 23 minutes of focus. Your brain needs to fully reset afterward.",
+      "caption_text": "Research shows you lose 23 minutes of focus. Your brain needs to fully reset afterward.",
+      "duration_target": 6,
+      "background_prompt": "Wide shot of a person slumped at a desk, zoned out. A large, dense, dark grey cloud hovers above their head, symbolizing lost focus. A faint pure white light inside the cloud signals a brain trying to reset. Messy desk, dull lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "confused",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "3333a412-2a7a-4bbc-8c5f-ad14c3803413",
+          "prompt": "Wide shot of a person slumped at a desk, zoned out. A large, dense, dark grey cloud hovers above their head, symbolizing lost focus. A faint pure white light inside the cloud signals a brain trying to reset. Messy desk, dull lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 6,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58_visual_3333a412-2a7a-4bbc-8c5f-ad14c3803413.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\5dee4bb0-8556-4406-93f3-f727372c7b30_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\5dee4bb0-8556-4406-93f3-f727372c7b30_c387380b-994b-46db-9f28-2e708006ebd2.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\5dee4bb0-8556-4406-93f3-f727372c7b30_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "161da86c",
+      "duration_actual": 5.31102,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\narration-5dee4bb0-8556-4406-93f3-f727372c7b30.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\5dee4bb0-8556-4406-93f3-f727372c7b30_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\5dee4bb0-8556-4406-93f3-f727372c7b30_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Research",
+            "shows",
+            "you"
+          ],
+          "text": "{\\c&H00FFFFFF&}Research shows you",
+          "start": 0,
+          "end": 1.062204
+        },
+        {
+          "words": [
+            "lose",
+            "23",
+            "minutes"
+          ],
+          "text": "{\\c&H00FFFFFF&}lose 23 minutes",
+          "start": 1.062204,
+          "end": 2.124408
+        },
+        {
+          "words": [
+            "of",
+            "focus.",
+            "Your"
+          ],
+          "text": "{\\c&H00FFFFFF&}of focus. Your",
+          "start": 2.124408,
+          "end": 3.186612
+        },
+        {
+          "words": [
+            "brain",
+            "needs",
+            "to"
+          ],
+          "text": "{\\c&H00FFFFFF&}brain needs to",
+          "start": 3.186612,
+          "end": 4.248816
+        },
+        {
+          "words": [
+            "fully",
+            "reset",
+            "afterward."
+          ],
+          "text": "{\\c&H00FFFFFF&}fully reset afterward.",
+          "start": 4.248816,
+          "end": 5.311019999999999
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\5dee4bb0-8556-4406-93f3-f727372c7b30_captioned.mp4"
+    },
+    {
+      "scene_id": "bce0c6fe-a0bb-4cce-86f6-386d469294ea",
+      "projectId": "fabb3fc7-95f8-447a-8f53-8d55a41d0c58",
+      "order": 6,
+      "narration_text": "Imagine your brain is a sports car. Glancing at your phone slams the brakes.",
+      "caption_text": "Imagine your brain is a sports car. Glancing at your phone slams the brakes.",
+      "duration_target": 5,
+      "background_prompt": "Medium shot of a sleek sports car's interior, a human hand holding a glowing smartphone is pressing down hard on the brake pedal, tires smoking outside the window, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "3ba0326c-aa2e-4db7-8096-04c8cc983f3d",
+          "prompt": "Medium shot of a sleek sports car's interior, a human hand holding a glowing smartphone is pressing down hard on the brake pedal, tires smoking outside the window, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58_visual_3ba0326c-aa2e-4db7-8096-04c8cc983f3d.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\bce0c6fe-a0bb-4cce-86f6-386d469294ea_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\bce0c6fe-a0bb-4cce-86f6-386d469294ea_6801642f-59ce-44ea-8bcc-8cd99b626ff7.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\bce0c6fe-a0bb-4cce-86f6-386d469294ea_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "24f067a9",
+      "duration_actual": 4.486712,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\narration-bce0c6fe-a0bb-4cce-86f6-386d469294ea.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bce0c6fe-a0bb-4cce-86f6-386d469294ea_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bce0c6fe-a0bb-4cce-86f6-386d469294ea_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Imagine",
+            "your",
+            "brain"
+          ],
+          "text": "{\\c&H00FFFFFF&}Imagine your brain",
+          "start": 0,
+          "end": 0.8973424
+        },
+        {
+          "words": [
+            "is",
+            "a",
+            "sports"
+          ],
+          "text": "{\\c&H00FFFFFF&}is a sports",
+          "start": 0.8973424,
+          "end": 1.7946848
+        },
+        {
+          "words": [
+            "car.",
+            "Glancing",
+            "at"
+          ],
+          "text": "{\\c&H00FFFFFF&}car. Glancing at",
+          "start": 1.7946848,
+          "end": 2.6920272
+        },
+        {
+          "words": [
+            "your",
+            "phone",
+            "slams"
+          ],
+          "text": "{\\c&H00FFFFFF&}your phone slams",
+          "start": 2.6920272,
+          "end": 3.5893696
+        },
+        {
+          "words": [
+            "the",
+            "brakes."
+          ],
+          "text": "{\\c&H00FFFFFF&}the brakes.",
+          "start": 3.5893696,
+          "end": 4.486712
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bce0c6fe-a0bb-4cce-86f6-386d469294ea_captioned.mp4"
+    },
+    {
+      "scene_id": "d6ccbabb-f5f7-4604-9529-c0e86a9c8be5",
+      "projectId": "fabb3fc7-95f8-447a-8f53-8d55a41d0c58",
+      "order": 7,
+      "narration_text": "You stop all your mental momentum. It requires full re-acceleration afterward.",
+      "caption_text": "You stop all your mental momentum. It requires full re-acceleration afterward.",
+      "duration_target": 5,
+      "background_prompt": "Close-up of a stylized human brain. Vibrant neural pathways abruptly cease glowing. Then, individual pathways slowly flicker, gradually intensifying into a strong, accelerating glow, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "3de93181-050b-450a-98f5-3a927af902e3",
+          "prompt": "Close-up of a stylized human brain. Vibrant neural pathways abruptly cease glowing. Then, individual pathways slowly flicker, gradually intensifying into a strong, accelerating glow, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58_visual_3de93181-050b-450a-98f5-3a927af902e3.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\d6ccbabb-f5f7-4604-9529-c0e86a9c8be5_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\d6ccbabb-f5f7-4604-9529-c0e86a9c8be5_9c966478-4406-4c7e-b588-79b4c64151ed.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\d6ccbabb-f5f7-4604-9529-c0e86a9c8be5_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "63007846",
+      "duration_actual": 4.614422,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\narration-d6ccbabb-f5f7-4604-9529-c0e86a9c8be5.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\d6ccbabb-f5f7-4604-9529-c0e86a9c8be5_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\d6ccbabb-f5f7-4604-9529-c0e86a9c8be5_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "You",
+            "stop",
+            "all"
+          ],
+          "text": "{\\c&H00FFFFFF&}You stop all",
+          "start": 0,
+          "end": 1.1536055
+        },
+        {
+          "words": [
+            "your",
+            "mental",
+            "momentum."
+          ],
+          "text": "{\\c&H00FFFFFF&}your mental momentum.",
+          "start": 1.1536055,
+          "end": 2.307211
+        },
+        {
+          "words": [
+            "It",
+            "requires",
+            "full"
+          ],
+          "text": "{\\c&H00FFFFFF&}It requires full",
+          "start": 2.307211,
+          "end": 3.4608165
+        },
+        {
+          "words": [
+            "re-acceleration",
+            "afterward."
+          ],
+          "text": "{\\c&H00FFFFFF&}re-acceleration afterward.",
+          "start": 3.4608165,
+          "end": 4.614422
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\d6ccbabb-f5f7-4604-9529-c0e86a9c8be5_captioned.mp4"
+    },
+    {
+      "scene_id": "c89987a9-5f35-4db6-a5aa-ee12326870d6",
+      "projectId": "fabb3fc7-95f8-447a-8f53-8d55a41d0c58",
+      "order": 8,
+      "narration_text": "Think about your productive flow state. You can't achieve it by stopping constantly.",
+      "caption_text": "Think about your productive flow state. You can't achieve it by stopping constantly.",
+      "duration_target": 5,
+      "background_prompt": "Close-up of a finger repeatedly pressing a glowing 'pause' button on a screen, a progress bar halting abruptly on a work interface, screen light illuminating hand, photorealistic, 9:16 vertical, cinematic lighting, sharp focus.",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "thinking",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "77877dc0-87d3-480e-8092-e231ad2a8ca8",
+          "prompt": "Close-up of a finger repeatedly pressing a glowing 'pause' button on a screen, a progress bar halting abruptly on a work interface, screen light illuminating hand, photorealistic, 9:16 vertical, cinematic lighting, sharp focus.",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58_visual_77877dc0-87d3-480e-8092-e231ad2a8ca8.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\c89987a9-5f35-4db6-a5aa-ee12326870d6_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\c89987a9-5f35-4db6-a5aa-ee12326870d6_829aae63-e466-48bd-8fda-e9e7ea275e34.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\c89987a9-5f35-4db6-a5aa-ee12326870d6_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "c938066",
+      "duration_actual": 4.614422,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\narration-c89987a9-5f35-4db6-a5aa-ee12326870d6.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\c89987a9-5f35-4db6-a5aa-ee12326870d6_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\c89987a9-5f35-4db6-a5aa-ee12326870d6_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Think",
+            "about",
+            "your"
+          ],
+          "text": "{\\c&H00FFFFFF&}Think about your",
+          "start": 0,
+          "end": 0.9228844
+        },
+        {
+          "words": [
+            "productive",
+            "flow",
+            "state."
+          ],
+          "text": "{\\c&H00FFFFFF&}productive flow state.",
+          "start": 0.9228844,
+          "end": 1.8457688
+        },
+        {
+          "words": [
+            "You",
+            "can't",
+            "achieve"
+          ],
+          "text": "{\\c&H00FFFFFF&}You can't achieve",
+          "start": 1.8457688,
+          "end": 2.7686532
+        },
+        {
+          "words": [
+            "it",
+            "by",
+            "stopping"
+          ],
+          "text": "{\\c&H00FFFFFF&}it by stopping",
+          "start": 2.7686532,
+          "end": 3.6915376
+        },
+        {
+          "words": [
+            "constantly."
+          ],
+          "text": "{\\c&H00FFFFFF&}constantly.",
+          "start": 3.6915376,
+          "end": 4.614422
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\c89987a9-5f35-4db6-a5aa-ee12326870d6_captioned.mp4"
+    },
+    {
+      "scene_id": "cf005642-08bc-4b0e-bb6a-b1100a145d8e",
+      "projectId": "fabb3fc7-95f8-447a-8f53-8d55a41d0c58",
+      "order": 9,
+      "narration_text": "You're breaking concentration unconsciously. Your best work needs sustained attention.",
+      "caption_text": "You're breaking concentration unconsciously. Your best work needs sustained attention.",
+      "duration_target": 5,
+      "background_prompt": "Over-shoulder shot of a person's hand unconsciously grabbing a smartphone, eyes subtly drifting from a glowing laptop screen displaying complex work, modern office desk with papers, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "8265a5b1-3780-4f04-886a-de2358fbd252",
+          "prompt": "Over-shoulder shot of a person's hand unconsciously grabbing a smartphone, eyes subtly drifting from a glowing laptop screen displaying complex work, modern office desk with papers, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58_visual_8265a5b1-3780-4f04-886a-de2358fbd252.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\cf005642-08bc-4b0e-bb6a-b1100a145d8e_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\cf005642-08bc-4b0e-bb6a-b1100a145d8e_21387cb3-a55a-4140-a3ea-dbec63fd342a.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\cf005642-08bc-4b0e-bb6a-b1100a145d8e_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "520a0f9a",
+      "duration_actual": 4.893061,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\narration-cf005642-08bc-4b0e-bb6a-b1100a145d8e.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\cf005642-08bc-4b0e-bb6a-b1100a145d8e_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\cf005642-08bc-4b0e-bb6a-b1100a145d8e_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "You're",
+            "breaking",
+            "concentration"
+          ],
+          "text": "{\\c&H00FFFFFF&}You're breaking concentration",
+          "start": 0,
+          "end": 1.22326525
+        },
+        {
+          "words": [
+            "unconsciously.",
+            "Your",
+            "best"
+          ],
+          "text": "{\\c&H00FFFFFF&}unconsciously. Your best",
+          "start": 1.22326525,
+          "end": 2.4465305
+        },
+        {
+          "words": [
+            "work",
+            "needs",
+            "sustained"
+          ],
+          "text": "{\\c&H00FFFFFF&}work needs sustained",
+          "start": 2.4465305,
+          "end": 3.6697957500000005
+        },
+        {
+          "words": [
+            "attention."
+          ],
+          "text": "{\\c&H00FFFFFF&}attention.",
+          "start": 3.6697957500000005,
+          "end": 4.893061
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\cf005642-08bc-4b0e-bb6a-b1100a145d8e_captioned.mp4"
+    },
+    {
+      "scene_id": "8fd1283e-dc23-4980-8aca-c7a58e4cd0a5",
+      "projectId": "fabb3fc7-95f8-447a-8f53-8d55a41d0c58",
+      "order": 10,
+      "narration_text": "You can master this one micro-habit. Imagine unlocking hours of creative flow.",
+      "caption_text": "You can master this one micro-habit. Imagine unlocking hours of creative flow.",
+      "duration_target": 5,
+      "background_prompt": "Wide shot of a person's hand performing a precise micro-action. From the point of action, a radiant burst of golden light and swirling abstract ideas explodes, illuminating a creative studio with energetic flow. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "ab4ff615-4533-4d1e-9e28-26f4a96ec52b",
+          "prompt": "Wide shot of a person's hand performing a precise micro-action. From the point of action, a radiant burst of golden light and swirling abstract ideas explodes, illuminating a creative studio with energetic flow. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58_visual_ab4ff615-4533-4d1e-9e28-26f4a96ec52b.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\8fd1283e-dc23-4980-8aca-c7a58e4cd0a5_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\8fd1283e-dc23-4980-8aca-c7a58e4cd0a5_0062f558-16ce-4e4b-a6f8-e852f0c56e15.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\8fd1283e-dc23-4980-8aca-c7a58e4cd0a5_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "cta",
+      "audio_hash": "547c97b3",
+      "duration_actual": 4.742132,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\narration-8fd1283e-dc23-4980-8aca-c7a58e4cd0a5.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\8fd1283e-dc23-4980-8aca-c7a58e4cd0a5_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\8fd1283e-dc23-4980-8aca-c7a58e4cd0a5_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "You",
+            "can",
+            "master"
+          ],
+          "text": "{\\c&H00FFFFFF&}You can master",
+          "start": 0,
+          "end": 1.185533
+        },
+        {
+          "words": [
+            "this",
+            "one",
+            "micro-habit."
+          ],
+          "text": "{\\c&H00FFFFFF&}this one micro-habit.",
+          "start": 1.185533,
+          "end": 2.371066
+        },
+        {
+          "words": [
+            "Imagine",
+            "unlocking",
+            "hours"
+          ],
+          "text": "{\\c&H00FFFFFF&}Imagine unlocking hours",
+          "start": 2.371066,
+          "end": 3.556599
+        },
+        {
+          "words": [
+            "of",
+            "creative",
+            "flow."
+          ],
+          "text": "{\\c&H00FFFFFF&}of creative flow.",
+          "start": 3.556599,
+          "end": 4.742132
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\8fd1283e-dc23-4980-8aca-c7a58e4cd0a5_captioned.mp4"
+    },
+    {
+      "scene_id": "309c1c13-959a-4eef-a4ef-48eea32174c0",
+      "projectId": "fabb3fc7-95f8-447a-8f53-8d55a41d0c58",
+      "order": 11,
+      "narration_text": "Achieve deep work every single day. You'll reclaim your most valuable resource.",
+      "caption_text": "Achieve deep work every single day. You'll reclaim your most valuable resource.",
+      "duration_target": 5,
+      "background_prompt": "Medium shot of a person intensely focused at a minimalist desk, hands on keyboard or notebook, expression of serene determination and mental clarity, peaceful modern office, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "cta",
+      "emotion": "neutral",
+      "status": "completed",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "4b46c72a-df2c-4dc9-9f94-dc7ef8eaccee",
+          "prompt": "Medium shot of a person intensely focused at a minimalist desk, hands on keyboard or notebook, expression of serene determination and mental clarity, peaceful modern office, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 5,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58_visual_4b46c72a-df2c-4dc9-9f94-dc7ef8eaccee.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\309c1c13-959a-4eef-a4ef-48eea32174c0_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\309c1c13-959a-4eef-a4ef-48eea32174c0_741c2651-0b4f-4bb9-91e4-bb0e3d478b89.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\309c1c13-959a-4eef-a4ef-48eea32174c0_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "",
+      "audio_hash": "744ab6ae",
+      "duration_actual": 4.835011,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58\\narration-309c1c13-959a-4eef-a4ef-48eea32174c0.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\309c1c13-959a-4eef-a4ef-48eea32174c0_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\309c1c13-959a-4eef-a4ef-48eea32174c0_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Achieve",
+            "deep",
+            "work"
+          ],
+          "text": "{\\c&H00FFFFFF&}Achieve deep work",
+          "start": 0,
+          "end": 1.20875275
+        },
+        {
+          "words": [
+            "every",
+            "single",
+            "day."
+          ],
+          "text": "{\\c&H00FFFFFF&}every single day.",
+          "start": 1.20875275,
+          "end": 2.4175055
+        },
+        {
+          "words": [
+            "You'll",
+            "reclaim",
+            "your"
+          ],
+          "text": "{\\c&H00FFFFFF&}You'll reclaim your",
+          "start": 2.4175055,
+          "end": 3.62625825
+        },
+        {
+          "words": [
+            "most",
+            "valuable",
+            "resource."
+          ],
+          "text": "{\\c&H00FFFFFF&}most valuable resource.",
+          "start": 3.62625825,
+          "end": 4.835011
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\309c1c13-959a-4eef-a4ef-48eea32174c0_captioned.mp4"
+    }
+  ],
+  "hookOptions": [
+    {
+      "type": "question",
+      "text": "Did you know your phone breaks focus in just 3 seconds?"
+    },
+    {
+      "type": "statement",
+      "text": "This 3-second habit is secretly making you less productive."
+    },
+    {
+      "type": "story",
+      "text": "Yesterday, I wasted an hour because of one tiny 3-second distraction."
+    }
+  ],
+  "selectedHook": "This 3-second habit is secretly making you less productive.",
+  "_directorPlan": {
+    "visual_style": "Sleek, minimalist digital aesthetic with stark contrasts, punctuated by fleeting, glitchy interruptions and moments of serene, almost painterly focus.",
+    "color_palette": [
+      "#005A8D",
+      "#E0E0E0",
+      "#FF6B6B",
+      "#2C2C2C"
+    ],
+    "camera_language": "Deliberate, slow push-ins and static wide shots for moments of focus, juxtaposed with rapid, fragmented cuts, subtle Dutch tilts, and quick rack-focus shifts during periods of distraction. Close-ups will be used for emotional impact and detail, while wider shots establish context.",
+    "pacing_notes": "Initial slow, deliberate push-ins and long takes establish a calm, focused rhythm. This quickly transitions to rapid, jarring cuts, quick rack-focus, and disorienting camera movements during moments of digital interruption and fragmented attention. A central chaotic montage of quick cuts and disorienting angles will mark the peak of the problem (scenes 4-6). This is followed by a gradual slowdown, smooth, steady camera work, and sustained shots for the resolution and call to action (scenes 7-8). Each transition's rhythm is precisely synced to reflect the scene's emotional and thematic content, from serene to chaotic and back to resolute.",
+    "overall_mood": "Initial tranquility giving way to escalating digital anxiety and fractured attention, ultimately resolving into empowered clarity and proactive intent.",
+    "narrative_arc": "The journey begins with the serene depiction of focused potential, subtly interrupted by the insidious '3-second habit.' This interruption escalates into visual chaos, depicting mental fragmentation and overwhelmed reality. The climax illustrates the full impact of lost focus, leading to a moment of quiet realization and a visual shift towards regaining control, culminating in a clear, empowering call to action."
+  },
+  "storyArc": {
+    "beat_1_hook": "This 3-second habit is secretly making you less productive.",
+    "beat_2_context": "In 2025, with AI-driven content feeds optimized for constant engagement, the battle for your attention has never been more intense.",
+    "beat_3_surprise": "You might think a quick 3-second notification check is harmless, but research shows it takes an average of 23 minutes to fully regain deep focus after such a brief digital interruption.",
+    "beat_4_insight": "Consider your brain like a high-performance sports car: every time you glance at your phone for 'just a second,' you're essentially slamming on the brakes, stopping the momentum and requiring a full re-acceleration.",
+    "beat_5_cta": "What if mastering this one micro-habit could unlock hours of productive, creative flow every single day?"
+  },
+  "world_entities": {
+    "characters": [],
+    "locations": [],
+    "objects": [
+      {
+        "name": "Phone",
+        "description": "A mobile device that is a primary source of short, disruptive distractions.",
+        "prompt": "A modern smartphone, screen illuminated with a tempting notification, held by a person's hand, briefly diverting their gaze from work."
+      },
+      {
+        "name": "Brain (Sports Car Metaphor)",
+        "description": "A powerful metaphor representing the human brain's focus and momentum as a high-performance vehicle.",
+        "prompt": "A sleek, futuristic sports car, speeding down a digital highway, emitting trails of bright focus and energy, symbolizing peak mental performance."
+      },
+      {
+        "name": "AI-driven Feeds",
+        "description": "Algorithmic content streams optimized to capture and maintain user engagement, contributing to distraction.",
+        "prompt": "Interconnected, glowing digital streams of information and notifications, forming a captivating and infinite loop on a screen, drawing in a user's attention."
+      }
+    ]
+  },
+  "character_description": "",
+  "is_cancelled": false,
+  "logs": [
+    "[02:23:55 PM] Initializing pipeline...",
+    "[02:23:55 PM] Generating AI assets (Images & Audio)...",
+    "[02:23:55 PM] Processing scene batch 1 of 4...",
+    "[02:26:50 PM] Processing scene batch 2 of 4...",
+    "[02:29:45 PM] Processing scene batch 3 of 4...",
+    "[02:32:19 PM] Processing scene batch 4 of 4...",
+    "[02:34:57 PM] Stitching scenes together into final video...",
+    "[02:36:36 PM] Video generation complete!"
+  ],
+  "current_action": "Video generation complete!",
+  "progress_percent": 100,
+  "output_path": "E:\\s2v-aistudio\\outputs\\fabb3fc7-95f8-447a-8f53-8d55a41d0c58.mp4",
+  "completed_at": "2026-07-11T09:06:36.106Z",
+  "quality_score": 100,
+  "updated_at": "2026-07-11T09:06:36.107Z"
+}

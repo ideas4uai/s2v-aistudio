@@ -1,0 +1,944 @@
+{
+  "project_id": "bdf3e0f0-65d1-43f8-873c-33b85d3168d3",
+  "id": "bdf3e0f0-65d1-43f8-873c-33b85d3168d3",
+  "userId": "sq2LfioDO9V6TNv3cLScVAbAtyD3",
+  "title": "Top 5 AI tools for productivity",
+  "topic": "Top 5 AI tools for productivity",
+  "description": "Educational Short listing 5 specific \nAI tools with stats and comparisons",
+  "script": "You're wasting time if you're not using these AI tools. Unlock incredible new productivity right now. Smart tech truly changes your workday. Let's explore five game-changing solutions. Your inbox feels truly endless. Digital demands overwhelm everyone today. You're battling constant communication waves. Traditional methods don't work anymore. Time management becomes your critical fight. Here's a shocking truth for you. You probably waste so much time. Most professionals manage tasks about tasks. It's over sixty percent of their day! Imagine a tireless personal assistant. This assistant sifts through all noise. It handles repetitive, dull actions. AI highlights what truly needs you. These tools boost your concentration. They free your mind for strategy. Don't just manage your busy day. You can genuinely conquer it now. Want a calm, focused workday? It's not about working harder. Smart, invisible assistance is your secret. Ready to reclaim your precious time?",
+  "settings": {
+    "aspectRatio": "16:9",
+    "targetLength": "60s",
+    "voiceStyle": "energetic",
+    "visualStyle": "cinematic",
+    "language": "te",
+    "hookStrategy": "curiosity",
+    "pacingIntensity": "moderate",
+    "styleProfile": "gen_z",
+    "exportMode": "youtube",
+    "exportResolution": "1080p",
+    "exportPreset": "ultrafast",
+    "motionEffect": "random"
+  },
+  "referenceImages": [],
+  "status": "degraded",
+  "characterDescription": "",
+  "worldEntities": {
+    "characters": [
+      {
+        "name": "The Professional",
+        "description": "Represents the target audience, an individual struggling with digital overload and time management in a modern work environment.",
+        "prompt": "A harried young professional, mid-30s, dressed in business casual, looking overwhelmed by a cluttered desk with multiple screens."
+      },
+      {
+        "name": "The AI Assistant",
+        "description": "A conceptual, invisible helper that manages tasks, filters noise, and boosts productivity for the user.",
+        "prompt": "A futuristic, ethereal blue light subtly flowing through digital screens and and paper, symbolizing invisible assistance and calm efficiency."
+      }
+    ],
+    "locations": [
+      {
+        "name": "Modern Office Workstation",
+        "description": "The primary setting where productivity challenges are experienced and AI solutions are implemented.",
+        "prompt": "A clean, well-lit modern office workstation with a sleek monitor, ergonomic keyboard, and a few organized digital tools visible."
+      }
+    ],
+    "objects": [
+      {
+        "name": "AI Productivity Dashboard",
+        "description": "A visual representation of the AI tools managing tasks, organizing information, and improving user concentration.",
+        "prompt": "A holographic, glowing blue and white AI dashboard displaying organized tasks, data streams, and productivity metrics, futuristic UI."
+      }
+    ]
+  },
+  "projectType": "educational",
+  "createdAt": "2026-07-11T06:51:20.890Z",
+  "updatedAt": "2026-07-11T06:51:20.890Z",
+  "scenes": [
+    {
+      "scene_id": "bca99518-6c78-4567-bfcb-7d225cf4c5e2",
+      "projectId": "bdf3e0f0-65d1-43f8-873c-33b85d3168d3",
+      "order": 0,
+      "narration_text": "You're wasting time if you're not using these AI tools. Unlock incredible new productivity right now.",
+      "caption_text": "You're wasting time if you're not using these AI tools. Unlock incredible new productivity right now.",
+      "duration_target": 4,
+      "background_prompt": "Wide shot: Overwhelmed person surrounded by traditional paperwork, contrasting with a glowing holographic interface displaying AI tools, person now focused and efficient, modern office, bright task lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "hook",
+      "emotion": "neutral",
+      "status": "degraded",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "191c51a4-476d-4054-a89f-ed89f6108912",
+          "prompt": "Wide shot: Overwhelmed person surrounded by traditional paperwork, contrasting with a glowing holographic interface displaying AI tools, person now focused and efficient, modern office, bright task lighting, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 4,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3_visual_191c51a4-476d-4054-a89f-ed89f6108912.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\bca99518-6c78-4567-bfcb-7d225cf4c5e2_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\bca99518-6c78-4567-bfcb-7d225cf4c5e2_76dd8bea-ba08-436a-b0d9-4fce28687db2.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\bca99518-6c78-4567-bfcb-7d225cf4c5e2_background.png",
+      "prev_scene_type": "",
+      "next_scene_type": "build",
+      "audio_hash": "e2294ef",
+      "fallback_used": true,
+      "unified": true,
+      "duration_actual": 4,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\narration-bca99518-6c78-4567-bfcb-7d225cf4c5e2-silence.wav",
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bca99518-6c78-4567-bfcb-7d225cf4c5e2_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bca99518-6c78-4567-bfcb-7d225cf4c5e2_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "You're",
+            "wasting",
+            "time"
+          ],
+          "text": "{\\c&H00FFFFFF&}You're wasting time",
+          "start": 0,
+          "end": 0.6666666666666666
+        },
+        {
+          "words": [
+            "if",
+            "you're",
+            "not"
+          ],
+          "text": "{\\c&H00FFFFFF&}if you're not",
+          "start": 0.6666666666666666,
+          "end": 1.3333333333333333
+        },
+        {
+          "words": [
+            "using",
+            "these",
+            "AI"
+          ],
+          "text": "{\\c&H00FFFFFF&}using these AI",
+          "start": 1.3333333333333333,
+          "end": 2
+        },
+        {
+          "words": [
+            "tools.",
+            "Unlock",
+            "incredible"
+          ],
+          "text": "{\\c&H00FFFFFF&}tools. Unlock incredible",
+          "start": 2,
+          "end": 2.6666666666666665
+        },
+        {
+          "words": [
+            "new",
+            "productivity",
+            "right"
+          ],
+          "text": "{\\c&H00FFFFFF&}new productivity right",
+          "start": 2.6666666666666665,
+          "end": 3.333333333333333
+        },
+        {
+          "words": [
+            "now."
+          ],
+          "text": "{\\c&H00FFFFFF&}now.",
+          "start": 3.333333333333333,
+          "end": 4
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bca99518-6c78-4567-bfcb-7d225cf4c5e2_captioned.mp4"
+    },
+    {
+      "scene_id": "116072e1-cc5e-423c-bbbf-f3211c3ed126",
+      "projectId": "bdf3e0f0-65d1-43f8-873c-33b85d3168d3",
+      "order": 1,
+      "narration_text": "Smart tech truly changes your workday. Let's explore five game-changing solutions.",
+      "caption_text": "Smart tech truly changes your workday. Let's explore five game-changing solutions.",
+      "duration_target": 3,
+      "background_prompt": "Professional working at a modern desk, surrounded by five distinct glowing AI-powered screens and holographic interfaces, efficient and focused expression, sleek office environment, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "degraded",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "aaf6c3ff-af01-431e-b245-84e33d648ce4",
+          "prompt": "Professional working at a modern desk, surrounded by five distinct glowing AI-powered screens and holographic interfaces, efficient and focused expression, sleek office environment, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 3,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3_visual_aaf6c3ff-af01-431e-b245-84e33d648ce4.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\116072e1-cc5e-423c-bbbf-f3211c3ed126_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\116072e1-cc5e-423c-bbbf-f3211c3ed126_26d19c06-caa1-44b7-b145-e59245ab8a97.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\116072e1-cc5e-423c-bbbf-f3211c3ed126_background.png",
+      "prev_scene_type": "hook",
+      "next_scene_type": "build",
+      "audio_hash": "3e70be42",
+      "fallback_used": true,
+      "duration_actual": 3,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\narration-116072e1-cc5e-423c-bbbf-f3211c3ed126-silence.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\116072e1-cc5e-423c-bbbf-f3211c3ed126_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\116072e1-cc5e-423c-bbbf-f3211c3ed126_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Smart",
+            "tech",
+            "truly"
+          ],
+          "text": "{\\c&H00FFFFFF&}Smart tech truly",
+          "start": 0,
+          "end": 0.75
+        },
+        {
+          "words": [
+            "changes",
+            "your",
+            "workday."
+          ],
+          "text": "{\\c&H00FFFFFF&}changes your workday.",
+          "start": 0.75,
+          "end": 1.5
+        },
+        {
+          "words": [
+            "Let's",
+            "explore",
+            "five"
+          ],
+          "text": "{\\c&H00FFFFFF&}Let's explore five",
+          "start": 1.5,
+          "end": 2.25
+        },
+        {
+          "words": [
+            "game-changing",
+            "solutions."
+          ],
+          "text": "{\\c&H00FFFFFF&}game-changing solutions.",
+          "start": 2.25,
+          "end": 3
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\116072e1-cc5e-423c-bbbf-f3211c3ed126_captioned.mp4"
+    },
+    {
+      "scene_id": "7288a7e8-c424-4fe5-afc6-44badb00ecce",
+      "projectId": "bdf3e0f0-65d1-43f8-873c-33b85d3168d3",
+      "order": 2,
+      "narration_text": "Your inbox feels truly endless. Digital demands overwhelm everyone today. You're battling constant communication waves. Traditional methods don't work anymore. Time management becomes your critical fight.",
+      "caption_text": "Your inbox feels truly endless. Digital demands overwhelm everyone today. You're battling constant communication waves. Traditional methods don't work anymore. Time management becomes your critical fight.",
+      "duration_target": 7,
+      "background_prompt": "Close-up of a person's stressed face, eyes wide, illuminated by a computer screen displaying an endless, overflowing email inbox with countless unread messages and aggressively popping notification bubbles. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "degraded",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "c2c0e5fe-4038-4529-a76f-b1250b80e29c",
+          "prompt": "Close-up of a person's stressed face, eyes wide, illuminated by a computer screen displaying an endless, overflowing email inbox with countless unread messages and aggressively popping notification bubbles. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 7,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3_visual_c2c0e5fe-4038-4529-a76f-b1250b80e29c.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\7288a7e8-c424-4fe5-afc6-44badb00ecce_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\7288a7e8-c424-4fe5-afc6-44badb00ecce_52b33e82-42b6-48b5-94e2-aa95b70a07d7.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\7288a7e8-c424-4fe5-afc6-44badb00ecce_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "7583d72a",
+      "fallback_used": true,
+      "duration_actual": 7,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\narration-7288a7e8-c424-4fe5-afc6-44badb00ecce-silence.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\7288a7e8-c424-4fe5-afc6-44badb00ecce_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\7288a7e8-c424-4fe5-afc6-44badb00ecce_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Your",
+            "inbox",
+            "feels"
+          ],
+          "text": "{\\c&H00FFFFFF&}Your inbox feels",
+          "start": 0,
+          "end": 0.7777777777777778
+        },
+        {
+          "words": [
+            "truly",
+            "endless.",
+            "Digital"
+          ],
+          "text": "{\\c&H00FFFFFF&}truly endless. Digital",
+          "start": 0.7777777777777778,
+          "end": 1.5555555555555556
+        },
+        {
+          "words": [
+            "demands",
+            "overwhelm",
+            "everyone"
+          ],
+          "text": "{\\c&H00FFFFFF&}demands overwhelm everyone",
+          "start": 1.5555555555555556,
+          "end": 2.3333333333333335
+        },
+        {
+          "words": [
+            "today.",
+            "You're",
+            "battling"
+          ],
+          "text": "{\\c&H00FFFFFF&}today. You're battling",
+          "start": 2.3333333333333335,
+          "end": 3.111111111111111
+        },
+        {
+          "words": [
+            "constant",
+            "communication",
+            "waves."
+          ],
+          "text": "{\\c&H00FFFFFF&}constant communication waves.",
+          "start": 3.111111111111111,
+          "end": 3.888888888888889
+        },
+        {
+          "words": [
+            "Traditional",
+            "methods",
+            "don't"
+          ],
+          "text": "{\\c&H00FFFFFF&}Traditional methods don't",
+          "start": 3.888888888888889,
+          "end": 4.666666666666667
+        },
+        {
+          "words": [
+            "work",
+            "anymore.",
+            "Time"
+          ],
+          "text": "{\\c&H00FFFFFF&}work anymore. Time",
+          "start": 4.666666666666667,
+          "end": 5.444444444444445
+        },
+        {
+          "words": [
+            "management",
+            "becomes",
+            "your"
+          ],
+          "text": "{\\c&H00FFFFFF&}management becomes your",
+          "start": 5.444444444444445,
+          "end": 6.222222222222222
+        },
+        {
+          "words": [
+            "critical",
+            "fight."
+          ],
+          "text": "{\\c&H00FFFFFF&}critical fight.",
+          "start": 6.222222222222222,
+          "end": 7
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\7288a7e8-c424-4fe5-afc6-44badb00ecce_captioned.mp4"
+    },
+    {
+      "scene_id": "ec1bd875-cf2c-4c8f-b3dc-4be6f2be32ce",
+      "projectId": "bdf3e0f0-65d1-43f8-873c-33b85d3168d3",
+      "order": 3,
+      "narration_text": "Here's a shocking truth for you. You probably waste so much time. Most professionals manage tasks about tasks. It's over sixty percent of their day!",
+      "caption_text": "Here's a shocking truth for you. You probably waste so much time. Most professionals manage tasks about tasks. It's over sixty percent of their day!",
+      "duration_target": 6,
+      "background_prompt": "Professional's hand highlighting 60% of a blank daily schedule with generic \"task management\" symbols, surrounded by messy sticky notes, on a cluttered desk, dim office light, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "surprised",
+      "status": "degraded",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "5080d618-67f4-47bb-9290-adfdf51b1db2",
+          "prompt": "Professional's hand highlighting 60% of a blank daily schedule with generic \"task management\" symbols, surrounded by messy sticky notes, on a cluttered desk, dim office light, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 6,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3_visual_5080d618-67f4-47bb-9290-adfdf51b1db2.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\ec1bd875-cf2c-4c8f-b3dc-4be6f2be32ce_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\ec1bd875-cf2c-4c8f-b3dc-4be6f2be32ce_ffa28b2a-42fa-4ad2-89b3-a4a246a87ff1.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\ec1bd875-cf2c-4c8f-b3dc-4be6f2be32ce_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "6480995a",
+      "fallback_used": true,
+      "duration_actual": 6,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\narration-ec1bd875-cf2c-4c8f-b3dc-4be6f2be32ce-silence.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\ec1bd875-cf2c-4c8f-b3dc-4be6f2be32ce_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\ec1bd875-cf2c-4c8f-b3dc-4be6f2be32ce_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Here's",
+            "a",
+            "shocking"
+          ],
+          "text": "{\\c&H00FFFFFF&}Here's a shocking",
+          "start": 0,
+          "end": 0.6666666666666666
+        },
+        {
+          "words": [
+            "truth",
+            "for",
+            "you."
+          ],
+          "text": "{\\c&H00FFFFFF&}truth for you.",
+          "start": 0.6666666666666666,
+          "end": 1.3333333333333333
+        },
+        {
+          "words": [
+            "You",
+            "probably",
+            "waste"
+          ],
+          "text": "{\\c&H00FFFFFF&}You probably waste",
+          "start": 1.3333333333333333,
+          "end": 2
+        },
+        {
+          "words": [
+            "so",
+            "much",
+            "time."
+          ],
+          "text": "{\\c&H00FFFFFF&}so much time.",
+          "start": 2,
+          "end": 2.6666666666666665
+        },
+        {
+          "words": [
+            "Most",
+            "professionals",
+            "manage"
+          ],
+          "text": "{\\c&H00FFFFFF&}Most professionals manage",
+          "start": 2.6666666666666665,
+          "end": 3.333333333333333
+        },
+        {
+          "words": [
+            "tasks",
+            "about",
+            "tasks."
+          ],
+          "text": "{\\c&H00FFFFFF&}tasks about tasks.",
+          "start": 3.333333333333333,
+          "end": 4
+        },
+        {
+          "words": [
+            "It's",
+            "over",
+            "sixty"
+          ],
+          "text": "{\\c&H00FFFFFF&}It's over sixty",
+          "start": 4,
+          "end": 4.666666666666666
+        },
+        {
+          "words": [
+            "percent",
+            "of",
+            "their"
+          ],
+          "text": "{\\c&H00FFFFFF&}percent of their",
+          "start": 4.666666666666666,
+          "end": 5.333333333333333
+        },
+        {
+          "words": [
+            "day!"
+          ],
+          "text": "{\\c&H00FFFFFF&}day!",
+          "start": 5.333333333333333,
+          "end": 6
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\ec1bd875-cf2c-4c8f-b3dc-4be6f2be32ce_captioned.mp4"
+    },
+    {
+      "scene_id": "737fae06-4466-44d2-94d6-c61f5c966c47",
+      "projectId": "bdf3e0f0-65d1-43f8-873c-33b85d3168d3",
+      "order": 4,
+      "narration_text": "Imagine a tireless personal assistant. This assistant sifts through all noise. It handles repetitive, dull actions. AI highlights what truly needs you.",
+      "caption_text": "Imagine a tireless personal assistant. This assistant sifts through all noise. It handles repetitive, dull actions. AI highlights what truly needs you.",
+      "duration_target": 7,
+      "background_prompt": "Over-shoulder shot of a person viewing a futuristic display. The screen shows chaotic information filtering into organized data, with key insights glowing brightly. Automated tasks process in the background. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "confused",
+      "status": "degraded",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "4f51ead6-6ded-4590-b577-c05928d0764a",
+          "prompt": "Over-shoulder shot of a person viewing a futuristic display. The screen shows chaotic information filtering into organized data, with key insights glowing brightly. Automated tasks process in the background. photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 7,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3_visual_4f51ead6-6ded-4590-b577-c05928d0764a.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\737fae06-4466-44d2-94d6-c61f5c966c47_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\737fae06-4466-44d2-94d6-c61f5c966c47_009d61dd-3c4e-4855-a5aa-b41e63d07f1e.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\737fae06-4466-44d2-94d6-c61f5c966c47_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "build",
+      "audio_hash": "7d429495",
+      "fallback_used": true,
+      "duration_actual": 7,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\narration-737fae06-4466-44d2-94d6-c61f5c966c47-silence.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\737fae06-4466-44d2-94d6-c61f5c966c47_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\737fae06-4466-44d2-94d6-c61f5c966c47_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Imagine",
+            "a",
+            "tireless"
+          ],
+          "text": "{\\c&H00FFFFFF&}Imagine a tireless",
+          "start": 0,
+          "end": 0.875
+        },
+        {
+          "words": [
+            "personal",
+            "assistant.",
+            "This"
+          ],
+          "text": "{\\c&H00FFFFFF&}personal assistant. This",
+          "start": 0.875,
+          "end": 1.75
+        },
+        {
+          "words": [
+            "assistant",
+            "sifts",
+            "through"
+          ],
+          "text": "{\\c&H00FFFFFF&}assistant sifts through",
+          "start": 1.75,
+          "end": 2.625
+        },
+        {
+          "words": [
+            "all",
+            "noise.",
+            "It"
+          ],
+          "text": "{\\c&H00FFFFFF&}all noise. It",
+          "start": 2.625,
+          "end": 3.5
+        },
+        {
+          "words": [
+            "handles",
+            "repetitive,",
+            "dull"
+          ],
+          "text": "{\\c&H00FFFFFF&}handles repetitive, dull",
+          "start": 3.5,
+          "end": 4.375
+        },
+        {
+          "words": [
+            "actions.",
+            "AI",
+            "highlights"
+          ],
+          "text": "{\\c&H00FFFFFF&}actions. AI highlights",
+          "start": 4.375,
+          "end": 5.25
+        },
+        {
+          "words": [
+            "what",
+            "truly",
+            "needs"
+          ],
+          "text": "{\\c&H00FFFFFF&}what truly needs",
+          "start": 5.25,
+          "end": 6.125
+        },
+        {
+          "words": [
+            "you."
+          ],
+          "text": "{\\c&H00FFFFFF&}you.",
+          "start": 6.125,
+          "end": 7
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\737fae06-4466-44d2-94d6-c61f5c966c47_captioned.mp4"
+    },
+    {
+      "scene_id": "a8140d89-c425-452a-9e56-02658493ae33",
+      "projectId": "bdf3e0f0-65d1-43f8-873c-33b85d3168d3",
+      "order": 5,
+      "narration_text": "These tools boost your concentration. They free your mind for strategy. Don't just manage your busy day. You can genuinely conquer it now.",
+      "caption_text": "These tools boost your concentration. They free your mind for strategy. Don't just manage your busy day. You can genuinely conquer it now.",
+      "duration_target": 7,
+      "background_prompt": "Wide shot of a focused professional at a sleek, organized desk with glowing AI interfaces, looking confidently at tasks, representing strategic conquest of a busy day, modern office environment, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "build",
+      "emotion": "neutral",
+      "status": "degraded",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "77b83ab7-fe90-460b-8c14-25ec1303043b",
+          "prompt": "Wide shot of a focused professional at a sleek, organized desk with glowing AI interfaces, looking confidently at tasks, representing strategic conquest of a busy day, modern office environment, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 7,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3_visual_77b83ab7-fe90-460b-8c14-25ec1303043b.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\a8140d89-c425-452a-9e56-02658493ae33_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\a8140d89-c425-452a-9e56-02658493ae33_e24a5fd8-083e-4d7e-a2bf-089ef37d4a3a.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\a8140d89-c425-452a-9e56-02658493ae33_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "cta",
+      "audio_hash": "4d395cca",
+      "fallback_used": true,
+      "duration_actual": 7,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\narration-a8140d89-c425-452a-9e56-02658493ae33-silence.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\a8140d89-c425-452a-9e56-02658493ae33_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\a8140d89-c425-452a-9e56-02658493ae33_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "These",
+            "tools",
+            "boost"
+          ],
+          "text": "{\\c&H00FFFFFF&}These tools boost",
+          "start": 0,
+          "end": 0.875
+        },
+        {
+          "words": [
+            "your",
+            "concentration.",
+            "They"
+          ],
+          "text": "{\\c&H00FFFFFF&}your concentration. They",
+          "start": 0.875,
+          "end": 1.75
+        },
+        {
+          "words": [
+            "free",
+            "your",
+            "mind"
+          ],
+          "text": "{\\c&H00FFFFFF&}free your mind",
+          "start": 1.75,
+          "end": 2.625
+        },
+        {
+          "words": [
+            "for",
+            "strategy.",
+            "Don't"
+          ],
+          "text": "{\\c&H00FFFFFF&}for strategy. Don't",
+          "start": 2.625,
+          "end": 3.5
+        },
+        {
+          "words": [
+            "just",
+            "manage",
+            "your"
+          ],
+          "text": "{\\c&H00FFFFFF&}just manage your",
+          "start": 3.5,
+          "end": 4.375
+        },
+        {
+          "words": [
+            "busy",
+            "day.",
+            "You"
+          ],
+          "text": "{\\c&H00FFFFFF&}busy day. You",
+          "start": 4.375,
+          "end": 5.25
+        },
+        {
+          "words": [
+            "can",
+            "genuinely",
+            "conquer"
+          ],
+          "text": "{\\c&H00FFFFFF&}can genuinely conquer",
+          "start": 5.25,
+          "end": 6.125
+        },
+        {
+          "words": [
+            "it",
+            "now."
+          ],
+          "text": "{\\c&H00FFFFFF&}it now.",
+          "start": 6.125,
+          "end": 7
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\a8140d89-c425-452a-9e56-02658493ae33_captioned.mp4"
+    },
+    {
+      "scene_id": "87195f2e-cda0-40f2-935f-dbc45ba65afb",
+      "projectId": "bdf3e0f0-65d1-43f8-873c-33b85d3168d3",
+      "order": 6,
+      "narration_text": "Want a calm, focused workday? It's not about working harder. Smart, invisible assistance is your secret. Ready to reclaim your precious time?",
+      "caption_text": "Want a calm, focused workday? It's not about working harder. Smart, invisible assistance is your secret. Ready to reclaim your precious time?",
+      "duration_target": 7,
+      "background_prompt": "Medium shot of a person working calmly at an organized desk, subtle glowing digital data streams surrounding the screen, relaxed and focused expression, bright modern office, soft ambient light, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+      "character": "NARRATOR",
+      "scene_type": "cta",
+      "emotion": "confused",
+      "status": "degraded",
+      "stage": "done",
+      "visuals": [
+        {
+          "visual_id": "45411587-6988-4a59-a614-88133f0c3a44",
+          "prompt": "Medium shot of a person working calmly at an organized desk, subtle glowing digital data streams surrounding the screen, relaxed and focused expression, bright modern office, soft ambient light, photorealistic, 9:16 vertical, cinematic lighting, sharp focus",
+          "asset_type": "image",
+          "status": "completed",
+          "duration_target": 7,
+          "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3_visual_45411587-6988-4a59-a614-88133f0c3a44.mp4",
+          "asset_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\87195f2e-cda0-40f2-935f-dbc45ba65afb_background.png"
+        }
+      ],
+      "image_path": "E:\\s2v-aistudio\\outputs\\scene-images\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\87195f2e-cda0-40f2-935f-dbc45ba65afb_359520b4-0755-49a7-82c8-a859d8285e83.jpg",
+      "background_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\87195f2e-cda0-40f2-935f-dbc45ba65afb_background.png",
+      "prev_scene_type": "build",
+      "next_scene_type": "",
+      "audio_hash": "6cfc5224",
+      "fallback_used": true,
+      "duration_actual": 7,
+      "narration_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-audio\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3\\narration-87195f2e-cda0-40f2-935f-dbc45ba65afb-silence.wav",
+      "unified": true,
+      "rendered_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\87195f2e-cda0-40f2-935f-dbc45ba65afb_captioned.mp4",
+      "segment_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\87195f2e-cda0-40f2-935f-dbc45ba65afb_captioned.mp4",
+      "caption_chunks": [
+        {
+          "words": [
+            "Want",
+            "a",
+            "calm,"
+          ],
+          "text": "{\\c&H00FFFFFF&}Want a calm,",
+          "start": 0,
+          "end": 0.875
+        },
+        {
+          "words": [
+            "focused",
+            "workday?",
+            "It's"
+          ],
+          "text": "{\\c&H00FFFFFF&}focused workday? It's",
+          "start": 0.875,
+          "end": 1.75
+        },
+        {
+          "words": [
+            "not",
+            "about",
+            "working"
+          ],
+          "text": "{\\c&H00FFFFFF&}not about working",
+          "start": 1.75,
+          "end": 2.625
+        },
+        {
+          "words": [
+            "harder.",
+            "Smart,",
+            "invisible"
+          ],
+          "text": "{\\c&H00FFFFFF&}harder. Smart, invisible",
+          "start": 2.625,
+          "end": 3.5
+        },
+        {
+          "words": [
+            "assistance",
+            "is",
+            "your"
+          ],
+          "text": "{\\c&H00FFFFFF&}assistance is your",
+          "start": 3.5,
+          "end": 4.375
+        },
+        {
+          "words": [
+            "secret.",
+            "Ready",
+            "to"
+          ],
+          "text": "{\\c&H00FFFFFF&}secret. Ready to",
+          "start": 4.375,
+          "end": 5.25
+        },
+        {
+          "words": [
+            "reclaim",
+            "your",
+            "precious"
+          ],
+          "text": "{\\c&H00FFFFFF&}reclaim your precious",
+          "start": 5.25,
+          "end": 6.125
+        },
+        {
+          "words": [
+            "time?"
+          ],
+          "text": "{\\c&H00FFFFFF&}time?",
+          "start": 6.125,
+          "end": 7
+        }
+      ],
+      "captioned_path": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\ais-renderer\\87195f2e-cda0-40f2-935f-dbc45ba65afb_captioned.mp4"
+    }
+  ],
+  "hookOptions": [
+    {
+      "type": "question",
+      "text": "Why are you still doing tasks AI could do for you?"
+    },
+    {
+      "type": "statement",
+      "text": "You're wasting time if you're not using these AI tools."
+    },
+    {
+      "type": "story",
+      "text": "Yesterday, I finished my report in 10 minutes thanks to AI."
+    }
+  ],
+  "selectedHook": "You're wasting time if you're not using these AI tools.",
+  "_directorPlan": {
+    "visual_style": "Sleek, minimalist aesthetic blending modern flat design UI with subtle holographic and volumetric light effects. Emphasis on crisp, clean lines and dynamic information display.",
+    "color_palette": [
+      "#00BCD4",
+      "#673AB7",
+      "#ECEFF1",
+      "#4CAF50"
+    ],
+    "camera_language": "Smooth, intentional tracking shots that reveal layers of information. Overhead wide shots for concept visualization, transitioning to medium close-ups on human hands interacting with screens, then tight, dynamic pushes into digital interfaces to highlight key features. Subtle use of rack focus to draw attention to crucial details. Consistent visual anchor: a subtle, pulsating cyan-blue (#00BCD4) glow that subtly outlines key digital elements or appears as a faint halo around productive actions.",
+    "pacing_notes": "Opens with a rapid montage of abstract, data-centric imagery (0.5s cuts for 3s - Concept visualization), quickly settling into a contemplative 4s character shot (Character/human element). Each AI tool introduction features a brief, energetic burst of UI animation (2-3s - Data/text visual) followed by a deliberate real-world demonstration (4-5s - Real world example). Concept visualizations employ smooth, flowing motion graphics (5-6s - Concept visualization). Real-world examples are captured with a steady, observational pace (4-5s - Real world example). The final sequence builds momentum with quick, positive cuts (1-2s each) showcasing empowered users (Character/human element), concluding with a 5s wide, aspirational shot.",
+    "overall_mood": "Enlightened, efficient, and aspirational. A sense of calm control amidst technological advancement, empowering the viewer to achieve more.",
+    "narrative_arc": "Starts in a visually chaotic but controlled state representing the modern information deluge. A human element enters, appearing overwhelmed. The introduction of AI tools is depicted as a gradual unveiling of clarity and order. Each scene progressively demonstrates how AI simplifies complexity and enhances workflow, culminating in a visual journey from digital clutter to serene, focused productivity, leaving the viewer feeling empowered and inspired."
+  },
+  "storyArc": {
+    "beat_1_hook": "You're wasting time if you're not using these AI tools.",
+    "beat_2_context": "In 2025, the sheer volume of digital information and constant communication demands has made traditional productivity methods unsustainable. Every professional now grapples with an overwhelming inbox and endless to-do lists, making time management a critical battle.",
+    "beat_3_surprise": "Counterintuitively, most professionals spend over 60% of their day managing tasks about tasks, not actually doing the creative or strategic work that moves the needle.",
+    "beat_4_insight": "Think of these AI tools like having a brilliant, tireless personal assistant who sifts through the noise, handles the repetitive, and highlights what truly matters. This leaves you free to innovate and apply your unique human touch where it counts most.",
+    "beat_5_cta": "What if the secret to a calm, focused workday wasn't more effort, but smarter, invisible assistance?"
+  },
+  "world_entities": {
+    "characters": [
+      {
+        "name": "The Professional",
+        "description": "Represents the target audience, an individual struggling with digital overload and time management in a modern work environment.",
+        "prompt": "A harried young professional, mid-30s, dressed in business casual, looking overwhelmed by a cluttered desk with multiple screens."
+      },
+      {
+        "name": "The AI Assistant",
+        "description": "A conceptual, invisible helper that manages tasks, filters noise, and boosts productivity for the user.",
+        "prompt": "A futuristic, ethereal blue light subtly flowing through digital screens and and paper, symbolizing invisible assistance and calm efficiency."
+      }
+    ],
+    "locations": [
+      {
+        "name": "Modern Office Workstation",
+        "description": "The primary setting where productivity challenges are experienced and AI solutions are implemented.",
+        "prompt": "A clean, well-lit modern office workstation with a sleek monitor, ergonomic keyboard, and a few organized digital tools visible."
+      }
+    ],
+    "objects": [
+      {
+        "name": "AI Productivity Dashboard",
+        "description": "A visual representation of the AI tools managing tasks, organizing information, and improving user concentration.",
+        "prompt": "A holographic, glowing blue and white AI dashboard displaying organized tasks, data streams, and productivity metrics, futuristic UI."
+      }
+    ]
+  },
+  "seo_metadata": {
+    "title": "Top 5 AI Tools: Skyrocket Your Productivity Today!",
+    "description": "Ready to transform your workday? Discover the Top 5 AI Tools that will skyrocket your productivity and revolutionize how you get things done! In this video, we dive deep into cutting-edge artificial intelligence solutions designed to automate tasks, streamline your workflow, and save you countless hours. Whether you're a student, professional, or entrepreneur, these AI powerhouses will help you work smarter, not harder. From intelligent writing assistants to smart task managers, unlock new levels of efficiency. Don't miss out on these game-changing AI tools!\n\n🔗 Check out our other AI videos: [Link to related video/playlist]\n👍 Like, Comment, and Subscribe for more tech insights!\n\n⏰ Timestamps:\n0:00 Intro to AI Productivity\n0:45 AI Content Creator\n2:10 Smart Note-Taking AI\n3:50 AI Task & Schedule Manager\n5:30 AI Research & Summarizer\n7:00 AI Design Assistant\n8:30 Final Thoughts & CTA",
+    "tags": [
+      "AI tools",
+      "productivity tools",
+      "artificial intelligence",
+      "workflow automation",
+      "time management",
+      "work smarter",
+      "top 5 AI",
+      "AI software",
+      "tech tools",
+      "efficiency tips",
+      "future of work",
+      "AI productivity",
+      "automation tools",
+      "best AI apps",
+      "boost productivity"
+    ],
+    "thumbnailText": "BOOST PRODUCTIVITY WITH AI"
+  },
+  "character_description": "",
+  "is_cancelled": false,
+  "logs": [
+    "[01:44:23 PM] Initializing pipeline...",
+    "[01:44:23 PM] Generating AI assets (Images & Audio)...",
+    "[01:44:23 PM] Processing scene batch 1 of 3...",
+    "[01:47:15 PM] Processing scene batch 2 of 3...",
+    "[01:50:09 PM] Processing scene batch 3 of 3...",
+    "[01:51:10 PM] Stitching scenes together into final video...",
+    "[01:52:24 PM] Video generation complete!"
+  ],
+  "current_action": "Video generation complete!",
+  "progress_percent": 100,
+  "error_log": null,
+  "output_path": "E:\\s2v-aistudio\\outputs\\bdf3e0f0-65d1-43f8-873c-33b85d3168d3.mp4",
+  "completed_at": "2026-07-11T08:22:24.901Z",
+  "quality_score": 100,
+  "updated_at": "2026-07-11T08:22:24.902Z"
+}

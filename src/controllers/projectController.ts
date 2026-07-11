@@ -14,6 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
 import { toUrl } from '../utils/path.js';
+import { storeSceneImage } from '../services/sceneImageStore.js';
 
 export async function previewProject(req: Request, res: Response) {
   const { id } = req.params;
@@ -463,8 +464,8 @@ export async function saveSceneImage(req: Request, res: Response) {
     
     console.log(`[saveSceneImage] Received image data for project ${id}, scene ${sceneId}. Size: ${buffer.length} bytes`);
     
-    // Upload to Supabase Storage via FirestoreService.uploadAsset
-    const url = await FirestoreService.uploadAsset(id, fileName, buffer, 'image/jpeg');
+    // Local disk in STORAGE_MODE=local, Supabase Storage otherwise
+    const url = await storeSceneImage(id, fileName, buffer);
 
     const project = await loadProject(id);
     if (!project.scenes) {
@@ -497,7 +498,7 @@ export async function saveSceneImage(req: Request, res: Response) {
     
     await saveProjectState(project);
       
-    res.json({ message: 'Saved', url });
+    res.json({ message: 'Saved', url: toUrl(url) });
   } catch (error) {
     console.error('saveSceneImage error:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -547,7 +548,7 @@ export async function generateSceneImage(req: Request, res: Response) {
     const assetId = uuidv4();
     const fileName = `${sceneId}_${assetId}.jpg`;
 
-    const url = await FirestoreService.uploadAsset(id, fileName, buffer, 'image/jpeg');
+    const url = await storeSceneImage(id, fileName, buffer);
 
     scene.status = 'completed';
     scene.image_path = url;
@@ -569,7 +570,7 @@ export async function generateSceneImage(req: Request, res: Response) {
     }
 
     await saveProjectState(project);
-    res.json({ message: 'Generated', url });
+    res.json({ message: 'Generated', url: toUrl(url) });
   } catch (error) {
     console.error('generateSceneImage error:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -666,7 +667,7 @@ export async function analyzeImageAndCreateScript(req: Request, res: Response) {
      // Save the uploaded image as the first scene's reference
      const fileName = `reference_${uuidv4()}.jpg`;
      const buffer = Buffer.from(base64Data, 'base64');
-     const url = await FirestoreService.uploadAsset(id, fileName, buffer, 'image/jpeg');
+     const url = await storeSceneImage(id, fileName, buffer);
      
      // Seed first scene with this image
      project.scenes = [{
