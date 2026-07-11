@@ -856,7 +856,9 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
   console.log('[Stitch] Concat list contents:\n', fs.readFileSync(listFile, 'utf8'));
 
   try {
-     const stitchCmd = `"${ffmpeg}" -f concat -safe 0 -i "${listFile}" -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" -vsync cfr -c:v libx264 -preset fast -crf 20 -c:a aac -ar 44100 -ac 2 -b:a 192k -y "${outputPath}"`;
+     // Stream copy requires all segments encoded identically (h264 1080x1920 yuv420p 24fps + aac 44.1kHz stereo,
+     // guaranteed by assembleSceneSegment/renderCaptions). Filters can't combine with -c copy, so no -vf here.
+     const stitchCmd = `"${ffmpeg}" -f concat -safe 0 -i "${listFile}" -c copy -movflags +faststart -y "${outputPath}"`;
      console.log('[Stitch] FFmpeg command:', stitchCmd);
      await guardedExec(stitchCmd, signal);
      try {
