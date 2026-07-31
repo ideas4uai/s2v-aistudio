@@ -801,19 +801,20 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
         const bgBuffer = Buffer.from(bgBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
         fs.writeFileSync(bgLocalPath, bgBuffer);
         scene.background_path = bgLocalPath;
-        // Upload to Supabase so the path survives server restarts
-        try {
-          const bgUrl = await FirestoreService.uploadAsset(
-            project.project_id!,
-            `backgrounds/${scene.scene_id}_background.png`,
-            bgBuffer,
-            'image/png'
-          );
+        // Upload to Supabase so the path survives server restarts.
+        // Fire-and-forget: render continues on bgLocalPath; background_url lands
+        // in a later saveProjectState via the shared scene reference.
+        FirestoreService.uploadAsset(
+          project.project_id!,
+          `backgrounds/${scene.scene_id}_background.png`,
+          bgBuffer,
+          'image/png'
+        ).then(bgUrl => {
           scene.background_url = bgUrl;
           console.log('[Orchestrator] Background uploaded:', bgUrl.slice(-60));
-        } catch (uploadErr: any) {
-          console.warn('[Orchestrator] Background upload failed (local path kept):', uploadErr?.message);
-        }
+        }).catch((uploadErr: any) => {
+          console.warn('[Storage] Background upload failed (non-blocking, local path kept):', uploadErr?.message);
+        });
         console.log('[Orchestrator] Background generated for scene:', scene.scene_id);
       }
     } catch (bgErr: any) {
@@ -1193,9 +1194,15 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
           await execAsync(thumbCmd, { timeout: 30000 });
           if (fs.existsSync(thumbnailLocal)) {
             const thumbBuffer = await fs.promises.readFile(thumbnailLocal);
-            const thumbUrl = await FirestoreService.uploadAsset(activeProject.project_id!, `${project_id}_thumbnail.jpg`, thumbBuffer, 'image/jpeg');
-            activeProject.thumbnail_path = thumbUrl;
-            console.log('[Orchestrator] Thumbnail saved:', thumbUrl);
+            // Fire-and-forget: don't hold up output_path / finalization on the upload
+            FirestoreService.uploadAsset(activeProject.project_id!, `${project_id}_thumbnail.jpg`, thumbBuffer, 'image/jpeg')
+              .then(thumbUrl => {
+                activeProject.thumbnail_path = thumbUrl;
+                console.log('[Orchestrator] Thumbnail saved:', thumbUrl);
+                // Re-persist: the final saveProjectState usually runs before this upload lands
+                return saveProjectState(activeProject);
+              })
+              .catch((thumbUpErr: any) => console.warn('[Storage] Thumbnail upload failed (non-blocking):', thumbUpErr?.message));
             fs.promises.unlink(thumbnailLocal).catch(() => {});
           }
         } catch (thumbErr) {
