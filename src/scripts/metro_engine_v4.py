@@ -879,10 +879,24 @@ class SceneRendererV4:
             try:
                 cache_path = os.path.splitext(background_path)[0] + '_depth.npy'
                 depth_norm = _gen_depth(background_path, cache_path)
-                # Resize depth map to frame dimensions
-                depth_rsz  = cv2.resize(depth_norm, (self.W, self.H),
+                # Align the depth map with the cover-cropped tall canvas.
+                # A plain resize to frame size stretched the map whenever the
+                # source aspect != frame aspect, so parallax speeds landed on
+                # the wrong pixels and objects split/smeared during the pan.
+                sh, sw  = cv2.imread(background_path).shape[:2]
+                tall_h  = self.tall_canvas.shape[0]
+                s       = max(self.W / sw, tall_h / sh)
+                nw, nh  = sw * s, sh * s
+                fx0     = ((nw - self.W) / 2.0) / nw
+                fy0     = ((nh - tall_h) / 2.0) / nh
+                dh, dw  = depth_norm.shape[:2]
+                x0, x1  = int(fx0 * dw), int(round((fx0 + self.W / nw) * dw))
+                y0, y1  = int(fy0 * dh), int(round((fy0 + tall_h / nh) * dh))
+                crop    = depth_norm[y0:max(y1, y0 + 1), x0:max(x1, x0 + 1)]
+                depth_tall = cv2.resize(crop, (self.W, tall_h),
                                         interpolation=cv2.INTER_LINEAR)
-                self.depth_speed_map = _build_speed(depth_rsz)
+                # Tall speed map; render() crops the frame's window per-frame.
+                self.depth_speed_map = _build_speed(depth_tall)
                 self.depth_grid_y, self.depth_grid_x = np.mgrid[
                     0:self.H, 0:self.W].astype(np.float32)
                 print('[MetroV4] Depth parallax active — 2.5D pan enabled')
@@ -1030,7 +1044,8 @@ class SceneRendererV4:
             # 2.5D depth pan: per-pixel shift based on depth map
             cam_tx_px, cam_ty_px = _pan_pos(t, self.duration, self.emotion)
             cam_tx_px += shx
-            frame = _depth_warp(frame, self.depth_speed_map,
+            dy0 = int(clamp(y_offset, 0, self.v_pan_room))
+            frame = _depth_warp(frame, self.depth_speed_map[dy0:dy0 + self.H],
                                 self.depth_grid_x, self.depth_grid_y, cam_tx_px, cam_ty_px)
         else:
             frame = warp_zoom_translate(frame, zoom, 0.5, self.camera.cy,

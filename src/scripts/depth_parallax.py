@@ -229,8 +229,13 @@ def main():
     x0 = (rw - W) // 2
     bg = bg_full[y0:y0 + H, x0:x0 + W]
 
-    # Resize depth map to match frame dimensions
-    depth_resized = cv2.resize(depth_norm, (W, H), interpolation=cv2.INTER_LINEAR)
+    # Align depth with the cover-crop above — a plain resize stretches the map
+    # whenever source aspect != output aspect and splits objects during the pan.
+    dh, dw = depth_norm.shape[:2]
+    dx0, dx1 = int(x0 / rw * dw), int(round((x0 + W) / rw * dw))
+    dy0, dy1 = int(y0 / rh * dh), int(round((y0 + H) / rh * dh))
+    depth_crop = depth_norm[dy0:max(dy1, dy0 + 1), dx0:max(dx1, dx0 + 1)]
+    depth_resized = cv2.resize(depth_crop, (W, H), interpolation=cv2.INTER_LINEAR)
     speed_map = build_speed_map(depth_resized)
 
     # Precompute base coordinate grids

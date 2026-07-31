@@ -442,10 +442,13 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           const engineW = isShorts ? 1080 : 1920;
           const engineH = isShorts ? 1920 : 1080;
 
-          // For 4K use explicit output dimensions; for 1080p scale to 4000px on the long axis for Ken Burns headroom
+          // For 4K use explicit output dimensions; for 1080p scale to 4000px on the long axis for Ken Burns headroom.
+          // Cover-crop to the output aspect first: zoompan stretches its crop window
+          // to s=WxH, so any source aspect mismatch became visible distortion.
+          const coverCrop = `crop='min(iw,ih*${w}/${h})':'min(ih,iw*${h}/${w})'`;
           const scaleFilter = is4k
-            ? (isShorts ? 'scale=2160:3840' : 'scale=3840:2160')
-            : (isShorts ? 'scale=-1:4000'   : 'scale=4000:-1');
+            ? (isShorts ? `scale=2160:3840:force_original_aspect_ratio=increase,${coverCrop}` : `scale=3840:2160:force_original_aspect_ratio=increase,${coverCrop}`)
+            : (isShorts ? `scale=-1:4000,${coverCrop}`   : `scale=4000:-1,${coverCrop}`);
           const zoomIncrement = (0.1 / frames).toFixed(6);
           const motion = visual.motion_instruction || 'zoom_in';
           let zoompanExpr: string;
