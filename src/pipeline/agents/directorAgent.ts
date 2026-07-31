@@ -1,5 +1,6 @@
 import { Project } from '../../models/project.js';
 import { AIService } from '../../services/aiService.js';
+import { targetLengthSeconds } from '../../utils/targetLength.js';
 
 export interface DirectorPlan {
   visual_style: string;
@@ -19,8 +20,13 @@ export class DirectorAgent {
       '60s': '7-9 scenes',
       '3m':  '14-18 scenes',
       '5m':  '24-30 scenes',
+      '10m': '50-60 scenes',
     };
-    const sceneCountHint = sceneCountGuide[targetLength] || sceneCountGuide['60s'];
+    // Unknown lengths derive ~10-12s per scene instead of collapsing to 60s
+    // (matches the table: 300s -> 25-30, 600s -> 50-60).
+    const secs = targetLengthSeconds(targetLength);
+    const sceneCountHint = sceneCountGuide[targetLength]
+      || `${Math.round(secs / 12)}-${Math.round(secs / 10)} scenes`;
 
     const featuredCharacters = project.universe && project.featuredCharacterIds?.length
       ? project.universe.characters.filter((c: any) => project.featuredCharacterIds!.includes(c.id))

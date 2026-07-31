@@ -2,6 +2,7 @@ import { Project } from '../../models/project.js';
 import { AIService } from '../../services/aiService.js';
 import { DirectorPlan } from './directorAgent.js';
 import { StoryArc } from './storyAgent.js';
+import { targetLengthSeconds } from '../../utils/targetLength.js';
 
 export const ScriptwriterAgent = {
   writeScript: async (project: Project, plan: DirectorPlan, storyArc?: StoryArc) => {
@@ -14,11 +15,7 @@ export const ScriptwriterAgent = {
   _writeConversational: async (project: Project, plan: DirectorPlan, storyArc: StoryArc) => {
     const targetLength = project.settings?.targetLength || '60s';
     const wordsPerSecond = 2.5;
-    const durationSeconds =
-      targetLength === '30s' ? 30 :
-      targetLength === '60s' ? 60 :
-      targetLength === '3m'  ? 180 :
-      targetLength === '5m'  ? 300 : 60;
+    const durationSeconds = targetLengthSeconds(targetLength);
     const targetWords = Math.round(durationSeconds * wordsPerSecond);
 
     const prompt = `You are writing narration for a YouTube Short about: "${project.topic}"
@@ -107,11 +104,7 @@ Output ONLY valid JSON:
 
     const targetLength = project.settings?.targetLength || '60s';
     const wordsPerSecond = 2.5;
-    const durationSeconds =
-      targetLength === '30s' ? 30 :
-      targetLength === '60s' ? 60 :
-      targetLength === '3m'  ? 180 :
-      targetLength === '5m'  ? 300 : 60;
+    const durationSeconds = targetLengthSeconds(targetLength);
     const targetWords = Math.round(durationSeconds * wordsPerSecond);
 
     const prompt = `You are a professional Video Scriptwriter and Narrative Designer.
