@@ -16,6 +16,7 @@ import { templatesRouter } from './src/server/routes/templates.js';
 import { feedbackRouter } from './src/server/routes/feedback.js';
 import { quotaRouter } from './src/server/routes/quota.js';
 import { voicesRouter } from './src/server/routes/voices.js';
+import { contentStudioRouter } from './src/server/routes/contentStudio.js';
 import { v4 as uuidv4 } from 'uuid';
 import { verifyIdToken } from './src/server/utils/auth.js';
 import { fdb, FirestoreService } from './src/server/db/firestore.js';
@@ -216,6 +217,7 @@ async function startServer() {
 
   app.use('/api/projects', projectsRouter);
   app.use('/v1/projects', projectsRouter);
+  app.use('/api/content-studio', contentStudioRouter);
   app.post('/api/universes', universeController.save);
   app.get('/api/universes', universeController.list);
   app.get('/api/universes/:id', universeController.get);
