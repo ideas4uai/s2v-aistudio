@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "cross-env NODE_ENV=development tsx server.ts",
     "render": "cross-env NODE_ENV=production DISABLE_FIRESTORE=true USE_METRO_V4=true tsx server.ts",
     "render:doraemon": "cross-env NODE_ENV=production DISABLE_FIRESTORE=true USE_METRO_V4=true USE_DORAEMON=true tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
