@@ -59,7 +59,7 @@ Thumbs.db
 .gstack/
 
 outputs/*.txt
-outputs/*.json
+outputs/**/*.json
 policy*.yaml
 **/__pycache__/
 *.pyc
