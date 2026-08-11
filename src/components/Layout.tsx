@@ -20,6 +20,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link to="/content-studio" className="ml-4 hidden rounded-lg px-3 py-2 text-sm font-semibold text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-indigo-600 md:block">
             AI Content Studio
           </Link>
+          <Link to="/voice-studio" className="hidden rounded-lg px-3 py-2 text-sm font-semibold text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-indigo-600 md:block">
+            Voice Studio
+          </Link>
 
           <nav className="ml-auto flex items-center gap-4">
             {user ? (
