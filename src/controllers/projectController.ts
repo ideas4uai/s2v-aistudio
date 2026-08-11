@@ -7,7 +7,7 @@ import { DirectorAgent } from '../pipeline/agents/directorAgent.js';
 import { ScriptwriterAgent } from '../pipeline/agents/scriptwriterAgent.js';
 import { HookAgent } from '../pipeline/agents/hookAgent.js';
 import { StoryAgent } from '../pipeline/agents/storyAgent.js';
-import { StoryboardAgent } from '../pipeline/agents/storyboardAgent.js';
+import { StoryboardAgent, pickMotion } from '../pipeline/agents/storyboardAgent.js';
 import { AIService } from '../services/aiService.js';
 import { hashCode } from '../utils/hash.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -15,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import { toUrl } from '../utils/path.js';
 import { storeSceneImage } from '../services/sceneImageStore.js';
+import { pipelineFieldsFromSettings } from '../server/routes/projects.js';
 
 export async function previewProject(req: Request, res: Response) {
   const { id } = req.params;
@@ -196,6 +197,16 @@ export async function generateScenes(req: Request, res: Response) {
     const hasManualScript = scriptToUse.trim().length > 100;
     const hasVisualPrompts = scriptToUse.includes('Visual Prompt');
 
+    // DECIDED, DO NOT "FIX": skipping DirectorAgent for manual scripts is intentional.
+    // Explicit user field selections (Visual Style, Cinematic Effect, Scene Type, Voice
+    // Style, Target Length...) take precedence over DirectorAgent's judgment by design.
+    // DirectorAgent is an LLM: run it over a script the user wrote by hand and it will
+    // silently overwrite those choices with its own, which is the exact bug class the
+    // classic-flow field audit existed to eliminate. So above 100 chars of hand-written
+    // script we build a plan from the user's own settings instead of asking the model.
+    // DirectorAgent still runs for generated/short scripts, where there is no explicit
+    // user intent to override. Making it authoritative again is an architectural change,
+    // not a bug fix — raise it as one if it is ever genuinely wanted.
     let plan: import('../pipeline/agents/directorAgent.js').DirectorPlan;
     if (hasManualScript) {
       console.log(`[ProjectController] Manual script detected — skipping DirectorAgent for project ${id}`);
@@ -264,6 +275,9 @@ export async function generateScenes(req: Request, res: Response) {
           narration_text: s.narration,
           caption_text: s.narration,
           character: existingScene?.character || detectChar(s.narration || ''),
+          // Never invented here — only carried over, so a user's Scene Type
+          // survives a scene regeneration.
+          scene_type: existingScene?.scene_type,
           emotion: 'neutral',
           duration_target: s.duration || 5,
           status: 'pending',
@@ -272,7 +286,7 @@ export async function generateScenes(req: Request, res: Response) {
             visual_id: uuidv4(),
             prompt: s.visual,
             asset_type: 'ai_image',
-            motion_instruction: 'zoom_in',
+            motion_instruction: pickMotion(project, idx),
             status: 'pending',
             cache_key: '',
             duration_target: s.duration || 5,
@@ -383,6 +397,11 @@ export async function generateScenes(req: Request, res: Response) {
             prompt: s.visuals?.[0]?.prompt || '',
             asset_type: 'image',
             status: 'pending',
+            // Dropping these rebuilt the visual without the Cinematic Effect the
+            // StoryboardAgent derived from settings.motionEffect, so renderService
+            // fell back to its hardcoded 'zoom_in' for every scene.
+            motion_instruction: s.visuals?.[0]?.motion_instruction || s.motion_instruction || 'zoom_in',
+            cache_key: s.visuals?.[0]?.cache_key || '',
             duration_target: s.duration_target
           }
         ]
@@ -785,7 +804,15 @@ export async function updateProjectSettings(req: Request, res: Response) {
   const { settings, universeId } = req.body;
   try {
      const project = await loadProject(id);
-     if (settings !== undefined) project.settings = settings;
+     if (settings !== undefined) {
+       project.settings = settings;
+       // The agents and the asset cache keys read the top-level snake_case
+       // fields, not settings.*. Re-derive them here or an edit made after
+       // creation (switching to 9:16, changing style profile) leaves `mode`,
+       // `style_profile`, `hook_strategy` and `pacing_intensity` stale at
+       // whatever create time set — silently wrong prompts and cache hits.
+       Object.assign(project, pipelineFieldsFromSettings(settings));
+     }
      if (universeId !== undefined) (project as any).universeId = universeId || null;
      await saveProjectState(project);
      res.json({ message: 'Settings updated' });

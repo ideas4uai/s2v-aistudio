@@ -8,25 +8,30 @@ export function ProjectDetail() {
   const navigate = useNavigate();
   const [project, setProject] = useState<any>(null);
 
-  const fetchProject = async () => {
-    try {
-      const res = await authenticatedFetch(`/api/projects/${id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setProject(data);
-      }
-    } catch (error) {
-      console.error('Error fetching project:', error);
-    }
-  };
+  // Bumping this re-runs the load effect — the polling effect uses it to ask for a
+  // full refetch without calling the loader directly (which would be a setState
+  // reachable synchronously from an effect body).
+  const [reloadKey, setReloadKey] = useState(0);
 
-  // Initial load + re-fetch when the window regains focus (user navigates back)
+  // Initial load + re-fetch when the window regains focus (user navigates back).
+  // The request is the external system; setProject runs from its .then callback,
+  // never synchronously inside the effect.
   useEffect(() => {
-    fetchProject();
-    const onFocus = () => fetchProject();
+    let cancelled = false;
+    const load = () =>
+      authenticatedFetch(`/api/projects/${id}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => { if (data && !cancelled) setProject(data); })
+        .catch((error) => { if (!cancelled) console.error('Error fetching project:', error); });
+
+    load();
+    const onFocus = () => load();
     window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [id]);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [id, reloadKey]);
 
   // Poll status while a render is in progress; apply output_path as soon as it lands
   useEffect(() => {
@@ -50,7 +55,7 @@ export function ProjectDetail() {
 
         if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
           clearInterval(interval);
-          fetchProject();
+          setReloadKey((k) => k + 1); // pull the finished project in full
         }
       } catch { /* non-fatal */ }
     }, 3000);

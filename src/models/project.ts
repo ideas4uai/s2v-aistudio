@@ -40,12 +40,22 @@ export interface Universe {
   characters: StoryCharacter[];
   locations: StoryLocation[];
   characterPoses?: Record<string, Record<string, string>>; // charName (uppercase) → pose → url
+  /**
+   * How long an episode in this universe runs, in seconds. A reel universe and
+   * a long-form universe are not the same shape, and the handoff previously
+   * hardcoded 60s for everything.
+   */
+  targetDurationSeconds?: number;
 }
 
 export interface Project {
   project_id: string;
   userId?: string;
   mode: 'shorts' | 'long';
+  // What the user named the project. Every stored record carries it (it is what the
+  // dashboard and the output filename use); `topic` is the pipeline's own subject line
+  // and is not always the same string.
+  title?: string;
   topic: string;
   hook_strategy: string;
   pacing_intensity: string;
