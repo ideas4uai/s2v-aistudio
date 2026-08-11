@@ -4,6 +4,7 @@ import { StudioStore } from '../../content-studio/store.js';
 import { createProductionPackage, createStudioEpisode, validateProductionPackage, WORKFLOW_STAGES } from '../../content-studio/domain/productionPackage.js';
 import type { KnowledgeDocument, ProductionPackage, StudioEpisode, WorkflowStageName } from '../../content-studio/domain/types.js';
 import { contentStudioWorkflowCoordinator } from '../../content-studio/workflow/workflowCoordinator.js';
+import { normalizeUniverse } from '../../content-studio/knowledgeContext.js';
 // Side-effect import: registers the stage agents with the coordinator's registry.
 import '../../content-studio/agents/index.js';
 
@@ -80,7 +81,7 @@ contentStudioRouter.get('/episodes', async (req, res) => {
 contentStudioRouter.post('/episodes', async (req, res) => {
   const userId = currentUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  const { title, topic, characterIds } = req.body as { title?: unknown; topic?: unknown; characterIds?: unknown };
+  const { title, topic, characterIds, universe } = req.body as { title?: unknown; topic?: unknown; characterIds?: unknown; universe?: unknown };
   if (typeof title !== 'string' || !title.trim() || typeof topic !== 'string' || !topic.trim()) {
     return res.status(400).json({ error: 'title and topic are required.' });
   }
@@ -88,8 +89,8 @@ contentStudioRouter.post('/episodes', async (req, res) => {
     return res.status(400).json({ error: 'characterIds must be an array of strings.' });
   }
   try {
-    const episode = createStudioEpisode(userId, title.trim(), topic.trim(), characterIds as string[] | undefined);
-    const productionPackage = createProductionPackage(episode.id, userId, episode.title);
+    const episode = createStudioEpisode(userId, title.trim(), topic.trim(), characterIds as string[] | undefined, universe as string | undefined);
+    const productionPackage = createProductionPackage(episode.id, userId, episode.title, episode.universe);
     episode.productionPackageId = productionPackage.id;
     await Promise.all([
       StudioStore.save(EPISODES_COLLECTION, episode.id, episode),
@@ -265,6 +266,8 @@ contentStudioRouter.post('/knowledge/import', async (req, res) => {
       .filter((document) => document && typeof document.title === 'string' && typeof document.content === 'string')
       .map((document) => ({
         id: uuidv4(), userId, title: document.title.trim(), content: document.content,
+        // Per-document scope wins, then a payload-wide default, then 'default'.
+        universe: normalizeUniverse(document.universe ?? req.body?.universe),
         category: isKnowledgeCategory(document.category) ? document.category : 'general',
         tags: stringArray(document.tags), relatedDocumentIds: [], version: 1, createdAt: now, updatedAt: now,
       }));
@@ -281,9 +284,11 @@ contentStudioRouter.get('/knowledge', async (req, res) => {
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const category = isKnowledgeCategory(req.query.category) ? req.query.category : undefined;
+    const universe = req.query.universe ? normalizeUniverse(req.query.universe) : undefined;
     const search = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
     const documents = (await StudioStore.list(KNOWLEDGE_COLLECTION, userId) as KnowledgeDocument[])
       .filter((document) => document.userId === userId)
+      .filter((document) => !universe || normalizeUniverse(document.universe) === universe)
       .filter((document) => !category || document.category === category)
       .filter((document) => !search || `${document.title} ${document.content} ${document.tags.join(' ')}`.toLowerCase().includes(search))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -303,7 +308,7 @@ contentStudioRouter.post('/knowledge', async (req, res) => {
   }
   try {
     const now = new Date().toISOString();
-    const document: KnowledgeDocument = { id: uuidv4(), userId, title: title.trim(), content, category, tags: stringArray(req.body.tags), relatedDocumentIds: stringArray(req.body.relatedDocumentIds), version: 1, createdAt: now, updatedAt: now };
+    const document: KnowledgeDocument = { id: uuidv4(), userId, universe: normalizeUniverse(req.body.universe), title: title.trim(), content, category, tags: stringArray(req.body.tags), relatedDocumentIds: stringArray(req.body.relatedDocumentIds), version: 1, createdAt: now, updatedAt: now };
     await StudioStore.save(KNOWLEDGE_COLLECTION, document.id, document);
     res.status(201).json(document);
   } catch (error) {
@@ -334,6 +339,7 @@ contentStudioRouter.patch('/knowledge/:id', async (req, res) => {
       ...(typeof req.body.title === 'string' ? { title: req.body.title.trim() } : {}),
       ...(typeof req.body.content === 'string' ? { content: req.body.content } : {}),
       ...(isKnowledgeCategory(req.body.category) ? { category: req.body.category } : {}),
+      ...(req.body.universe !== undefined ? { universe: normalizeUniverse(req.body.universe) } : {}),
       ...(req.body.tags !== undefined ? { tags: stringArray(req.body.tags) } : {}),
       ...(req.body.relatedDocumentIds !== undefined ? { relatedDocumentIds: stringArray(req.body.relatedDocumentIds) } : {}),
       version: existing.version + 1, updatedAt: new Date().toISOString(),

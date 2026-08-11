@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { StudioStore } from '../store.js';
 import type { ProductionPackage, StudioEpisode, WorkflowStageName } from '../domain/types.js';
 import { createWorkflowState, validateProductionPackage } from '../domain/productionPackage.js';
+import { normalizeUniverse } from '../knowledgeContext.js';
 import { contentStudioAgentRegistry, type AgentRegistry } from './agentRegistry.js';
 import { deriveWorkflowStatus, nextRunnableStage, updateStage } from './workflowState.js';
 import type { AgentLog, WorkflowRun } from './types.js';
@@ -55,7 +56,11 @@ export class WorkflowCoordinator {
       ]);
       if (!productionPackage || (productionPackage as ProductionPackage).ownerId !== userId) throw new Error('Production package not found.');
       const packageValue = productionPackage as ProductionPackage;
-      const context = { run: activeRun, stage: next.stage, package: packageValue, knowledge: (knowledge as any[]).filter((document) => document.userId === userId) };
+      const context = {
+        run: activeRun, stage: next.stage, package: packageValue,
+        universe: normalizeUniverse(packageValue.universe),
+        knowledge: (knowledge as any[]).filter((document) => document.userId === userId),
+      };
       const validationErrors = agent.validate(context);
       if (validationErrors.length) throw new Error(validationErrors.join(' '));
       const result = await agent.execute(context);

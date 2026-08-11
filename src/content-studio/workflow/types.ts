@@ -1,4 +1,4 @@
-import type { ProductionPackage, WorkflowStageName, WorkflowStageState } from '../domain/types.js';
+import type { ProductionPackage, UniverseId, WorkflowStageName, WorkflowStageState } from '../domain/types.js';
 
 export type WorkflowRunStatus = 'pending' | 'running' | 'awaiting_approval' | 'completed' | 'failed' | 'cancelled';
 
@@ -41,6 +41,8 @@ export interface AgentContext {
   run: WorkflowRun;
   stage: WorkflowStageName;
   package: ProductionPackage;
+  /** Normalized scope for `knowledge` — agents pass it to buildKnowledgeContext. */
+  universe: UniverseId;
   knowledge: Array<Record<string, unknown>>;
 }
 

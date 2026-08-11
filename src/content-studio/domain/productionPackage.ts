@@ -6,6 +6,7 @@ import {
   type WorkflowStageName,
   type WorkflowStageState,
 } from './types.js';
+import { normalizeUniverse } from '../knowledgeContext.js';
 
 export const WORKFLOW_STAGES: WorkflowStageName[] = ['idea', 'story', 'package', 'handoff'];
 
@@ -13,13 +14,14 @@ export function createWorkflowState(): WorkflowStageState[] {
   return WORKFLOW_STAGES.map((stage) => ({ stage, status: 'pending', attempts: 0 }));
 }
 
-export function createProductionPackage(episodeId: string, ownerId: string, title: string): ProductionPackage {
+export function createProductionPackage(episodeId: string, ownerId: string, title: string, universe?: string): ProductionPackage {
   const now = new Date().toISOString();
   return {
     id: uuidv4(),
     schemaVersion: PRODUCTION_PACKAGE_SCHEMA_VERSION,
     episodeId,
     ownerId,
+    universe: normalizeUniverse(universe),
     status: 'draft',
     story: { title, hook: '', hookVariations: [] },
     scenes: [],
@@ -30,11 +32,12 @@ export function createProductionPackage(episodeId: string, ownerId: string, titl
   };
 }
 
-export function createStudioEpisode(userId: string, title: string, topic: string, characterIds: string[] = []): StudioEpisode {
+export function createStudioEpisode(userId: string, title: string, topic: string, characterIds: string[] = [], universe?: string): StudioEpisode {
   const now = new Date().toISOString();
   const id = uuidv4();
   return {
     id, userId, title, topic, characterIds,
+    universe: normalizeUniverse(universe),
     status: 'draft',
     // The caller replaces this with the package id before persistence.
     productionPackageId: '',

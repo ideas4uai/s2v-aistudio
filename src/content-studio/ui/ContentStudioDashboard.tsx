@@ -57,7 +57,7 @@ export function ContentStudioDashboard() {
           <button onClick={() => void loadDashboard()} aria-label="Refresh dashboard" className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900">
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
-          <Link to="/content-studio/ideas" className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700">
+          <Link to="/content-studio/director" className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700">
             <FilePlus2 className="h-4 w-4" /> New idea
           </Link>
         </div>
@@ -79,7 +79,7 @@ export function ContentStudioDashboard() {
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div><h2 className="font-bold text-slate-950">Publishing queue</h2><p className="mt-1 text-sm text-slate-500">Approved work, waiting for production.</p></div>
-            <Link to="/content-studio/production-packages" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700">Open packages</Link>
+            <Link to="/content-studio/episodes" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700">Open packages</Link>
           </div>
           {loading ? <div className="mt-5 h-20 animate-pulse rounded-xl bg-slate-100" /> : data.publishingQueue.length ? (
             <div className="mt-4 divide-y divide-slate-100">{data.publishingQueue.map((episode) => <div className="flex items-center justify-between py-3" key={episode.id}><span className="text-sm font-medium text-slate-800">{episode.title}</span><ArrowRight className="h-4 w-4 text-slate-400" /></div>)}</div>

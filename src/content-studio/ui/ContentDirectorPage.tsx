@@ -7,6 +7,9 @@ export function ContentDirectorPage() {
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
   const [topic, setTopic] = useState('');
+  // Scopes which knowledge base the agents may read. Blank means the shared
+  // 'default' universe, so this stays optional for single-brand users.
+  const [universe, setUniverse] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,7 +19,7 @@ export function ContentDirectorPage() {
     setSubmitting(true);
     try {
       const response = await authenticatedFetch('/api/content-studio/episodes', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, topic }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, topic, universe }),
       });
       if (!response.ok) throw new Error((await response.json()).error || 'Could not create the episode.');
       navigate('/content-studio/episodes');
@@ -34,6 +37,7 @@ export function ContentDirectorPage() {
         <div className="flex items-center gap-3"><div className="rounded-xl bg-indigo-50 p-2.5 text-indigo-600"><FilePlus2 className="h-5 w-5" /></div><div><h2 className="font-bold text-slate-950">Start an episode</h2><p className="text-sm text-slate-500">This creates a draft, its workflow state, and a versioned package.</p></div></div>
         <label className="mt-6 block text-sm font-semibold text-slate-700">Working title<input value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={160} placeholder="e.g. The deploy that broke on a Friday" className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /></label>
         <label className="mt-4 block text-sm font-semibold text-slate-700">Topic<input value={topic} onChange={(event) => setTopic(event.target.value)} required maxLength={400} placeholder="What should the audience learn or feel?" className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /></label>
+        <label className="mt-4 block text-sm font-semibold text-slate-700">Universe<input value={universe} onChange={(event) => setUniverse(event.target.value)} maxLength={80} placeholder="e.g. aiqa-engineer — scopes which bibles the agents read" className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /></label>
         {error && <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <button disabled={submitting} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"><Sparkles className="h-4 w-4" />{submitting ? 'Creating...' : 'Create production package'}</button>
       </form>

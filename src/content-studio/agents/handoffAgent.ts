@@ -1,5 +1,6 @@
 import { saveProjectState } from '../../pipeline/orchestrator.js';
 import { packageToProjectPayload, packageToScript } from '../handoff.js';
+import { resolveUniverse } from '../universeLink.js';
 import type { AgentContext, AgentResult, StudioAgent } from '../workflow/types.js';
 
 /**
@@ -23,7 +24,10 @@ export const handoffAgent: StudioAgent = {
   },
 
   async execute(context: AgentContext): Promise<AgentResult> {
-    const project = packageToProjectPayload(context.package, context.package.ownerId);
+    // The draft project keeps its universe so a render started from the
+    // dashboard re-runs the pipeline with the same cast and art style.
+    const universe = await resolveUniverse(context.package.ownerId, context.package.universe);
+    const project = packageToProjectPayload(context.package, context.package.ownerId, universe);
     project.scenes = [];
     await saveProjectState(project);
 

@@ -6,6 +6,7 @@ import { generateText } from '../../services/text/index.js';
 import { parseJsonResponse } from '../../utils/parseJsonResponse.js';
 import { packageToProjectPayload } from '../handoff.js';
 import { buildKnowledgeContext } from '../knowledgeContext.js';
+import { resolveUniverse } from '../universeLink.js';
 import type { KnowledgeDocument, ProductionScene, PublishingCopy } from '../domain/types.js';
 import type { AgentContext, AgentResult, StudioAgent } from '../workflow/types.js';
 
@@ -52,7 +53,9 @@ export const packageAgent: StudioAgent = {
 
     // A draft project is the input contract every pipeline agent already
     // expects; building one here means zero changes on their side.
-    const project = packageToProjectPayload(pkg, pkg.ownerId);
+    const universe = await resolveUniverse(pkg.ownerId, pkg.universe);
+    if (!universe && pkg.universe) console.warn(`[PackageAgent] No universe record matched "${pkg.universe}" — scenes will be generic.`);
+    const project = packageToProjectPayload(pkg, pkg.ownerId, universe);
     const plan = await DirectorAgent.planVideo(project);
     const { scenes: drafts } = await ScriptwriterAgent.writeScript(project, plan, project.storyArc);
     if (!drafts?.length) throw new Error('Scriptwriter produced no scenes.');
@@ -61,6 +64,7 @@ export const packageAgent: StudioAgent = {
     const knowledge = buildKnowledgeContext(
       context.knowledge as unknown as KnowledgeDocument[],
       ['brand_bible', 'visual_style'],
+      context.universe,
     );
 
     const raw = await generateText(

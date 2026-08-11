@@ -8,6 +8,18 @@
 
 export const PRODUCTION_PACKAGE_SCHEMA_VERSION = '1.0.0' as const;
 
+/**
+ * Brand/universe scope. One studio account runs several unrelated content
+ * universes (AIQA Engineer, Universe of NULL, …) and their bibles must never
+ * leak into each other's prompts, so every episode, package and knowledge
+ * document carries the slug it belongs to.
+ *
+ * A plain slug, not a foreign key to the pipeline's rich `Universe` object
+ * (src/models/project.ts) — knowledge scoping needs an identifier, not the
+ * character/location payload. The slug can later be that record's id.
+ */
+export type UniverseId = string;
+
 export type StudioEpisodeStatus =
   | 'draft'
   | 'generating'
@@ -56,6 +68,10 @@ export interface StoryPlan {
   conflict?: string;
   escalation?: string;
   twist?: string;
+  /** The payoff line or image. Distinct from `twist` — the twist reveals, the punchline lands. */
+  punchline?: string;
+  /** The wordless beat after the punchline. Carries shareability in character-driven formats. */
+  reaction?: string;
   ending?: string;
   lesson?: string;
   cta?: string;
@@ -108,6 +124,8 @@ export interface ProductionPackage {
   schemaVersion: typeof PRODUCTION_PACKAGE_SCHEMA_VERSION;
   episodeId: string;
   ownerId: string;
+  /** Which universe's knowledge the workflow agents may read. */
+  universe?: UniverseId;
   status: StudioEpisodeStatus;
   story: StoryPlan;
   scenes: ProductionScene[];
@@ -129,6 +147,7 @@ export interface StudioEpisode {
   userId: string;
   title: string;
   topic: string;
+  universe?: UniverseId;
   characterIds: string[];
   status: StudioEpisodeStatus;
   productionPackageId: string;
@@ -147,6 +166,7 @@ export interface StudioEpisode {
 export interface KnowledgeDocument {
   id: string;
   userId: string;
+  universe?: UniverseId;
   title: string;
   category: 'character_bible' | 'production_bible' | 'brand_bible' | 'visual_style' | 'office_guide' | 'episode_history' | 'running_jokes' | 'relationships' | 'lessons_learned' | 'prompt_template' | 'general';
   content: string;

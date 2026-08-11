@@ -28,6 +28,7 @@ export const storyAgent: StudioAgent = {
     const knowledge = buildKnowledgeContext(
       context.knowledge as unknown as KnowledgeDocument[],
       ['character_bible', 'running_jokes', 'relationships', 'brand_bible', 'production_bible'],
+      context.universe,
     );
 
     const raw = await generateText(
@@ -38,15 +39,26 @@ ${knowledge}
 
 Write the episode's narrative spine, then critique your own work honestly.
 
+Fill EVERY beat below. They are distinct — the twist reveals what nobody accounted for,
+the punchline is the payoff that lands it, and the reaction is the wordless beat of faces
+afterwards. If a beat feels redundant, write the version that earns its place rather than
+repeating the previous one.
+
 Output ONLY JSON:
 {
   "title": "final episode title",
   "hook": "the strongest opening line",
   "hookVariations": [{"text": "alternative hook", "score": 7}],
-  "conflict": "...", "escalation": "...", "twist": "...", "ending": "...",
+  "conflict": "...", "escalation": "...", "twist": "...",
+  "punchline": "the payoff line or image",
+  "reaction": "the wordless beat after the punchline — who is on screen and what their faces do",
+  "ending": "how the episode closes",
   "lesson": "the takeaway", "cta": "the call to action",
   "review": {"overall": 8, "clarity": 7, "shareability": 9, "feedback": ["what would make this a 10"]}
-}`,
+}
+
+Critique only the beats you actually wrote above. Do not praise or reference a beat that is
+not present in your own JSON.`,
       { task: 'script' },
     );
 

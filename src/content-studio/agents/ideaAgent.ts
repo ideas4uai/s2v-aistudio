@@ -35,6 +35,7 @@ export const ideaAgent: StudioAgent = {
     const knowledge = buildKnowledgeContext(
       context.knowledge as unknown as KnowledgeDocument[],
       ['brand_bible', 'episode_history', 'lessons_learned'],
+      context.universe,
     );
 
     const raw = await generateText(
