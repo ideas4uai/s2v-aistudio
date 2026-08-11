@@ -14,7 +14,9 @@ export function QuotaIndicator({ isCollapsed }: { isCollapsed: boolean }) {
   };
 
   useEffect(() => {
-    if (!quota?.resetAt) return;
+    // Collapsed renders no countdown, so ticking then is a re-render per second
+    // for nothing.
+    if (!quota?.resetAt || isCollapsed) return;
 
     const updateTimer = () => {
       const now = new Date();
@@ -36,7 +38,7 @@ export function QuotaIndicator({ isCollapsed }: { isCollapsed: boolean }) {
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [quota?.resetAt]);
+  }, [quota?.resetAt, isCollapsed]);
 
   if (loading || !quota) return null;
 

@@ -50,6 +50,12 @@ piper/
 *.jpeg
 piper.tar.gz
 
+# Voice Studio. Cloned-voice checkpoints follow the same "models live on local disk"
+# rule as Piper's, and the samples are somebody's recorded voice — personal data that
+# must never end up in the repository. registry.json and audit.jsonl name real users.
+voices/
+.venv-clone/
+
 # OS files
 .DS_Store
 Thumbs.db

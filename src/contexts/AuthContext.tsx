@@ -16,17 +16,21 @@ const DEV_USER = {
   displayName: 'Dev User',
 } as unknown as User;
 
+// Dev mode has no real auth to wait for, so it is known before the first render —
+// seeding it as the initial state instead of setting it in an effect skips the
+// null -> DEV_USER cascade (children are gated on !loading, so nothing rendered
+// during that discarded pass anyway).
+const IS_DEV = import.meta.env.MODE === 'development';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(IS_DEV ? DEV_USER : null);
+  const [loading, setLoading] = useState(!IS_DEV);
 
   useEffect(() => {
-    if (import.meta.env.MODE === 'development') {
-      setUser(DEV_USER);
-      setLoading(false);
-      return;
-    }
+    if (IS_DEV) return;
 
+    // Firebase is the external system this effect exists to subscribe to; setState
+    // here runs from its callback, not synchronously during the effect.
     const unsubscribe = onAuthStateChanged(auth, (authUser: User | null) => {
       setUser(authUser);
       setLoading(false);

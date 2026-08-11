@@ -1,12 +1,10 @@
 import 'dotenv/config';
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { execSync } from 'child_process';
-import { fileURLToPath } from 'url';
 import { projectsRouter } from './src/server/routes/projects.js';
 import { universeController } from './src/controllers/universeController.js';
 import { jobsRouter } from './src/server/routes/jobs.js';
@@ -21,9 +19,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { verifyIdToken } from './src/server/utils/auth.js';
 import { fdb, FirestoreService } from './src/server/db/firestore.js';
 import { requestContext } from './src/server/utils/context.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 console.log('[STARTUP] USE_METRO_V4:', process.env.USE_METRO_V4 ?? 'not set');
 
@@ -74,7 +69,11 @@ async function seedTemplates() {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  // In dev the API sits behind the Vite dev server (see vite.config.ts): Vite owns
+  // port 3000 and proxies /api and the static mounts here, so `npm run dev:api`
+  // sets PORT=3001. Production is unchanged — Express serves the built app and the
+  // API together on 3000.
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
@@ -771,14 +770,22 @@ async function startServer() {
     res.status(500).json({ error: err.message || 'Internal Server Error' });
   });
 
-  // Vite middleware for development
+  // Vite is NOT mounted here any more — it runs as its own process (`npm run dev:web`).
+  //
+  // It used to run in middleware mode inside this process, which meant restarting the
+  // backend also tore down Vite's HMR websocket. The browser reads that as "server
+  // connection lost" and force-reloads the page (vite/dist/client/client.mjs:560-562),
+  // so every backend restart — and there is no backend watcher, so every backend edit
+  // needs one — reloaded whatever the user was looking at. Splitting the processes
+  // means the backend can restart freely and the open tab never notices.
+  //
+  // Dev requests reach this server through Vite's proxy; see vite.config.ts.
   if (process.env.NODE_ENV !== 'production') {
-    console.log('Starting Vite in development mode...');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
+    app.get('/', (_req, res) => {
+      res.status(404).type('text/plain').send(
+        'This is the API server. The app is served by Vite on http://localhost:3000 — run `npm run dev:web`.\n'
+      );
     });
-    app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));

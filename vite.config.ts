@@ -50,6 +50,12 @@ const logFullReload = {
   },
 };
 
+// Everything the Express API owns. The browser calls these as same-origin paths
+// (`/api/...`, `<video src="/outputs/x.mp4">`), so proxying them keeps every URL in
+// the frontend exactly as it was when one process served both.
+const API_PORT = Number(process.env.API_PORT) || 3001;
+const API_PATHS = ['/api', '/v1', '/outputs', '/uploads', '/cache', '/music'];
+
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
@@ -60,6 +66,18 @@ export default defineConfig(({mode}) => {
       },
     },
     server: {
+      // Vite owns 3000 — the URL that was already in use — and the API moved to 3001.
+      // Vite used to run in middleware mode inside server.ts, which tied its HMR
+      // websocket to the backend process: restarting the backend dropped the socket
+      // and the client force-reloaded the page. As its own process its socket
+      // survives any number of backend restarts. strictPort so a silently-shifted
+      // port can't send the app to a URL where the proxy below isn't listening.
+      port: 3000,
+      strictPort: true,
+      proxy: Object.fromEntries(
+        API_PATHS.map((p) => [p, { target: `http://localhost:${API_PORT}` }]),
+      ),
+
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify — file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',

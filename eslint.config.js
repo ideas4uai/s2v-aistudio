@@ -7,10 +7,33 @@ import firebaseRulesPlugin from '@firebase/eslint-plugin-security-rules';
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', 'test_*.js', 'check_env.js', 'cache/**', 'temp/**', 'outputs/**', 'uploads/**'],
+    // .venv-clone is the Python environment for voice cloning. It ships vendored JS
+    // (urllib3's emscripten worker and friends) that is not ours to lint — without
+    // this it contributes ~12,700 no-undef errors and buries every real one.
+    ignores: ['dist/**', 'node_modules/**', 'test_*.js', 'check_env.js', 'cache/**', 'temp/**', 'outputs/**', 'uploads/**', '.venv-clone/**', 'voices/**'],
   },
   js.configs.recommended,
   firebaseRulesPlugin.configs['flat/recommended'],
+  {
+    // Node dev tooling that isn't TypeScript.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+  },
+  {
+    // The kill-switch service worker runs in a ServiceWorkerGlobalScope, so `self`,
+    // `caches` and friends are legitimately defined — declare the scope rather than
+    // switching off no-undef for it.
+    files: ['public/sw.js'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      sourceType: 'script',
+      globals: { ...globals.serviceworker },
+    },
+  },
   {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
