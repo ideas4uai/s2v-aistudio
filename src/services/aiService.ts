@@ -44,7 +44,12 @@ const TASK_MODELS: Record<string, string> = {
 
 // Gemini's multimodal image model — verified working on this project. Used for the
 // reference-image (character consistency) path, which Imagen cannot serve.
-const GEMINI_IMAGE_MODEL = 'gemini-2.5-flash-image';
+//
+// This is also the model that serves EVERY image on this project: its publisher-model
+// list contains no Imagen at all, so the Vertex Imagen attempt always 404s. Verified
+// to honour imageConfig.aspectRatio (16:9 -> 1344x768). `gemini-3-pro-image` is listed
+// for the project but still 404s on request, so it is not used.
+const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
 
 const TASK_KEY_MAP: Record<string, KeyTask> = {
   'planning':         'script',
@@ -208,6 +213,11 @@ export const VERIFIED_IMAGEN_MODELS = [
 
 export const DEFAULT_IMAGEN_MODEL = 'imagen-4.0-fast-generate-001';
 
+/** Aspect ratios imageConfig accepts. Anything else is rejected by the API. */
+export const SUPPORTED_IMAGE_ASPECTS = new Set([
+  '1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9', '21:9',
+]);
+
 export const resolveImagenModel = (env: NodeJS.ProcessEnv = process.env): string =>
   env.VERTEX_IMAGEN_MODEL || DEFAULT_IMAGEN_MODEL;
 
@@ -258,9 +268,23 @@ async function generateImageWithVertexImagen(
   }
 }
 
+/**
+ * Image generation via a Gemini image model.
+ *
+ * This is the provider that actually serves every render on this project: no Imagen
+ * model is available to it (the publisher-model list returns 126 models and not one
+ * Imagen), so the Vertex Imagen attempt above always 404s and lands here.
+ *
+ * It previously hardcoded `gemini-2.0-flash-preview-image-generation` — a model this
+ * project cannot see either — and passed no aspect ratio at all, so every image came
+ * back 1024x1024 and was then cropped ~44% to reach 16:9. `imageConfig.aspectRatio`
+ * is what actually controls the shape; the "16:9 landscape" text in the prompt does
+ * nothing. Requesting 16:9 now returns 1344x768 and 9:16 returns 768x1344.
+ */
 async function generateImageWithGeminiNative(
   prompt: string,
-  referenceImageUrl?: string
+  referenceImageUrl?: string,
+  aspectRatio?: string
 ): Promise<string | null> {
   try {
     let geminiKey = '';
@@ -287,9 +311,17 @@ async function generateImageWithGeminiNative(
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-preview-image-generation',
+      model: GEMINI_IMAGE_MODEL,
       contents: [{ role: 'user', parts }],
-      config: { responseModalities: ['IMAGE', 'TEXT'] } as any,
+      config: {
+        responseModalities: ['IMAGE', 'TEXT'],
+        // Only '1:1','2:3','3:2','3:4','4:3','9:16','16:9','21:9' are accepted; an
+        // unsupported string is rejected outright, so anything else is left off and
+        // the model's own default applies.
+        ...(aspectRatio && SUPPORTED_IMAGE_ASPECTS.has(aspectRatio)
+          ? { imageConfig: { aspectRatio } }
+          : {}),
+      } as any,
     });
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
@@ -485,14 +517,22 @@ export const AIService = {
             contents: [{ role: 'user', parts: imgParts.map((p: any) => p.inlineData
               ? { inlineData: { mimeType: p.inlineData.mimeType, data: `<${p.inlineData.data.length} b64 chars>` } }
               : { text: `<${p.text.length} chars> ${String(p.text).slice(0, 80)}…` }) }],
-            config: { responseModalities: ['IMAGE', 'TEXT'] },
+            config: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { aspectRatio } },
           },
         });
 
         const geminiImgResponse = await geminiImageAI.models.generateContent({
           model: GEMINI_IMAGE_MODEL,
           contents: [{ role: 'user', parts: imgParts }],
-          config: { responseModalities: ['IMAGE', 'TEXT'] } as any,
+          config: {
+            responseModalities: ['IMAGE', 'TEXT'],
+            // Without this every image comes back 1024x1024 and is cropped ~44% to
+            // reach 16:9. The "16:9 landscape" text in the prompt does nothing — this
+            // is the only thing that sets the shape.
+            ...(aspectRatio && SUPPORTED_IMAGE_ASPECTS.has(aspectRatio)
+              ? { imageConfig: { aspectRatio } }
+              : {}),
+          } as any,
         });
 
         const responseParts = geminiImgResponse.candidates?.[0]?.content?.parts || [];
@@ -514,13 +554,13 @@ export const AIService = {
       dbgCall('1.75:GeminiNative', {
         provider: isAdcMode ? 'vertex-ai' : 'gemini-api',
         sdkCall: 'models.generateContent',
-        model: 'gemini-2.0-flash-preview-image-generation',
+        model: GEMINI_IMAGE_MODEL,
         region: isAdcMode ? gcpLocation : 'n/a',
         isImagenModel: false,
-        payload: { parts: ['<reference inlineData>', `<prompt ${styledPrompt.length} chars>`], config: { responseModalities: ['IMAGE', 'TEXT'] } },
+        payload: { parts: ['<reference inlineData>', `<prompt ${styledPrompt.length} chars>`], config: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { aspectRatio } } },
       });
-      const nativeResult = await generateImageWithGeminiNative(styledPrompt, options.referenceImageUrl);
-      if (nativeResult) { dbgOk('1.75:GeminiNative', 'gemini-2.0-flash-preview-image-generation', nativeResult); return nativeResult; }
+      const nativeResult = await generateImageWithGeminiNative(styledPrompt, options.referenceImageUrl, aspectRatio);
+      if (nativeResult) { dbgOk('1.75:GeminiNative', GEMINI_IMAGE_MODEL, nativeResult); return nativeResult; }
       dbgFail('1.75:GeminiNative', new Error('returned null (see [Gemini Native] warn above)'), '2:Fal');
     }
 
