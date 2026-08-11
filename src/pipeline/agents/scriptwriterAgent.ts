@@ -1,9 +1,149 @@
 import { Project } from '../../models/project.js';
 import { AIService } from '../../services/aiService.js';
 import { DirectorPlan } from './directorAgent.js';
+import { StoryArc } from './storyAgent.js';
+import { targetLengthSeconds } from '../../utils/targetLength.js';
 
 export const ScriptwriterAgent = {
-  writeScript: async (project: Project, plan: DirectorPlan) => {
+  writeScript: async (project: Project, plan: DirectorPlan, storyArc?: StoryArc) => {
+    if (storyArc) {
+      return ScriptwriterAgent._writeConversational(project, plan, storyArc);
+    }
+    return ScriptwriterAgent._writeLegacy(project, plan);
+  },
+
+  _writeConversational: async (project: Project, plan: DirectorPlan, storyArc: StoryArc) => {
+    const targetLength = project.settings?.targetLength || '60s';
+    const wordsPerSecond = 2.5;
+    const durationSeconds = targetLengthSeconds(targetLength);
+    const targetWords = Math.round(durationSeconds * wordsPerSecond);
+
+    // A universe means a cast, and a cast means the episode is dialogue, not an
+    // explainer. Without this branch the same second-person voiceover rules
+    // applied to every project, which is why character episodes came back as
+    // "you heard Arjun say…" narration with no speaker to attribute.
+    const cast = project.universe?.characters ?? [];
+    const isCharacterEpisode = cast.length > 0;
+
+    const prompt = isCharacterEpisode
+      ? `You are writing a short character-driven episode: "${project.topic}"
+
+WORLD: ${project.universe?.world ?? ''}
+TONE (locked): ${project.universe?.toneRules ?? ''}
+EPISODE STRUCTURE (locked): ${project.universe?.episodeStructure ?? ''}
+
+CAST — only these characters may speak:
+${cast.map((c: any) => `- ${c.name} (${c.role}): ${c.personality} Voice: ${c.voiceStyle}`).join('\n')}
+
+STORY SPINE (turn this into spoken lines):
+Hook: ${storyArc.beat_1_hook}
+Context: ${storyArc.beat_2_context}
+Surprise: ${storyArc.beat_3_surprise}
+Insight: ${storyArc.beat_4_insight}
+CTA: ${storyArc.beat_5_cta}
+
+HARD RULES:
+1. Every narration field is SPOKEN DIALOGUE by exactly one character, written as "NAME: line".
+   Example: "RAVI: Staging environment unreachable."
+2. Use the character names from the cast above, uppercase, followed by a colon. Never invent characters.
+3. Never write about the characters in third person, and never address the viewer as "you" except in the final CTA scene.
+4. Keep lines short and speakable — this is a speech bubble, not a paragraph. Max 15 words.
+5. Match each character's personality and voice from the cast list.
+6. Emotion and reaction carry the comedy. Do not explain the joke.
+7. One scene per beat, in the order the locked episode structure gives. Do not add scenes beyond the beats.
+8. At most ONE scene may be wordless (the reaction beat) — write "" for its narration. Every other scene, including the last, must have a spoken line.
+9. Visual fields: describe the characters by name, what their faces are doing, and the environment. NEVER written text, numbers, labels, charts, signs, or UI screenshots — rendered text gets clipped by the vertical crop and fights the burned-in captions.
+
+LENGTH — this is a hard constraint, not a target:
+- The "duration" values across ALL scenes MUST sum to exactly ${durationSeconds} seconds. Add them up before you answer.
+- About ${targetWords} spoken words in total (${durationSeconds}s at 2.5 words/sec). Under is better than over.
+
+Output ONLY valid JSON:
+{
+  "rawScript": "Full spoken text joined together.",
+  "scenes": [
+    {
+      "narration": "NAME: the spoken line for this scene.",
+      "visual": "Who is on screen, their expression, the environment, the lighting.",
+      "duration": 3,
+      "order": 0
+    }
+  ]
+}`
+      : `You are writing narration for a YouTube Short about: "${project.topic}"
+
+STORY SPINE (expand this into a full script):
+Hook: ${storyArc.beat_1_hook}
+Context: ${storyArc.beat_2_context}
+Surprise: ${storyArc.beat_3_surprise}
+Insight: ${storyArc.beat_4_insight}
+CTA: ${storyArc.beat_5_cta}
+
+HARD RULES — every sentence must follow ALL of these:
+1. Max 15 words per sentence. Count before writing.
+2. Write as if speaking to ONE person, not an audience.
+3. No sentence starts with "This", "The", "It", "In this video", or "Today".
+4. Use contractions: you're, it's, that's, here's, don't, can't.
+5. No passive voice. Not "is used by" — say "people use".
+6. No definition openings. Not "${project.topic} is a..." — start with action or consequence.
+7. One idea per sentence.
+8. Include at least one moment that makes the viewer think "wait, really?" — a genuine surprise.
+9. Conversational, not academic. Sound like a person, not a textbook.
+
+SCENE REQUIREMENTS:
+- Scene 1: Use the hook verbatim as the OPENING LINE, then expand the hook's idea.
+- Scene 2: Beat 2 — context. Why now.
+- Scene 3: Beat 3 — the surprise or counterintuitive fact.
+- Scene 4: Beat 4 — simple explanation with analogy.
+- Scene 5+: Expand naturally. More detail, examples, or mini-story.
+- Final scene: Beat 5 — CTA that leaves them wanting more.
+- Every narration field: AT LEAST 20 words. Never one-sentence scenes.
+- Visual fields: objects, scenes, atmosphere only — NEVER written text, numbers, labels, charts with figures, signs, or UI screenshots in the image. Rendered text gets clipped by the vertical crop and fights the burned-in captions. Convey data through visual metaphor (scale, glow, contrast) instead.
+
+TARGET: ${targetWords} total words across ALL scenes (${targetLength} at 2.5 words/sec).
+
+Output ONLY valid JSON:
+{
+  "rawScript": "Full spoken text joined together.",
+  "scenes": [
+    {
+      "narration": "Spoken text for this scene. At least 20 words. Sounds like a person talking.",
+      "visual": "Detailed cinematic description — tech/AI visual relevant to the narration. Specific. No people unless needed. No written text or numbers anywhere in the image.",
+      "duration": 5,
+      "order": 0
+    }
+  ]
+}`;
+
+    console.log(`[ScriptwriterAgent] ${isCharacterEpisode ? `Dialogue mode (${cast.length} characters)` : 'Conversational mode'} — topic: ${project.topic}, target: ${targetWords} words`);
+
+    try {
+      const response = await AIService.generateText(prompt, { task: 'script' });
+      let parsed: any;
+      try {
+        parsed = JSON.parse(response);
+      } catch {
+        const jsonStr = response.replace(/```json\n?|```/g, '').trim();
+        const firstBrace = jsonStr.indexOf('{');
+        const lastBrace = jsonStr.lastIndexOf('}');
+        if (firstBrace === -1 || lastBrace === -1) throw new Error('Malformed JSON');
+        let cleaned = jsonStr.substring(firstBrace, lastBrace + 1).replace(/,(\s*[}\]])/g, '$1');
+        parsed = JSON.parse(cleaned);
+      }
+
+      const scenes: any[] = parsed.scenes || [];
+      const totalWords = scenes.reduce((sum: number, s: any) =>
+        sum + (s.narration || '').split(' ').filter(Boolean).length, 0);
+      console.log(`[ScriptwriterAgent] Conversational: ${totalWords} words / target ${targetWords}`);
+
+      return { rawScript: parsed.rawScript || '', scenes };
+    } catch (e) {
+      console.error('[ScriptwriterAgent] Conversational mode failed:', e);
+      throw e;
+    }
+  },
+
+  _writeLegacy: async (project: Project, plan: DirectorPlan) => {
     console.log(`[ScriptwriterAgent] Narrative arc: ${plan.narrative_arc}`);
     
     const characterContext = project.world_entities?.characters?.length 
@@ -16,11 +156,7 @@ export const ScriptwriterAgent = {
 
     const targetLength = project.settings?.targetLength || '60s';
     const wordsPerSecond = 2.5;
-    const durationSeconds =
-      targetLength === '30s' ? 30 :
-      targetLength === '60s' ? 60 :
-      targetLength === '3m'  ? 180 :
-      targetLength === '5m'  ? 300 : 60;
+    const durationSeconds = targetLengthSeconds(targetLength);
     const targetWords = Math.round(durationSeconds * wordsPerSecond);
 
     const prompt = `You are a professional Video Scriptwriter and Narrative Designer.

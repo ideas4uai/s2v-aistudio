@@ -4,15 +4,20 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "cross-env NODE_ENV=development PORT=3001 tsx server.ts",
+    "dev:web": "vite",
     "render": "cross-env NODE_ENV=production DISABLE_FIRESTORE=true USE_METRO_V4=true tsx server.ts",
     "render:doraemon": "cross-env NODE_ENV=production DISABLE_FIRESTORE=true USE_METRO_V4=true USE_DORAEMON=true tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "lint": "eslint . --ext ts,tsx,rules --report-unused-disable-directives --max-warnings 0",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "start": "node dist/server.cjs",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@fal-ai/client": "^1.10.1",
     "@google/genai": "^1.50.0",
     "@supabase/supabase-js": "^2.105.4",
@@ -42,6 +47,7 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@firebase/eslint-plugin-security-rules": "^0.0.2",
     "@types/express": "^4.17.21",
     "@types/ffprobe-static": "^2.0.3",
     "@types/react": "^18.2.64",
@@ -58,6 +64,7 @@
     "globals": "^17.5.0",
     "tsx": "^4.7.1",
     "typescript": "^5.2.2",
-    "vite": "^5.1.6"
+    "vite": "^5.1.6",
+    "vitest": "^4.1.10"
   }
 }

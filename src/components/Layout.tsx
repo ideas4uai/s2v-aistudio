@@ -17,8 +17,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <span className="font-bold text-xl tracking-tight text-neutral-900 hidden sm:block">Script2Video</span>
           </Link>
+          <Link to="/content-studio" className="ml-4 hidden rounded-lg px-3 py-2 text-sm font-semibold text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-indigo-600 md:block">
+            AI Content Studio
+          </Link>
+          <Link to="/voice-studio" className="hidden rounded-lg px-3 py-2 text-sm font-semibold text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-indigo-600 md:block">
+            Voice Studio
+          </Link>
 
-          <nav className="flex items-center gap-4">
+          <nav className="ml-auto flex items-center gap-4">
             {user ? (
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 bg-neutral-100 px-3 py-1.5 rounded-full border border-neutral-200">

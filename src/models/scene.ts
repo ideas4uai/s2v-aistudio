@@ -69,6 +69,11 @@ export interface Scene {
   timeline?: VisualSegment[];
   duration_target: number;
   duration_actual: number | null;
+  // Audible speech span measured off the assembled segment. Captions lay out across
+  // this, not across duration_actual — the segment also contains the target-length
+  // hold and apad tail, which carry no words. See detectSpeechSpan().
+  speech_start?: number;
+  speech_end?: number;
   audio_hash?: string;
   asset_type: AssetType;
   motion_instruction: string | null;

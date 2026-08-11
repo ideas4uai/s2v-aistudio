@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, Sparkles, Layout, BookOpen } from 'lucide-react';
-import { VoiceCloner } from '../components/VoiceCloner';
 import { authenticatedFetch } from '../utils/api';
+import { VoicePicker } from '../components/VoicePicker';
 
 export function CreateProject() {
   const navigate = useNavigate();
@@ -22,7 +22,6 @@ export function CreateProject() {
     title: '',
     description: '',
     script: '',
-    referenceImages: [] as string[],
     settings: {
       aspectRatio: '16:9',
       targetLength: '60s',
@@ -73,30 +72,6 @@ export function CreateProject() {
         visualStyle: template.visualStyle,
         voiceStyle: template.voiceStyle,
       }
-    }));
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-
-    const newImages: string[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const reader = new FileReader();
-      const base64 = await new Promise<string>((resolve) => {
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(file);
-      });
-      newImages.push(base64);
-    }
-    setFormData(prev => ({ ...prev, referenceImages: [...prev.referenceImages, ...newImages] }));
-  };
-
-  const removeImage = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      referenceImages: prev.referenceImages.filter((_, i) => i !== index)
     }));
   };
 
@@ -358,29 +333,6 @@ export function CreateProject() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-neutral-700 mb-2">Reference Images / Sketches (Optional)</label>
-                <div className="flex flex-wrap gap-4">
-                  {formData.referenceImages.map((img, idx) => (
-                    <div key={idx} className="relative w-24 h-24 rounded-lg overflow-hidden border border-neutral-200 group">
-                      <img src={img} alt="Reference" className="w-full h-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => removeImage(idx)}
-                        className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <span className="sr-only">Remove</span>
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                  <label className="w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed border-neutral-300 rounded-lg cursor-pointer hover:border-indigo-500 hover:bg-neutral-50 transition-all">
-                    <span className="text-2xl text-neutral-400">+</span>
-                    <span className="text-[10px] text-neutral-500 font-bold uppercase">Upload</span>
-                    <input type="file" multiple accept="image/*" className="hidden" onChange={handleFileChange} />
-                  </label>
-                </div>
-              </div>
             </>)}
           </div>
 
@@ -450,22 +402,9 @@ export function CreateProject() {
                   }
                 >
                   <option value="en">English</option>
-                  <option value="hi">Hindi</option>
-                  <option value="te">Telugu</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-neutral-700 mb-2">Resolution</label>
-                <select
-                  className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white font-medium"
-                  value={formData.settings.exportResolution}
-                  onChange={(e) =>
-                    setFormData({ ...formData, settings: { ...formData.settings, exportResolution: e.target.value } })
-                  }
-                >
-                  <option value="1080p">1080p Full HD</option>
-                  <option value="4k">4K Ultra HD</option>
+                  <option value="hi">Hindi (हिन्दी)</option>
+                  <option value="te">Telugu (తెలుగు)</option>
+                  <option value="es">Spanish (Español)</option>
                 </select>
               </div>
 
@@ -566,37 +505,17 @@ export function CreateProject() {
               </div>
 
               {projectType !== 'story_episode' && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-bold text-neutral-700 mb-2">Voice Style</label>
-                  <select
-                    className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
-                    value={formData.settings.voiceStyle}
-                    onChange={(e) =>
-                      setFormData({ ...formData, settings: { ...formData.settings, voiceStyle: e.target.value } })
-                    }
-                  >
-                    <option value="professional">Professional & Clear</option>
-                    <option value="energetic">Energetic & Upbeat</option>
-                    <option value="dramatic">Dramatic & Deep</option>
-                    <option value="casual">Casual & Conversational</option>
-                    <option value="custom">Custom Cloned Voice</option>
-                  </select>
-                </div>
-
-                {formData.settings.voiceStyle === 'custom' && (
-                  <VoiceCloner
-                    onVoiceCloned={(voiceId, name) => {
-                      setFormData(prev => ({
-                        ...prev,
-                        settings: {
-                          ...prev.settings,
-                          customVoiceId: voiceId
-                        }
-                      }));
-                    }}
-                  />
-                )}
+              <div>
+                <label className="block text-sm font-bold text-neutral-700 mb-2">Voice</label>
+                <VoicePicker
+                  value={{
+                    voiceStyle: formData.settings.voiceStyle,
+                    clonedVoiceId: (formData.settings as any).clonedVoiceId,
+                  }}
+                  onChange={(v) =>
+                    setFormData({ ...formData, settings: { ...formData.settings, ...v } })
+                  }
+                />
               </div>
               )}
 
@@ -615,6 +534,7 @@ export function CreateProject() {
                   <option value="3d">3D Rendered</option>
                   <option value="watercolor">Watercolor Illustration</option>
                   <option value="cyberpunk">Cyberpunk / Neon</option>
+                  <option value="minimalist">Minimalist / Flat</option>
                 </select>
               </div>
               )}

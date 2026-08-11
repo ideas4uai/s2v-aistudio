@@ -1,10 +1,10 @@
 /**
  * One-time seed: creates "Universe of NULL — EP2: NULL" with 8 scenes.
- * Run: DISABLE_FIRESTORE=true npx tsx scripts/seed_ep2b.ts
+ * Run: npx tsx scripts/seed_ep2b.ts
  *
- * bg01/bg02/bg04 are already uploaded to Supabase from the pilot project.
- * bg05 is uploaded here on first run (upsert=true, safe to re-run).
- * Project saves to the in-memory store (DISABLE_FIRESTORE=true).
+ * All 4 backgrounds are uploaded fresh to EP2's own Supabase project path.
+ * Safe to re-run: patches background_url values if they still reference the
+ * pilot project, no-ops if the project is already fully correct.
  */
 import 'dotenv/config';
 import fs from 'fs';
@@ -13,25 +13,12 @@ import { requestContext } from '../src/server/utils/context.js';
 import { FirestoreService } from '../src/server/db/firestore.js';
 import { v4 as uuidv4 } from 'uuid';
 
-const UNIVERSE_ID  = 'd858e28f-4b72-45d7-a32c-18cdc8bf9a19';
-const PROJECT_ID   = 'a3f7c2d1-8b4e-4e90-9c1a-2d5f3e7b6c8d';  // stable across re-runs
-const PILOT_PRJ_ID = 'fd49ccfb-212b-4856-be9c-f82bf13bbd81';   // pilot uploads live here
-const SUPABASE_BASE = process.env.SUPABASE_URL || '';
-const BUCKET       = 'aivideogen';
-
-function pilotBgUrl(file: string): string {
-  return `${SUPABASE_BASE}/storage/v1/object/public/${BUCKET}/projects/${PILOT_PRJ_ID}/backgrounds/pilot/${file}`;
-}
-
-// Pre-uploaded from pilot run — safe to hardcode
-const BG_URLS = {
-  bg01: pilotBgUrl('bg01_black_void.png'),
-  bg02: pilotBgUrl('bg02_bedroom.png'),
-  bg04: pilotBgUrl('bg04_street_day.png'),
-} as const;
+const UNIVERSE_ID   = 'd858e28f-4b72-45d7-a32c-18cdc8bf9a19';
+const PROJECT_ID    = 'a3f7c2d1-8b4e-4e90-9c1a-2d5f3e7b6c8d';  // stable across re-runs
+// Kept only for detecting stale pilot-project references in existing scenes:
+const PILOT_PRJ_ID  = 'fd49ccfb-212b-4856-be9c-f82bf13bbd81';
 
 const ASSETS_DIR = path.join(process.cwd(), 'assets', 'backgrounds');
-const BG05_FILE  = path.join(ASSETS_DIR, 'bg05_holographic_ui.png');
 
 // ---------------------------------------------------------------------------
 // EP2b scene data
@@ -119,49 +106,100 @@ const EP2B_SCENES = [
   },
 ];
 
-async function uploadBg05(): Promise<string> {
-  if (!fs.existsSync(BG05_FILE)) {
-    throw new Error(`bg05 not found locally: ${BG05_FILE}`);
+// ---------------------------------------------------------------------------
+// Upload a background file to EP2's own Supabase project path
+// ---------------------------------------------------------------------------
+async function uploadBg(filename: string): Promise<string> {
+  const localPath = path.join(ASSETS_DIR, filename);
+  if (!fs.existsSync(localPath)) {
+    throw new Error(`Background not found locally: ${localPath}`);
   }
-  const kb = Math.round(fs.statSync(BG05_FILE).size / 1024);
-  console.log(`[Seed] bg05_holographic_ui.png (${kb}KB) — uploading to Supabase...`);
-  const buffer = fs.readFileSync(BG05_FILE);
+  const kb = Math.round(fs.statSync(localPath).size / 1024);
+  console.log(`[Seed] ${filename} (${kb}KB) — uploading under EP2 project...`);
+  const buffer = fs.readFileSync(localPath);
   const url = await FirestoreService.uploadAsset(
-    PILOT_PRJ_ID,
-    'backgrounds/pilot/bg05_holographic_ui.png',
+    PROJECT_ID,
+    `backgrounds/${filename}`,
     buffer,
     'image/png',
   );
-  console.log(`[Seed] bg05 -> ${url}`);
+  console.log(`[Seed]   -> ${url}`);
   return url;
+}
+
+// ---------------------------------------------------------------------------
+// Upload all backgrounds and return a bg_key → URL map
+// ---------------------------------------------------------------------------
+async function uploadAllBackgrounds(): Promise<Record<string, string>> {
+  console.log('[Seed] Uploading all backgrounds to EP2 project path...');
+  const [bg01, bg02, bg04, bg05] = await Promise.all([
+    uploadBg('bg01_black_void.png'),
+    uploadBg('bg02_bedroom.png'),
+    uploadBg('bg04_street_day.png'),
+    uploadBg('bg05_holographic_ui.png'),
+  ]);
+  return { bg01, bg02, bg04, bg05 };
 }
 
 async function main() {
   await requestContext.run({ token: '__dev__' }, async () => {
 
     // ── Step 1: verify Supabase URL is configured ───────────────────────────
-    if (!SUPABASE_BASE) {
-      console.error('[Seed] SUPABASE_URL is not set — cannot build background URLs or upload bg05.');
+    const supabaseBase = process.env.SUPABASE_URL || '';
+    if (!supabaseBase) {
+      console.error('[Seed] SUPABASE_URL is not set — cannot upload backgrounds.');
       process.exit(1);
     }
-    console.log('[Seed] Supabase:', SUPABASE_BASE);
+    console.log('[Seed] Supabase:', supabaseBase);
 
-    // ── Step 2: upload bg05 to Supabase (upsert — idempotent) ───────────────
-    let bg05Url: string;
-    try {
-      bg05Url = await uploadBg05();
-    } catch (e: any) {
-      console.error('[Seed] FATAL: bg05 upload failed —', e.message);
-      process.exit(1);
+    // ── Step 2: check for existing project ──────────────────────────────────
+    console.log('[Seed] Checking for existing project', PROJECT_ID, '...');
+    const existing: any = await FirestoreService.getProject(PROJECT_ID);
+
+    if (existing && (existing.scenes || []).length > 0) {
+      const staleScenes = (existing.scenes as any[]).filter(s =>
+        (s.background_url || '').includes(PILOT_PRJ_ID));
+
+      if (staleScenes.length === 0) {
+        console.log('[Seed] Project already seeded with correct EP2 URLs — nothing to do.');
+        console.log('[Seed] Project ID:', PROJECT_ID);
+        return;
+      }
+
+      // ── Patch path: update stale background_url values ───────────────────
+      console.log(`[Seed] Found ${staleScenes.length} scenes with pilot-project URLs — patching...`);
+      const allUrls = await uploadAllBackgrounds();
+      console.log('[Seed] Background URLs:');
+      for (const [k, v] of Object.entries(allUrls)) {
+        console.log(`  ${k}: ${v}`);
+      }
+
+      const patchedScenes = (existing.scenes as any[]).map((s: any) => {
+        const sceneData = EP2B_SCENES[s.order];
+        if (!sceneData) return s;
+        return { ...s, background_url: allUrls[sceneData.bg_key] };
+      });
+
+      await FirestoreService.saveProject({ ...existing, scenes: patchedScenes });
+      console.log('[Seed] Patch complete — all scenes now reference EP2 project path.');
+      patchedScenes.forEach((s: any) => {
+        const bg = EP2B_SCENES[s.order]?.bg_key ?? '?';
+        console.log(
+          `  Scene ${(s.order + 1).toString().padStart(2, '0')}: ${bg} -> ${s.background_url?.slice(-40)}`
+        );
+      });
+      console.log('[Seed] Project ID:', PROJECT_ID);
+      return;
     }
 
-    const ALL_URLS = { ...BG_URLS, bg05: bg05Url };
+    // ── Step 3: fresh seed ───────────────────────────────────────────────────
+    const allUrls = await uploadAllBackgrounds();
     console.log('[Seed] Background URLs:');
-    for (const [k, v] of Object.entries(ALL_URLS)) {
+    for (const [k, v] of Object.entries(allUrls)) {
       console.log(`  ${k}: ${v}`);
     }
 
-    // ── Step 3: load universe ───────────────────────────────────────────────
+    // ── Step 4: load universe ────────────────────────────────────────────────
     console.log('\n[Seed] Loading universe', UNIVERSE_ID, '...');
     let universe: any;
     try {
@@ -171,22 +209,13 @@ async function main() {
         console.log('[Seed] Universe found:', universe.name || UNIVERSE_ID);
         console.log('[Seed] Characters:', (universe.characters || []).map((c: any) => c.name).join(', '));
       } else {
-        console.warn('[Seed] Universe not found in dev-user list — project saved without universe data');
+        console.warn('[Seed] Universe not found — project saved without universe data');
       }
     } catch (e: any) {
       console.warn('[Seed] Could not list universes:', e.message);
     }
 
-    // ── Step 4: abort if already seeded ────────────────────────────────────
-    console.log('[Seed] Checking for existing project', PROJECT_ID, '...');
-    const existing: any = await FirestoreService.getProject(PROJECT_ID);
-    if (existing && (existing.scenes || []).length > 0) {
-      console.log('[Seed] Project already has', existing.scenes.length, 'scenes — aborting (no overwrite).');
-      console.log('[Seed] Project ID:', PROJECT_ID);
-      return;
-    }
-
-    // ── Step 5: featured character IDs from universe ─────────────────────
+    // ── Step 5: featured character IDs from universe ─────────────────────────
     const ep2Chars = new Set(['veer', 'nova', 'byte']);
     const featuredCharacterIds: string[] = universe
       ? (universe.characters || [])
@@ -198,7 +227,7 @@ async function main() {
       console.log('[Seed] Featured character IDs:', featuredCharacterIds);
     }
 
-    // ── Step 6: build 8 scene objects ───────────────────────────────────────
+    // ── Step 6: build 8 scene objects ────────────────────────────────────────
     const scenes = EP2B_SCENES.map(s => ({
       scene_id: uuidv4(),
       projectId: PROJECT_ID,
@@ -211,7 +240,7 @@ async function main() {
       caption_text: s.narration_text,
       background_prompt: undefined,
       background_path: undefined,
-      background_url: ALL_URLS[s.bg_key],
+      background_url: allUrls[s.bg_key],
       background_generated: true,   // skip Imagen 4 — backgrounds are pre-supplied
       duration_target: s.duration_target,
       status: 'pending',
@@ -232,7 +261,7 @@ async function main() {
       transition_type: 'hard_cut',
     }));
 
-    // ── Step 7: build project document ──────────────────────────────────────
+    // ── Step 7: build project document ───────────────────────────────────────
     const project: any = {
       project_id: PROJECT_ID,
       id: PROJECT_ID,
@@ -257,10 +286,10 @@ async function main() {
       updatedAt: new Date().toISOString(),
     };
 
-    // ── Step 8: save to store ────────────────────────────────────────────────
+    // ── Step 8: save to store ─────────────────────────────────────────────────
     console.log('\n[Seed] Saving project with', scenes.length, 'scenes...');
     await FirestoreService.saveProject(project);
-    console.log('[Seed] ✓ Project saved successfully!');
+    console.log('[Seed] Project saved successfully!');
     console.log('');
     scenes.forEach(s => {
       const bg = EP2B_SCENES[s.order].bg_key;
@@ -274,9 +303,7 @@ async function main() {
     console.log('');
     console.log(`  Total duration: ${totalDuration}s (~${Math.round(totalDuration / 60)} min)`);
     console.log('');
-    console.log('[Seed] ─────────────────────────────────────────────────────');
     console.log('[Seed] Project ID:', PROJECT_ID);
-    console.log('[Seed] ─────────────────────────────────────────────────────');
     console.log('[Seed] Verify with:');
     console.log('  curl http://localhost:3000/api/projects/' + PROJECT_ID);
   });

@@ -1,14 +1,15 @@
 import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { 
-  previewProject, 
-  getProjectTimeline, 
-  generateScript, 
-  generateScenes, 
-  generateSceneAudio, 
-  generateSceneImage, 
-  renderProject, 
+import {
+  previewProject,
+  getProjectTimeline,
+  generateScript,
+  selectHook,
+  generateScenes,
+  generateSceneAudio,
+  generateSceneImage,
+  renderProject,
   getProjectStatus,
   updateSceneNarration,
   updateProjectCharacter,
@@ -26,12 +27,29 @@ import {
 } from '../../controllers/projectController.js';
 import { v4 as uuidv4 } from 'uuid';
 import { toUrl } from '../../utils/path.js';
+import { projectVideoFileName } from '../../utils/filename.js';
 
 import { AIService } from '../../services/aiService.js';
 import { FirestoreService } from '../db/firestore.js';
-import { loadProject } from '../../pipeline/orchestrator.js';
+import { loadProject, saveProjectState, listLocalProjects } from '../../pipeline/orchestrator.js';
 
 export const projectsRouter = Router();
+
+/**
+ * The UI only ever sends these nested under `settings`, but the pipeline reads
+ * them at the TOP level of the project (directorAgent/scriptwriterAgent prompts,
+ * orchestrator cache keys). Without this mapping they are `undefined` in every
+ * prompt. Defaults mirror the fallbacks in orchestrator.loadProject.
+ */
+export function pipelineFieldsFromSettings(settings: any) {
+  const s = settings || {};
+  return {
+    mode: s.aspectRatio === '9:16' || s.exportMode === 'shorts' ? 'shorts' : 'long',
+    style_profile: s.styleProfile || 'cinematic',
+    hook_strategy: s.hookStrategy || 'default',
+    pacing_intensity: s.pacingIntensity || 'moderate',
+  };
+}
 
 projectsRouter.get('/test_ai', async (req, res) => {
    try {
@@ -56,6 +74,7 @@ projectsRouter.post('/clear-ai-quota', (req, res) => {
   AIService.clearQuotaFlags();
   res.json({ message: 'AI quota flags cleared. All models will be retried on next operation.' });
 });
+
 
 projectsRouter.post('/:id/retry-failed-assets', async (req, res) => {
   const { id } = req.params;
@@ -91,11 +110,36 @@ projectsRouter.get('/', async (req, res) => {
     if (!uid) {
         return res.json([]);
     }
-    const allProjects = await FirestoreService.getProjects(uid) || [];
+
+    // Locally-stored projects first. In DISABLE_FIRESTORE mode every render writes
+    // here and nowhere else, so querying only Firestore made them invisible on the
+    // dashboard even though loadProject() resolves them fine (hence: openable by
+    // direct URL, absent from the list).
+    const localProjects = listLocalProjects();
+
+    // Firestore may still hold projects from cloud-mode sessions. Show both rather
+    // than hiding either set — but never let a Firestore outage empty the dashboard
+    // of local work, which is what the previous unguarded call did.
+    let remoteProjects: any[] = [];
+    try {
+      remoteProjects = (await FirestoreService.getProjects(uid)) || [];
+    } catch (remoteErr: any) {
+      console.warn('[Projects] Firestore list unavailable — showing local projects only:', remoteErr?.message);
+    }
+
+    // Same precedence as loadProject: a local copy wins over the remote one.
+    const byId = new Map<string, any>();
+    for (const p of remoteProjects) byId.set(p.id || p.project_id, p);
+    for (const p of localProjects) byId.set(p.project_id!, p);
+
+    const allProjects = [...byId.values()];
     const mappedProjects = allProjects.map((p: any) => {
       const charDesc = (p as any).characterDescription || (p as any).character_description || '';
       return {
         ...p,
+        // The dashboard navigates on `id`; locally-stored records only reliably carry
+        // `project_id`, and a card without an id is a dead tile.
+        id: p.id || p.project_id,
         output_path: toUrl(p.output_path || ''),
         previewVideoPath: toUrl(p.previewVideoPath || ''),
         character_description: charDesc,
@@ -136,14 +180,14 @@ projectsRouter.get('/:id', async (req, res) => {
       world_entities: project.world_entities || project.worldEntities || { characters: [], locations: [], objects: [] },
       scenes: (project.scenes || []).map((s: any) => ({
         id: s.scene_id || s.id,
-        order: s.order || s.orderIndex,
+        order: s.order ?? s.orderIndex ?? 0,
         duration: s.duration_target || s.duration,
         narration_text: s.narration_text || s.narrationText,
         visual_prompt: s.visuals?.[0]?.prompt || s.visualPrompt,
         character: s.character || 'NARRATOR',
         emotion: s.emotion || 'neutral',
-        scene_type: (s as any).scene_type || 'street',
-        image_path: toUrl(s.visuals?.[0]?.rendered_path || s.preview_path || ''),
+        scene_type: (s as any).scene_type || '',
+        image_path: toUrl(s.visuals?.[0]?.asset_path || s.visuals?.[0]?.rendered_path || s.preview_path || ''),
         audio_path: toUrl(s.narration_path || ''),
         preview_path: toUrl(s.preview_path || ''),
         segment_path: toUrl(s.segment_path || ''),
@@ -187,7 +231,7 @@ projectsRouter.delete('/:id', async (req, res) => {
 
 projectsRouter.post('/', async (req, res) => {
   const {
-    title, description, script, settings, referenceImages,
+    title, description, script, settings,
     projectType, universe, universeId, episodeNumber,
     featuredCharacterIds, featuredLocationId
   } = req.body;
@@ -208,7 +252,7 @@ projectsRouter.post('/', async (req, res) => {
       description,
       script,
       settings: settings || {},
-      referenceImages: referenceImages || [],
+      ...pipelineFieldsFromSettings(settings),
       status: 'draft',
       characterDescription: '',
       worldEntities: { characters: [], locations: [], objects: [] },
@@ -225,7 +269,11 @@ projectsRouter.post('/', async (req, res) => {
     if (featuredLocationId) newProject.featuredLocationId = featuredLocationId;
     
     console.log(`[API] Creating project: ${id} - ${title}`);
-    await FirestoreService.saveProject(newProject);
+    if (process.env.DISABLE_FIRESTORE === 'true') {
+      await saveProjectState(newProject as any);
+    } else {
+      await FirestoreService.saveProject(newProject);
+    }
     res.status(201).json(newProject);
   } catch (error) {
     console.error('Error creating project:', error);
@@ -235,6 +283,7 @@ projectsRouter.post('/', async (req, res) => {
 
 // Pipeline actions
 projectsRouter.post('/:id/generate-script', generateScript);
+projectsRouter.post('/:id/select-hook', selectHook);
 projectsRouter.post('/:id/generate-scenes', generateScenes);
 projectsRouter.post('/:id/scenes/batch', createScenesBatch);
 projectsRouter.patch('/:id/script', updateProjectScript);
@@ -271,7 +320,15 @@ projectsRouter.patch('/:id/music', async (req, res) => {
 
 projectsRouter.get('/:id/download', async (req, res) => {
   try {
-    const project: any = await FirestoreService.getProject(req.params.id);
+    // loadProject, NOT FirestoreService.getProject: in DISABLE_FIRESTORE mode the
+    // project exists only in the local store, so going straight to Firestore returned
+    // null and every download 404'd with "please re-render" on a perfectly good video.
+    let project: any;
+    try {
+      project = await loadProject(req.params.id);
+    } catch {
+      return res.status(404).json({ error: 'Video not found, please re-render' });
+    }
     if (!project || !project.output_path) {
       return res.status(404).json({ error: 'Video not found, please re-render' });
     }
@@ -280,16 +337,21 @@ projectsRouter.get('/:id/download', async (req, res) => {
       return res.json({ downloadUrl: project.output_path });
     }
 
-    const filePath = path.isAbsolute(project.output_path) 
-      ? project.output_path 
-      : path.join(process.cwd(), project.output_path);
+    // output_path is written as an absolute path by the renderer but served to the UI
+    // as a root-relative URL ("/outputs/x.mp4"), and older records may carry either —
+    // so strip the leading slash before joining or path.join discards the cwd.
+    const stored = project.output_path.replace(/\\/g, '/');
+    const filePath = path.isAbsolute(stored)
+      ? stored
+      : path.join(process.cwd(), stored.replace(/^\/+/, ''));
 
     if (!fs.existsSync(filePath)) {
        return res.status(404).send('Physical file not found on server.');
     }
 
-    const fileName = (project.title || project.topic) ? `${(project.title || project.topic).replace(/[^a-z0-9]/gi, '_')}.mp4` : 'video.mp4';
-    
+    // Match the on-disk naming scheme so the downloaded file and the server file agree.
+    const fileName = projectVideoFileName(project.title || project.topic, project.project_id || req.params.id);
+
     // In AI Studio environment, we should try to set explicit cache control for downloads
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.setHeader('Content-Type', 'video/mp4');

@@ -23,9 +23,12 @@ import { getScenesToRender } from '../utils/diff.js';
 import { getFromCache } from '../services/cacheService.js';
 import { logUserEvent } from '../services/logService.js';
 import { buildSceneTimeline } from '../utils/timeline.js';
+import { targetLengthSeconds, planScenePadding, MAX_PAD_FACTOR } from '../utils/targetLength.js';
+import { projectVideoFileName } from '../utils/filename.js';
 import { QuotaService } from '../server/services/quotaService.js';
 import { AIService } from '../services/aiService.js';
 import { FirestoreService } from '../server/db/firestore.js';
+import { storageMode } from '../services/sceneImageStore.js';
 import { createClient } from '@supabase/supabase-js';
 import { DirectorAgent } from './agents/directorAgent.js';
 import { ScriptwriterAgent } from './agents/scriptwriterAgent.js';
@@ -33,6 +36,8 @@ import { StoryboardAgent } from './agents/storyboardAgent.js';
 import { WorldAgent } from './agents/worldAgent.js';
 import { abortManager } from './abortManager.js';
 import { requestContext } from '../server/utils/context.js';
+import { persistProjectToDisk, restoreProjectsFromDisk } from './projectDiskStore.js';
+import { seedAnchorsFromProject, recordAnchor, anchorSummary } from './anchorStore.js';
 
 
 const INDIAN_AESTHETIC_SUFFIX = 'South Asian graphic novel illustration style, Hyderabad cyberpunk city 2031, warm terracotta and saffron architecture, teal neon accents, Indian street culture, autorickshaws with holographic overlays, Hindi signage, chai stall neon lights, bold flat colour illustration, Trigger Studio quality, NOT Japanese, NOT manga, NOT Tokyo aesthetic, South Asian urban environment';
@@ -91,6 +96,29 @@ function applyStyleToPrompt(prompt: string, style: StyleProfile): string {
 // Module-level Map persists across requests within a single server process.
 const projectMemoryStore = new Map<string, Project>();
 
+// On startup, re-hydrate ALL projects from disk (completed AND mid-render)
+// so renders survive server restarts when running without Firestore
+// (DISABLE_FIRESTORE=true). Stale local artifact paths are cleared so the
+// pipeline regenerates exactly the missing pieces on resume.
+if (process.env.DISABLE_FIRESTORE === 'true') {
+  for (const _proj of restoreProjectsFromDisk()) {
+    projectMemoryStore.set(_proj.project_id!, _proj);
+    console.log(`[DB] Restored project ${_proj.project_id} from disk (status: ${_proj.status})`);
+  }
+}
+
+/**
+ * Every project held locally (DISABLE_FIRESTORE=true).
+ *
+ * The store is seeded from outputs/*.json at boot and rewritten on every save, so it
+ * is the same set loadProject() resolves against — which is why these projects open
+ * fine by direct URL. They were missing from the dashboard only because the list
+ * endpoint queried Firestore and nothing else.
+ */
+export function listLocalProjects(): Project[] {
+  return [...projectMemoryStore.values()];
+}
+
 export async function loadProject(project_id: string): Promise<Project> {
   // Check in-memory store first (written by saveProjectState when DISABLE_FIRESTORE=true)
   const memProject = projectMemoryStore.get(project_id);
@@ -121,6 +149,29 @@ export async function saveProjectState(project: Project): Promise<void> {
     const pid = project.project_id!;
     projectMemoryStore.set(pid, project);
     console.log(`[DB] DISABLE_FIRESTORE=true — wrote to in-memory store (key: ${pid}, scenes: ${project.scenes?.length ?? 0})`);
+    // Persist on EVERY save (not just completion) so a crash or restart
+    // mid-render resumes from the last stage boundary instead of losing
+    // all per-scene progress held only in memory.
+    try {
+      persistProjectToDisk(project);
+    } catch (e: any) {
+      if (e?.name === 'StaleProjectWriteError') {
+        // Someone else has newer state. Drop our copy rather than stamp over theirs,
+        // and re-seed from disk so this process stops serving the stale version too.
+        console.error(`[DB] STALE WRITE BLOCKED — ${e.message}`);
+        try {
+          const fresh = restoreProjectsFromDisk().find((p) => p.project_id === pid);
+          if (fresh) {
+            projectMemoryStore.set(pid, fresh);
+            console.error(`[DB] Reloaded ${pid} from disk; in-memory copy replaced with the newer one.`);
+          }
+        } catch (reloadErr: any) {
+          console.error(`[DB] Could not reload ${pid} after a blocked write:`, reloadErr?.message);
+        }
+        return;
+      }
+      console.warn(`[DB] Could not persist project JSON:`, e?.message);
+    }
     return;
   }
 
@@ -362,6 +413,11 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       }
     }
 
+    // Restore character anchors persisted by a previous run so characters
+    // stay visually consistent across re-renders and follow-up requests
+    // (the Map above is per-run and starts empty on every call).
+    seedAnchorsFromProject(project, characterAnchors);
+
     // Allow re-runs from any terminal state — reset to draft so path-clearing runs
     if (project.status === 'completed' || project.status === 'cancelled' || project.status === 'failed') {
       console.log(`[Orchestrator] Resetting project ${project.project_id} from '${project.status}' to 'draft' for re-run.`);
@@ -428,7 +484,9 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
     await updateProgress(project, 'Initializing pipeline...', 5, signal);
 
     // --- PHASE 0: Storage Connectivity Probe ---
-    if (!isTestMode) {
+    if (!isTestMode && storageMode() === 'local') {
+      console.log('[Orchestrator] STORAGE_MODE=local — skipping cloud storage probe');
+    } else if (!isTestMode) {
       try {
         await updateProgress(project, 'Testing cloud connectivity...', 7, signal);
         const probeData = Buffer.from(`probe-${Date.now()}`);
@@ -551,6 +609,10 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
             if (e instanceof Error && e.message === 'PIPELINE_CANCELLED') throw e;
             console.error(`Scene ${scene.scene_id} failed:`, e);
             scene.status = 'failed';
+            // Keep the real reason on the scene — without it the only thing the API
+            // and UI ever see is the generic "asset generation failed", which tells
+            // the user nothing they can act on (e.g. "voice model not installed").
+            scene.error_log = e instanceof Error ? e.message : String(e);
           }
           // Explicitly sync mutated fields back to project.scenes to guard against
           // reference drift (e.g. renderCaptions returning undefined overwrites segment_path).
@@ -559,6 +621,9 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
             (project!.scenes[idx] as any).segment_path = (scene as any).segment_path;
             project!.scenes[idx].status = scene.status;
             (project!.scenes[idx] as any).rendered_path = (scene as any).rendered_path;
+            // Carry the reason too, or the failure that runPipeline reports back to the
+            // UI is always the generic phase message with no cause attached.
+            (project!.scenes[idx] as any).error_log = (scene as any).error_log;
           }
         };
 
@@ -575,11 +640,17 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
           await Promise.all(batch.map(processScene));
         }
 
+        // Persist per-scene progress after each batch so a crash or restart
+        // resumes from here instead of re-running every scene.
+        await guardedSaveProjectState(project, signal);
+
         // Small delay between batches
         if (i + batchSize < scenesToProcess.length) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
+
+      console.log('[Orchestrator] Character anchor summary:', anchorSummary(characterAnchors));
 
       const allAssetsSuccess = project.scenes.every(s => s.status === 'completed' || s.status === 'degraded');
 
@@ -595,7 +666,14 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       } else {
          project.status = 'failed';
          await guardedSaveProjectState(project, signal);
-         throw new Error("Asset generation phase failed for some scenes.");
+         // Surface the first real scene error rather than only the generic phase
+         // message — this string is what lands in project.error_log and the UI.
+         const firstReason = project.scenes.find(s => s.status === 'failed' && s.error_log)?.error_log;
+         throw new Error(
+           firstReason
+             ? `Asset generation phase failed for some scenes. First error: ${firstReason}`
+             : "Asset generation phase failed for some scenes."
+         );
       }
     }
 
@@ -665,13 +743,22 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
      const audioExists = scene.narration_path && !scene.narration_path.startsWith('http') && fs.existsSync(scene.narration_path);
      if (!audioExists) {
         console.log(`[Orchestrator] Generating audio for scene ${scene.scene_id}`);
-        const audioLocal = await withRetry(() => generateSceneAudio(scene, voicePreset, scene.audio_hash!, project.settings), { retries: 2 });
+        // ownerUid rides along with the settings so the TTS layer can check that a
+        // cloned voice belongs to whoever owns this project. Cloned voices are
+        // owner-only, and the render is the last place that can be enforced.
+        const voiceSettings = { ...project.settings, ownerUid: (project as any).userId };
+        const audioLocal = await withRetry(() => generateSceneAudio(scene, voicePreset, scene.audio_hash!, voiceSettings), { retries: 2 });
         console.log(`[Orchestrator] Audio complete for scene ${scene.scene_id}: ${audioLocal ? 'ok' : 'null'}`);
         if (audioLocal) {
            scene.narration_path = audioLocal;
         }
      }
   })();
+  // Started here, awaited ~200 lines below after the visuals run. A rejection in
+  // that gap has no handler attached yet, so Node treats it as unhandled and kills
+  // the server process. This no-op catch marks it handled the moment it exists; the
+  // real error still reaches the Promise.all below and fails the project, not the box.
+  audioPromise.catch(() => {});
 
   console.log('[Orchestrator] Scene character:', (scene as any).character, 'visual referenceUrl:', scene.visuals?.[0]?.referenceImageUrl ? 'SET' : 'NOT SET');
 
@@ -756,26 +843,30 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   if (scene.background_prompt && !scene.background_path && !(scene as any).unified) {
     try {
       const bgArtStyle = (project.universe as any)?.backgroundArtStyle || '';
-      const fullBgPrompt = [scene.background_prompt, INDIAN_AESTHETIC_SUFFIX, bgArtStyle].filter(Boolean).join(', ');
+      const aestheticSuffix = (project as any).universeId
+        ? INDIAN_AESTHETIC_SUFFIX
+        : 'cinematic lighting, clean professional style, suitable for educational content, main subject centered with generous margins on all sides (frame edges will be cropped to 9:16 vertical), absolutely no text, no words, no numbers, no lettering, no typography anywhere in the image';
+      const fullBgPrompt = [scene.background_prompt, aestheticSuffix, bgArtStyle].filter(Boolean).join(', ');
       console.log('[Orchestrator] Background full prompt:', fullBgPrompt.slice(0, 120));
-      const bgBase64 = await AIService.generateImageBase64(fullBgPrompt, { isStoryEpisode: true });
+      const bgBase64 = await AIService.generateImageBase64(fullBgPrompt, { isStoryEpisode: !!(project as any).universeId });
       if (bgBase64) {
         const bgBuffer = Buffer.from(bgBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
         fs.writeFileSync(bgLocalPath, bgBuffer);
         scene.background_path = bgLocalPath;
-        // Upload to Supabase so the path survives server restarts
-        try {
-          const bgUrl = await FirestoreService.uploadAsset(
-            project.project_id!,
-            `backgrounds/${scene.scene_id}_background.png`,
-            bgBuffer,
-            'image/png'
-          );
+        // Upload to Supabase so the path survives server restarts.
+        // Fire-and-forget: render continues on bgLocalPath; background_url lands
+        // in a later saveProjectState via the shared scene reference.
+        FirestoreService.uploadAsset(
+          project.project_id!,
+          `backgrounds/${scene.scene_id}_background.png`,
+          bgBuffer,
+          'image/png'
+        ).then(bgUrl => {
           scene.background_url = bgUrl;
           console.log('[Orchestrator] Background uploaded:', bgUrl.slice(-60));
-        } catch (uploadErr: any) {
-          console.warn('[Orchestrator] Background upload failed (local path kept):', uploadErr?.message);
-        }
+        }).catch((uploadErr: any) => {
+          console.warn('[Storage] Background upload failed (non-blocking, local path kept):', uploadErr?.message);
+        });
         console.log('[Orchestrator] Background generated for scene:', scene.scene_id);
       }
     } catch (bgErr: any) {
@@ -809,12 +900,17 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
        if (scene.background_path && fs.existsSync(scene.background_path)) {
          visual.asset_path = scene.background_path;
          (scene as any).unified = true;
+         visual.status = 'completed';
          console.log('[Orchestrator] NARRATOR scene — using background as full scene, skipping character generation');
-       } else {
-         console.log('[Orchestrator] NARRATOR scene — no background yet, skipping character generation (will render black)');
+         return;
        }
-       visual.status = 'completed';
-       return;
+       // No background: fall through and generate the image from the visual prompt.
+       // Returning here instead left the visual with no asset at all, and the render
+       // stage then failed the scene with no reason attached. Only scenes created
+       // through the editor get a background_prompt (projectController sets one);
+       // StoryboardAgent never does, so every pipeline-created project — i.e. every
+       // standard NARRATOR project — produced a video with no visuals.
+       console.log('[Orchestrator] NARRATOR scene — no background, generating image from the visual prompt');
      }
 
      // Cutout scenes with portrait assets: skip LoRA/Gemini generation —
@@ -863,8 +959,8 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
           visual.asset_path = localAsset;
           if (i === 0 && !localAsset.endsWith('.mp4')) scene.image_path = localAsset;
           // Store as anchor for subsequent scenes of the same character.
-          // Must be a public URL — consumers pass it to fetch() in aiService,
-          // which fails on local file paths.
+          // Prefer the Supabase URL (survives restarts); fall back to the
+          // local file — aiService loads either form via imageRef.
           const sceneCharName = (scene as any).character as string | undefined;
           if (sceneCharName && sceneCharName !== 'NARRATOR' && i === 0 && !localAsset.endsWith('.mp4')) {
             const charKey = sceneCharName + '_' + project.project_id!;
@@ -876,12 +972,14 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
                   fs.readFileSync(localAsset),
                   'image/png'
                 );
-                characterAnchors.set(charKey, anchorUrl);
+                recordAnchor(project, characterAnchors, sceneCharName, anchorUrl);
                 console.log('[Orchestrator] Anchor uploaded for:', sceneCharName, anchorUrl.slice(-50));
               } catch (anchorErr: any) {
-                // Do NOT store the local path — a non-URL anchor poisons the
-                // fetch() in aiService's reference-image path.
-                console.warn('[Orchestrator] Anchor upload failed for:', sceneCharName, anchorErr?.message);
+                // Upload failed — fall back to the local file. aiService loads
+                // references via imageRef (fs for local paths), so a dead
+                // Supabase link no longer drops the anchor entirely.
+                recordAnchor(project, characterAnchors, sceneCharName, localAsset);
+                console.warn('[Orchestrator] Anchor upload failed for:', sceneCharName, '— using local file fallback:', anchorErr?.message);
               }
             }
           }
@@ -889,6 +987,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
      }
      visual.status = 'completed'; // image ready; clip rendered after audio finishes
   }));
+  visualsPromise.catch(() => {}); // same unhandled-rejection guard as audioPromise
 
   // Wait for both Audio and Visuals to finish concurrently
   await Promise.all([audioPromise, visualsPromise]);
@@ -897,6 +996,30 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   const audioDur = (scene.narration_path && fs.existsSync(scene.narration_path))
     ? await getAudioDuration(scene.narration_path) : 0;
   console.log('[Orchestrator] Rendering visuals with audio duration:', audioDur > 0 ? audioDur.toFixed(3) + 's' : 'unknown (using duration_target)');
+
+  // Target-length seam. This is the first point where the scene's real narration
+  // length is known and the last point before the still is encoded — pad here and
+  // the hold costs nothing extra; pad at assembly or stitch and every segment
+  // needs a second re-encode to grow. Scenes render in batches so the other
+  // scenes' audio doesn't exist yet: this scene claims its word-count share of
+  // the project target, which at a uniform speaking rate is identical to padding
+  // every scene by one shared factor.
+  let holdDuration = audioDur;
+  if (audioDur > 0) {
+    const words = (t?: string) => (t || '').trim().split(/\s+/).filter(Boolean).length;
+    const totalWords = project.scenes.reduce((n, s) => n + words(s.narration_text), 0);
+    const target = targetLengthSeconds(project.settings?.targetLength);
+    const share = totalWords > 0 ? target * words(scene.narration_text) / totalWords : 0;
+    const plan = planScenePadding([audioDur], share);
+    holdDuration = plan.durations[0];
+    (scene as any).pad_seconds = Number((holdDuration - audioDur).toFixed(3));
+    if (!plan.reachedTarget) {
+      console.warn(`[TargetLength] Scene ${scene.scene_id} needs ${share.toFixed(1)}s of the requested ${target}s but its narration is only ${audioDur.toFixed(1)}s — capped at ${plan.total.toFixed(1)}s (${MAX_PAD_FACTOR}x narration). Not padding with silence: the script is too short for ${target}s.`);
+    } else if (holdDuration > audioDur) {
+      console.log(`[TargetLength] Scene ${scene.scene_id}: holding still ${(holdDuration - audioDur).toFixed(2)}s past narration (${audioDur.toFixed(2)}s → ${holdDuration.toFixed(2)}s) toward the ${target}s target`);
+    }
+  }
+
   for (const visual of scene.visuals) {
     const existingRendered = (visual as any).rendered_path as string | undefined;
     const isLocalMp4 = !!(existingRendered && existingRendered.endsWith('.mp4') && fs.existsSync(existingRendered));
@@ -909,7 +1032,10 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
     }
     if (!isLocalMp4 && (visual as any).asset_path) {
       if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
-      const renderedLocal = await renderVisualClip(visual, project, signal, scene, audioDur > 0 ? audioDur : undefined);
+      // Ken Burns reads duration_target, the engines read the passed duration —
+      // both must cover the hold or assembleSceneSegment would loop the clip.
+      if (holdDuration > 0) visual.duration_target = holdDuration;
+      const renderedLocal = await renderVisualClip(visual, project, signal, scene, holdDuration > 0 ? holdDuration : undefined);
       if (renderedLocal) (visual as any).rendered_path = renderedLocal;
     } else if (isLocalMp4) {
       console.log('[Orchestrator] Visual already rendered, skipping:', path.basename(existingRendered!));
@@ -926,13 +1052,18 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
      if (!visualRenderedPath || !fs.existsSync(visualRenderedPath)) {
        console.error('[Orchestrator] Visual not rendered for scene:', scene.scene_id, 'rendered_path:', visualRenderedPath);
        scene.status = 'failed';
+       // Without a reason here, project.error_log falls back to the generic "Asset
+       // generation phase failed for some scenes" and the UI shows nothing actionable.
+       scene.error_log = visual?.asset_path
+         ? `Scene visual was never rendered to video (image exists at ${path.basename(String(visual.asset_path))}). The clip render step did not produce a file.`
+         : `No image was generated for this scene, so there was nothing to render. Check the image provider logs — the Visual Style and prompt are set, but no asset was produced.`;
        return;
      }
 
      if (scene.segment_path && fs.existsSync(scene.segment_path)) {
        console.log('[Orchestrator] Reusing segment:', scene.segment_path.slice(-40));
      } else {
-       const sceneRenderedPath = await withRetry(() => assembleSceneSegment(scene, localAudio, scene.cache_key, signal), { retries: 2 });
+       const sceneRenderedPath = await withRetry(() => assembleSceneSegment(scene, localAudio, scene.cache_key, signal, project), { retries: 2 });
        if (sceneRenderedPath) {
           scene.segment_path = sceneRenderedPath;
 
@@ -1002,7 +1133,9 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
     const finalScenes = [];
     const downloadedPaths: string[] = [];
 
-    const aisRendererDir = path.join(os.tmpdir(), 'ais-renderer');
+    // Must match assembleSceneSegment's project-scoped dir. Unscoped, this "recovery"
+    // adopts another project's segments whenever scene ids collide (i.e. after a copy).
+    const aisRendererDir = path.join(os.tmpdir(), 'ais-renderer', project_id);
 
     console.log('[Stitch] Total scenes:', sortedScenes.length);
     for (const scene of sortedScenes) {
@@ -1089,12 +1222,19 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
         }
       }
 
-      const fileName = isPreview ? `${activeProject.project_id}_preview.mp4` : `${activeProject.project_id}.mp4`;
-      
+      // Readable filename: `what-is-a-rest-api-04fa8d80.mp4`, not a bare uuid. Existing
+      // files are never renamed — old projects keep their uuid-named file because their
+      // stored output_path still points at it; only new renders get the new name.
+      const fileName = projectVideoFileName(
+        activeProject.title || activeProject.topic,
+        activeProject.project_id!,
+        isPreview ? '_preview' : '',
+      );
+
       // Save local backup first — survives Supabase failures and server restarts
       const outputsDir = path.join(process.cwd(), 'outputs');
       fs.mkdirSync(outputsDir, { recursive: true });
-      const backupPath = path.join(outputsDir, `${project_id}.mp4`);
+      const backupPath = path.join(outputsDir, fileName);
       try {
         fs.copyFileSync(stitchedVideoPath, backupPath);
         console.log('[Orchestrator] Local backup saved:', backupPath);
@@ -1153,9 +1293,15 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
           await execAsync(thumbCmd, { timeout: 30000 });
           if (fs.existsSync(thumbnailLocal)) {
             const thumbBuffer = await fs.promises.readFile(thumbnailLocal);
-            const thumbUrl = await FirestoreService.uploadAsset(activeProject.project_id!, `${project_id}_thumbnail.jpg`, thumbBuffer, 'image/jpeg');
-            activeProject.thumbnail_path = thumbUrl;
-            console.log('[Orchestrator] Thumbnail saved:', thumbUrl);
+            // Fire-and-forget: don't hold up output_path / finalization on the upload
+            FirestoreService.uploadAsset(activeProject.project_id!, `${project_id}_thumbnail.jpg`, thumbBuffer, 'image/jpeg')
+              .then(thumbUrl => {
+                activeProject.thumbnail_path = thumbUrl;
+                console.log('[Orchestrator] Thumbnail saved:', thumbUrl);
+                // Re-persist: the final saveProjectState usually runs before this upload lands
+                return saveProjectState(activeProject);
+              })
+              .catch((thumbUpErr: any) => console.warn('[Storage] Thumbnail upload failed (non-blocking):', thumbUpErr?.message));
             fs.promises.unlink(thumbnailLocal).catch(() => {});
           }
         } catch (thumbErr) {
@@ -1317,7 +1463,7 @@ export async function regenerateVisual(project_id: string, scene_id: string, vis
       scene.transition_type,
       project.preview_mode
     );
-    const sceneRenderedPath = await withRetry(() => assembleSceneSegment(scene, finalAudioPath, assemblyCacheKey), { retries: 2 });
+    const sceneRenderedPath = await withRetry(() => assembleSceneSegment(scene, finalAudioPath, assemblyCacheKey, undefined, project), { retries: 2 });
     if (sceneRenderedPath) {
       scene.segment_path = sceneRenderedPath;
       scene.rendered_path = sceneRenderedPath;
