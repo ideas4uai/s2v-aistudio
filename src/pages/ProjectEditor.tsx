@@ -5,8 +5,8 @@ import {
   Settings, Clock, Plus, Wand2, Download, AlertCircle, Music, Volume2,
   Edit2, Check, X, User, MapPin, Box, RefreshCw, XCircle, Mic
 } from 'lucide-react';
-import { VoiceCloner } from '../components/VoiceCloner';
 import { authenticatedFetch } from '../utils/api';
+import { projectVideoFileName } from '../utils/filename';
 
 interface Scene {
   id?: string;
@@ -105,6 +105,23 @@ interface Project {
   featuredLocationId?: string;
 }
 
+/**
+ * What the render button says while work is in flight.
+ *
+ * The pipeline spends most of its time generating images and narration, not encoding
+ * video, so a flat "Rendering…" made an asset-generation wait look like a stalled or
+ * failed render. This reuses the orchestrator's own current_action rather than adding a
+ * second progress channel.
+ */
+function renderPhaseLabel(action: string, percent: number): string {
+  const a = (action || '').toLowerCase();
+  if (a.includes('asset') || a.includes('scene batch')) return 'Generating assets...';
+  if (a.includes('stitch')) return 'Stitching video...';
+  if (a.includes('caption')) return 'Burning captions...';
+  if (!action && percent === 0) return 'Starting...';
+  return 'Rendering...';
+}
+
 export function ProjectEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -125,9 +142,6 @@ export function ProjectEditor() {
   const [isUpdatingCharacter, setIsUpdatingCharacter] = useState(false);
   const [isAnalyzingWorld, setIsAnalyzingWorld] = useState(false);
   const [settings, setSettings] = useState<ProjectSettings>({});
-  
-  const [musicEnabled, setMusicEnabled] = useState(true);
-  const [ambientEnabled, setAmbientEnabled] = useState(true);
   
   const [isGeneratingScenes, setIsGeneratingScenes] = useState(false);
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
@@ -291,8 +305,8 @@ export function ProjectEditor() {
 
       setWorldEntities(mergedEntities);
       setSettings(data.settings || {
-        hookStrategy: 'Curiosity',
         exportMode: 'youtube',
+        aspectRatio: '16:9',
         exportResolution: '1080p',
         exportPreset: 'veryfast'
       });
@@ -512,7 +526,8 @@ export function ProjectEditor() {
 
   const handleDownload = async () => {
     if (!project) return;
-    const fileName = project.title ? `${project.title.replace(/[^a-z0-9]/gi, '_')}.mp4` : 'video.mp4';
+    // Same scheme the server writes on disk, so the download matches the render.
+    const fileName = projectVideoFileName(project.title || project.topic, id || '');
     try {
       const res = await authenticatedFetch(`/api/projects/${id}/download`);
       if (!res.ok) {
@@ -811,29 +826,6 @@ export function ProjectEditor() {
               Kill Active Build
             </button>
           )}
-          <div className="flex items-center gap-4 border-r border-neutral-200 pr-6">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={musicEnabled} 
-                onChange={(e) => setMusicEnabled(e.target.checked)}
-                className="rounded text-indigo-600 focus:ring-indigo-500"
-              />
-              <Music className="w-4 h-4 text-neutral-500" />
-              <span className="text-sm font-medium text-neutral-700">Music</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={ambientEnabled} 
-                onChange={(e) => setAmbientEnabled(e.target.checked)}
-                className="rounded text-indigo-600 focus:ring-indigo-500"
-              />
-              <Volume2 className="w-4 h-4 text-neutral-500" />
-              <span className="text-sm font-medium text-neutral-700">Ambient</span>
-            </label>
-          </div>
-          
           <button
             onClick={() => navigate(`/projects/${id}`)}
             className="px-4 py-2 text-sm font-bold text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
@@ -1024,18 +1016,18 @@ export function ProjectEditor() {
                   <h3 className="font-bold text-neutral-900">Video Format</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <button
-                      onClick={() => setSettings({ ...settings, exportMode: 'youtube' })}
+                      onClick={() => saveSettings({ ...settings, exportMode: 'youtube', aspectRatio: '16:9' })}
                       className={`p-4 rounded-xl border-2 flex flex-col items-center gap-2 transition-colors ${
-                        settings.exportMode === 'youtube' ? 'border-indigo-600 bg-indigo-50' : 'border-neutral-200 hover:border-neutral-300'
+                        settings.aspectRatio !== '9:16' && settings.exportMode !== 'shorts' ? 'border-indigo-600 bg-indigo-50' : 'border-neutral-200 hover:border-neutral-300'
                       }`}
                     >
                       <div className="w-12 h-8 bg-neutral-200 rounded border border-neutral-300 flex items-center justify-center text-[10px] font-bold">16:9</div>
                       <span className="font-bold text-sm">YouTube</span>
                     </button>
                     <button
-                      onClick={() => setSettings({ ...settings, exportMode: 'shorts' })}
+                      onClick={() => saveSettings({ ...settings, exportMode: 'shorts', aspectRatio: '9:16' })}
                       className={`p-4 rounded-xl border-2 flex flex-col items-center gap-2 transition-colors ${
-                        settings.exportMode === 'shorts' ? 'border-indigo-600 bg-indigo-50' : 'border-neutral-200 hover:border-neutral-300'
+                        settings.aspectRatio === '9:16' || settings.exportMode === 'shorts' ? 'border-indigo-600 bg-indigo-50' : 'border-neutral-200 hover:border-neutral-300'
                       }`}
                     >
                       <div className="w-8 h-12 bg-neutral-200 rounded border border-neutral-300 flex items-center justify-center text-[10px] font-bold">9:16</div>
@@ -1070,18 +1062,6 @@ export function ProjectEditor() {
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-bold text-neutral-700 mb-2">Motion Intensity</label>
-                    <select 
-                      value={settings.motionIntensity || 'medium'}
-                      onChange={(e) => saveSettings({ ...settings, motionIntensity: e.target.value })}
-                      className="w-full p-3 rounded-xl border border-neutral-300 outline-none focus:ring-2 focus:ring-indigo-500"
-                    >
-                      <option value="low">Low (Subtle)</option>
-                      <option value="medium">Medium (Standard)</option>
-                      <option value="high">High (Dramatic)</option>
-                    </select>
-                  </div>
                 </div>
 
                 {universe ? (
@@ -1099,31 +1079,15 @@ export function ProjectEditor() {
                   </div>
                 ) : (
                 <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6 space-y-4">
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-bold text-neutral-900">Hook Options</h3>
-                    <button className="text-xs font-bold text-indigo-600 hover:text-indigo-700">Generate 3 Options</button>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-neutral-700 mb-2">Hook Strategy</label>
-                    <select
-                      value={settings.hookStrategy || 'Curiosity'}
-                      onChange={(e) => setSettings({ ...settings, hookStrategy: e.target.value })}
-                      className="w-full p-3 rounded-xl border border-neutral-300 outline-none focus:ring-2 focus:ring-indigo-500"
-                    >
-                      <option value="Curiosity">Curiosity</option>
-                      <option value="Dramatic">Dramatic</option>
-                      <option value="Informative">Informative</option>
-                      <option value="Inspirational">Inspirational</option>
-                    </select>
-                  </div>
-
+                  <h3 className="font-bold text-neutral-900">Motion</h3>
                   <div>
                     <label className="block text-sm font-bold text-neutral-700 mb-2">Cinematic Effect</label>
                     <select
-                      value={settings.motionEffect || 'zoom_in'}
+                      value={settings.motionEffect || 'alternate'}
                       onChange={(e) => saveSettings({ ...settings, motionEffect: e.target.value })}
                       className="w-full p-3 rounded-xl border border-neutral-300 outline-none focus:ring-2 focus:ring-indigo-500"
                     >
+                      <option value="alternate">Alternating: Zoom / Pan (default)</option>
                       <option value="still">No Motion</option>
                       <option value="zoom_in">Ken Burns: Zoom In</option>
                       <option value="zoom_out">Ken Burns: Zoom Out</option>
@@ -1482,32 +1446,30 @@ export function ProjectEditor() {
                     <div className="mb-6">
                       <h3 className="text-lg font-bold text-neutral-900 mb-1">Authentic Voice Cloning</h3>
                       <p className="text-sm text-neutral-500">
-                        Instead of using full AI voices, you can upload samples of your own voice or a dedicated segment voice to make the content more authentic.
+                        Upload samples of your own voice so scenes are narrated in it instead of a stock AI voice.
                       </p>
                     </div>
-                    
-                    {settings.customVoiceId ? (
-                      <div className="bg-white p-6 rounded-2xl border border-green-200 shadow-sm flex items-center justify-between">
-                         <div className="flex items-center gap-3">
-                           <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                             <Volume2 className="w-5 h-5 text-green-600" />
-                           </div>
-                           <div>
-                             <p className="font-bold text-neutral-900">Custom Voice Active</p>
-                             <p className="text-xs text-neutral-500">All scenes will be narrated using your cloned voice.</p>
-                           </div>
-                         </div>
-                         <button 
-                           onClick={() => saveSettings({ ...settings, customVoiceId: undefined })}
-                           className="text-xs font-bold text-red-600 hover:underline"
-                         >
-                           Remove
-                         </button>
+
+                    <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-sm opacity-60">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-neutral-100 rounded-full flex items-center justify-center">
+                          <Volume2 className="w-5 h-5 text-neutral-400" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-neutral-900">Custom voice requires ElevenLabs (not configured)</p>
+                          <p className="text-xs text-neutral-500">
+                            Narration is synthesised locally by Piper, which cannot load a cloned ElevenLabs voice. Every scene uses the Voice Style above.
+                          </p>
+                        </div>
                       </div>
-                    ) : (
-                      <VoiceCloner 
-                        onVoiceCloned={(voiceId) => saveSettings({ ...settings, customVoiceId: voiceId })} 
-                      />
+                    </div>
+                    {settings.customVoiceId && (
+                      <button
+                        onClick={() => saveSettings({ ...settings, customVoiceId: undefined })}
+                        className="text-xs font-bold text-red-600 hover:underline mt-3"
+                      >
+                        Clear stored cloned voice (currently ignored at render)
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1663,9 +1625,9 @@ export function ProjectEditor() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Scene Type</label>
+                          <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Set / Atmosphere</label>
                           <select
-                            defaultValue={scene.scene_type || 'street'}
+                            defaultValue={scene.scene_type || ''}
                             onChange={async (e) => {
                               const val = e.target.value;
                               try {
@@ -1680,12 +1642,14 @@ export function ProjectEditor() {
                             }}
                             className="w-full text-sm text-neutral-700 bg-neutral-50 p-2 rounded-lg border border-neutral-200 focus:border-indigo-400 focus:outline-none"
                           >
+                            <option value="">Default (Street look, hard cut)</option>
                             <option value="bedroom">Bedroom</option>
                             <option value="street">Street</option>
                             <option value="grid">Grid / Data Space</option>
-                            <option value="corridor">Corridor</option>
+                            <option value="corridor">Corridor (atmosphere only, no transition)</option>
                             <option value="black">Black / NULL</option>
                           </select>
+                          <p className="text-[11px] text-neutral-400 mt-1">Sets this scene's particles and wind, and the Metro V4 transition to its neighbours — not its narrative role.</p>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Emotion</label>
@@ -2007,7 +1971,9 @@ export function ProjectEditor() {
                   className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {isRendering ? <Loader2 className="w-6 h-6 animate-spin" /> : <Play className="w-6 h-6" />}
-                  {isRendering ? `Rendering... ${Math.round(progressPercent)}%` : project.status === 'completed' ? 'Re-render Video' : 'Render Video'}
+                  {isRendering
+                    ? `${renderPhaseLabel(currentAction, progressPercent)} ${Math.round(progressPercent)}%`
+                    : project.status === 'completed' ? 'Re-render Video' : 'Render Video'}
                 </button>
               </div>
 

@@ -10,6 +10,49 @@ const execAsync = promisify(exec);
 let rembgRunning = false;
 
 /**
+ * Whether a cached render output can still be trusted.
+ *
+ * True only when `output` exists AND is at least as new as every source that fed it.
+ * The render pipeline caches almost every intermediate on disk, and an existence-only
+ * check reuses work built from inputs that have since changed — a re-recorded voice, an
+ * edited script, a regenerated image. That failure is silent and survives all the way to
+ * the published file: it is how three "one TTS engine each" comparison renders shipped
+ * identical narration from a week-old render.
+ *
+ * Sources that do not exist locally (an http asset URL, an optional input) are skipped
+ * rather than treated as stale — something absent cannot have changed after the output.
+ */
+export function isFreshOutput(output: string, ...sources: (string | undefined | null)[]): boolean {
+  if (!fs.existsSync(output)) return false;
+  const outputMtime = fs.statSync(output).mtimeMs;
+  return sources.every((src) => {
+    if (!src || !fs.existsSync(src)) return true;
+    return fs.statSync(src).mtimeMs <= outputMtime;
+  });
+}
+
+/** 9:16 projects: explicit aspect setting, universe shorts, or story episodes. */
+export const isShortsProject = (project: any): boolean =>
+  project?.settings?.aspectRatio === '9:16'
+  || !!project?.universe
+  || project?.projectType === 'story_episode';
+
+/**
+ * Final frame size for a project. exportResolution is '720p' | '1080p' | '4k';
+ * preview renders are pinned to the 720 class whatever the setting says.
+ */
+export const outputResolution = (
+  exportResolution: string | undefined,
+  isShorts: boolean,
+  isPreview = false
+): { w: number; h: number } => {
+  const [short, long] = (isPreview || exportResolution === '720p') ? [720, 1280]
+    : exportResolution === '4k' ? [2160, 3840]
+    : [1080, 1920];
+  return isShorts ? { w: short, h: long } : { w: long, h: short };
+};
+
+/**
  * Executes a command but allows it to be aborted via signal.
  */
 async function guardedExec(command: string, signal?: AbortSignal) {
@@ -299,8 +342,19 @@ async function renderMultiFrameVisual(visual: any, project: any, signal?: AbortS
   const tmpDir = path.join(os.tmpdir(), 'ais-renderer');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
-  const outputPath = path.join(tmpDir, `${visual.visual_id}_multiframe.mp4`);
-  if (fs.existsSync(outputPath)) return outputPath;
+  // Project-prefixed like renderVisualClip's own output: visual ids are only unique
+  // within a project, and duplicating a project copies its visuals verbatim.
+  const projectId = project?.project_id || 'test';
+  const outputPath = path.join(tmpDir, `${projectId}_${visual.visual_id}_multiframe.mp4`);
+  // What this concat is actually built from is the per-frame clips below — frames carry a
+  // prompt, not an asset_path, so guarding on asset_path alone would compare against
+  // nothing and never invalidate. Both are passed: asset_path is set on some frame shapes,
+  // and isFreshOutput ignores sources that aren't on disk.
+  const frameSources = (visual.frames || []).flatMap((f: any) => [
+    f.asset_path,
+    path.join(tmpDir, `${projectId}_visual_${f.frame_id}.mp4`),
+  ]);
+  if (isFreshOutput(outputPath, ...frameSources)) return outputPath;
 
   const frameClips: string[] = [];
   for (const frame of visual.frames!) {
@@ -319,7 +373,7 @@ async function renderMultiFrameVisual(visual: any, project: any, signal?: AbortS
   if (frameClips.length === 0) return '';
   if (frameClips.length === 1) return frameClips[0];
 
-  const listPath = path.join(tmpDir, `${visual.visual_id}_frames.txt`);
+  const listPath = path.join(tmpDir, `${projectId}_${visual.visual_id}_frames.txt`);
   fs.writeFileSync(listPath, frameClips.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join('\n'));
 
   await guardedExec(
@@ -348,6 +402,13 @@ async function ensureLocalImage(
   return localPath;
 }
 
+/** `WxH` string for the blue-slate fallback clips — same mapping as the real render. */
+const fallbackSize = (project: any): string => {
+  const isPreview = project?.quality === 'draft' || project?.preview_mode || false;
+  const { w, h } = outputResolution(project?.settings?.exportResolution, isShortsProject(project), isPreview);
+  return `${w}x${h}`;
+};
+
 export const renderVisualClip = async (visual: any, project: any, signal?: AbortSignal, scene?: any, audioDuration?: number) => {
   if (visual.frames && visual.frames.length > 1) {
     return renderMultiFrameVisual(visual, project, signal);
@@ -357,7 +418,9 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
   const outputPath = path.join(tmpDir, `${project.project_id}_visual_${visual.visual_id}.mp4`);
-  if (fs.existsSync(outputPath)) return outputPath;
+  // Same staleness rule as the multi-frame path: a regenerated still must invalidate the
+  // clip built from it, or an image edit never reaches the video.
+  if (isFreshOutput(outputPath, visual.asset_path)) return outputPath;
 
   const duration = visual.duration_target || 5;
   let imagePath = visual.asset_path;
@@ -427,18 +490,14 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           const frames = Math.ceil(duration * fps);
           const isPreview = project?.quality === 'draft' || project?.preview_mode || false;
           const is4k = project?.settings?.exportResolution === '4k' && !isPreview;
-          const isShorts = project?.settings?.aspectRatio === '9:16'
-            || !!project?.universe
-            || project?.projectType === 'story_episode';
+          const isShorts = isShortsProject(project);
 
-          const w = isPreview ? (isShorts ? 720  : 1280)
-                  : is4k      ? (isShorts ? 2160 : 3840)
-                  :              (isShorts ? 1080 : 1920);
-          const h = isPreview ? (isShorts ? 1280 : 720)
-                  : is4k      ? (isShorts ? 3840 : 2160)
-                  :              (isShorts ? 1920 : 1080);
+          const { w, h } = outputResolution(project?.settings?.exportResolution, isShorts, isPreview);
 
           // Metro/Doraemon engines always render at 1080p-class; only the aspect follows settings.
+          // (Their --width/--height args are parsed but ignored — doraemon_engine.py
+          // composites against module-level OUT_W/OUT_H.) assembleSceneSegment scales
+          // the finished segment to w x h, so every path lands on the export resolution.
           const engineW = isShorts ? 1080 : 1920;
           const engineH = isShorts ? 1920 : 1080;
 
@@ -446,9 +505,11 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
           // Cover-crop to the output aspect first: zoompan stretches its crop window
           // to s=WxH, so any source aspect mismatch became visible distortion.
           const coverCrop = `crop='min(iw,ih*${w}/${h})':'min(ih,iw*${h}/${w})'`;
+          // 4000px of headroom is wasted work when the output is 720-class — half it there.
+          const kbLong = (isShorts ? h : w) >= 1920 ? 4000 : 2560;
           const scaleFilter = is4k
             ? (isShorts ? `scale=2160:3840:force_original_aspect_ratio=increase,${coverCrop}` : `scale=3840:2160:force_original_aspect_ratio=increase,${coverCrop}`)
-            : (isShorts ? `scale=-1:4000,${coverCrop}`   : `scale=4000:-1,${coverCrop}`);
+            : (isShorts ? `scale=-1:${kbLong},${coverCrop}`   : `scale=${kbLong}:-1,${coverCrop}`);
           const zoomIncrement = (0.1 / frames).toFixed(6);
           const motion = visual.motion_instruction || 'zoom_in';
           let zoompanExpr: string;
@@ -677,12 +738,10 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
             await guardedExec(`"${ffmpeg}" -loop 1 -i "${imagePath}" -c:v libx264 -preset ${preset} ${qualityFlags} -r 30 -t ${duration} -pix_fmt yuv420p -vf "${filter}" -y "${outputPath}"`, signal);
           }
         } else {
-           const fallbackRes = project?.settings?.aspectRatio === '9:16' ? '1080x1920' : '1920x1080';
-           await guardedExec(`"${ffmpeg}" -f lavfi -i color=c=blue:s=${fallbackRes}:d=${duration} -y -c:v libx264 -pix_fmt yuv420p "${outputPath}"`, signal);
+           await guardedExec(`"${ffmpeg}" -f lavfi -i color=c=blue:s=${fallbackSize(project)}:d=${duration} -y -c:v libx264 -pix_fmt yuv420p "${outputPath}"`, signal);
         }
      } else {
-         const fallbackRes = project?.settings?.aspectRatio === '9:16' ? '1080x1920' : '1920x1080';
-         await guardedExec(`"${ffmpeg}" -f lavfi -i color=c=blue:s=${fallbackRes}:d=${duration} -y -c:v libx264 -pix_fmt yuv420p "${outputPath}"`, signal);
+         await guardedExec(`"${ffmpeg}" -f lavfi -i color=c=blue:s=${fallbackSize(project)}:d=${duration} -y -c:v libx264 -pix_fmt yuv420p "${outputPath}"`, signal);
      }
      return outputPath;
   } catch(e: any) {
@@ -714,8 +773,54 @@ export async function getAudioDuration(audioPath: string): Promise<number> {
   return -1;
 }
 
-export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey: any, signal?: AbortSignal) => {
-  const tmpDir = path.join(os.tmpdir(), 'ais-renderer');
+/**
+ * Where the audible speech actually starts and ends inside an assembled segment.
+ *
+ * Captions must be spread over the speech, not over the whole segment. A segment is
+ * `speech + target-length hold (pad_seconds) + apad tail`, all of which is silence
+ * after the narration ends — spreading captions across it drags every caption after
+ * the first progressively later than the words it is captioning.
+ *
+ * This has to be measured rather than derived: `silenceremove` strips an unknown
+ * amount of internal silence before the padding is applied, so segment_duration minus
+ * pad_seconds does not give the speech end (measured 4.40s by arithmetic vs 3.73s
+ * actual on one test scene). Measure the file the captions are burned onto.
+ */
+const detectSpeechSpan = async (file: string, totalDuration: number): Promise<{ start: number; end: number }> => {
+  const fallback = { start: 0, end: totalDuration };
+  try {
+    const { stderr } = await execAsync(
+      `"${ffmpeg}" -i "${file}" -af silencedetect=noise=-40dB:d=0.2 -f null -`,
+      { timeout: 30000, maxBuffer: 1 << 22 }
+    );
+    const starts = [...stderr.matchAll(/silence_start:\s*(-?[\d.]+)/g)].map((m) => parseFloat(m[1]));
+    const ends = [...stderr.matchAll(/silence_end:\s*(-?[\d.]+)/g)].map((m) => parseFloat(m[1]));
+    if (starts.length === 0) return fallback;
+
+    // ffmpeg closes a trailing silence at EOF rather than leaving it open, so pair
+    // them up positionally and treat a missing close as "runs to the end".
+    const periods = starts.map((s, i) => ({ start: s, end: i < ends.length ? ends[i] : totalDuration }));
+
+    const first = periods[0];
+    const start = first.start <= 0.05 ? first.end : 0;
+
+    const last = periods[periods.length - 1];
+    const end = last.end >= totalDuration - 0.2 ? last.start : totalDuration;
+
+    // Never hand back a degenerate span — a scene that is entirely silence, or a
+    // detector misfire, should fall back to the old whole-segment behaviour.
+    if (!(end > start) || end - start < 0.2) return fallback;
+    return { start, end: Math.min(end, totalDuration) };
+  } catch {
+    return fallback;
+  }
+};
+
+export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey: any, signal?: AbortSignal, project?: any) => {
+  // Scoped by project, the same way stitchScenes scopes its own output. Scene ids are
+  // only unique *within* a project: duplicating a project copies its scenes verbatim,
+  // so an unscoped `${scene_id}_segment.mp4` puts two projects on the same file.
+  const tmpDir = path.join(os.tmpdir(), 'ais-renderer', project?.project_id || 'test');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
   const outputPath = path.join(tmpDir, `${scene.scene_id}_segment.mp4`);
@@ -753,25 +858,54 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
     ? '-c:a aac -ar 44100 -ac 2 -b:a 192k'
     : '-c:a aac';
 
-  // Two command variants:
-  // audioValid=true  → silenceremove strips TTS trailing silence (Piper adds 0.33–0.57s/clip),
-  //                    apad=0.1 adds a consistent 100ms tail, -shortest ends at padded audio end.
-  // audioValid=false → generated anullsrc silence: silenceremove would eat it all, so fall
-  //                    back to -t so the silent segment lasts exactly the scene's target duration.
+  // Target-length hold: extra still time the orchestrator budgeted for this scene
+  // (see planScenePadding). The video input is -stream_loop'd and the clip was
+  // rendered at narration+pad, so we just let the segment run that much longer and
+  // apad keeps the audio track alive over the hold. Never trims narration.
+  const padSeconds = Number(scene.pad_seconds) || 0;
+
+  // Three command variants:
+  // audioValid + pad  → apad runs unbounded and -t fixes the segment at narration+pad.
+  // audioValid        → silenceremove strips TTS trailing silence (Piper adds 0.33–0.57s/clip),
+  //                     apad=0.1 adds a consistent 100ms tail, -shortest ends at padded audio end.
+  // audioValid=false  → generated anullsrc silence: silenceremove would eat it all, so fall
+  //                     back to -t so the silent segment lasts exactly the scene's target duration.
   const audioFilterChain = audioValid
-    ? `-af "asetpts=PTS-STARTPTS,silenceremove=stop_periods=-1:stop_duration=0.05:stop_threshold=-40dB,apad=pad_dur=0.1"`
+    ? `-af "asetpts=PTS-STARTPTS,silenceremove=stop_periods=-1:stop_duration=0.05:stop_threshold=-40dB,apad${padSeconds > 0 ? '' : '=pad_dur=0.1'}"`
     : `-af asetpts=PTS-STARTPTS`;
-  const durationArg = audioValid ? `-shortest` : `-t ${outputDuration}`;
+  const durationArg = !audioValid ? `-t ${outputDuration}`
+    : padSeconds > 0 ? `-t ${(outputDuration + padSeconds).toFixed(3)}`
+    : `-shortest`;
+
+  // Normalise the segment to the project's export resolution here: this is the one
+  // point every render path (Ken Burns, animator, Metro/Doraemon engines) flows
+  // through, and the engines ignore the size we hand them. Downstream stitching is
+  // -c copy, so getting it right here is what reaches the final MP4.
+  let sizeFilter = '';
+  if (project) {
+    const isPreview = project?.quality === 'draft' || project?.preview_mode || false;
+    const { w, h } = outputResolution(project?.settings?.exportResolution, isShortsProject(project), isPreview);
+    sizeFilter = `,scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1`;
+  }
 
   try {
-     await guardedExec(`"${ffmpeg}" -stream_loop -1 -i "${visualPath}" ${audioInputArg} -vf setpts=PTS-STARTPTS ${audioFilterChain} -c:v libx264 -preset fast -crf 20 ${audioOutputOpts} ${durationArg} -y "${outputPath}"`, signal);
+     await guardedExec(`"${ffmpeg}" -stream_loop -1 -i "${visualPath}" ${audioInputArg} -vf "setpts=PTS-STARTPTS${sizeFilter}" ${audioFilterChain} -c:v libx264 -preset fast -crf 20 ${audioOutputOpts} ${durationArg} -y "${outputPath}"`, signal);
      // Captions and drift correction must track the SEGMENT length, not the raw
      // WAV: silenceremove strips pauses/tails, so segment audio runs shorter than
      // the narration file. Anchoring to the raw duration made captions lag.
      const segmentDuration = await getAudioDuration(outputPath);
      if (segmentDuration > 0) {
        scene.duration_actual = segmentDuration;
-       console.log(`[RenderService] Scene ${scene.scene_id} segment duration: ${segmentDuration.toFixed(3)}s (captions anchored here)`);
+       // Captions anchor to the speech span, NOT to duration_actual: the segment also
+       // holds pad_seconds of deliberate silence, and spreading captions over that is
+       // what made them lag further and further behind the narration.
+       const span = await detectSpeechSpan(outputPath, segmentDuration);
+       scene.speech_start = Number(span.start.toFixed(3));
+       scene.speech_end = Number(span.end.toFixed(3));
+       console.log(
+         `[RenderService] Scene ${scene.scene_id} segment ${segmentDuration.toFixed(3)}s, ` +
+         `speech ${span.start.toFixed(3)}→${span.end.toFixed(3)}s (captions anchored to the speech)`
+       );
      }
      return outputPath;
   } catch(e: any) {
@@ -789,7 +923,8 @@ export const renderCaptions = async (scene: any, signal?: AbortSignal) => {
 
   const inputPath = scene.segment_path;
   const outputPath = inputPath.replace('_segment.mp4', '_captioned.mp4');
-  if (fs.existsSync(outputPath)) return outputPath;
+  // Reuse the burned-in copy only if it was built from the segment that is here NOW.
+  if (isFreshOutput(outputPath, inputPath)) return outputPath;
 
   const toAssTime = (seconds: number): string => {
     const h = Math.floor(seconds / 3600);
@@ -859,6 +994,35 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
   }
 };
 
+/**
+ * ffmpeg `-metadata` arguments disclosing that the narration is synthetic.
+ *
+ * YouTube and other platforms increasingly require creators to declare synthetic
+ * speech, and a cloned voice raises the stakes: the file itself should say what made
+ * it. These are plain container tags, so they survive `-c copy` and cost nothing.
+ *
+ * This describes the audio only. It is not a watermark and makes no claim to be one —
+ * Chatterbox's built-in Perth watermarking is what survives re-encoding.
+ */
+async function disclosureMetadataArgs(project: any): Promise<string> {
+  const settings = project?.settings || {};
+  let voice: string;
+  if (settings.clonedVoiceId) {
+    const { listVoices } = await import('../server/services/voiceRegistry.js');
+    const match = (await listVoices()).find((v) => v.id === settings.clonedVoiceId);
+    voice = `cloned voice "${match?.name ?? settings.clonedVoiceId}" (Chatterbox 0.5B, cloned locally)`;
+  } else {
+    voice = `synthetic voice (${settings.voiceStyle || 'default'})`;
+  }
+  const disclosure =
+    `AI-generated narration: ${voice}. Contains synthetic speech.` +
+    (settings.clonedVoiceId ? ` Voice cloned with consent; see project voice audit trail.` : '');
+
+  // Shell-quoted below, so a stray double quote would break the command line.
+  const clean = (s: string) => s.replace(/["\\]/g, '').replace(/\s+/g, ' ').trim();
+  return `-metadata comment="${clean(disclosure)}" -metadata description="${clean(disclosure)}"`;
+}
+
 export const stitchScenes = async (scenes: any, project: any, signal?: AbortSignal) => {
   if (!scenes || scenes.length === 0) return "";
   
@@ -890,7 +1054,8 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
   try {
      // Stream copy requires all segments encoded identically (h264 1080x1920 yuv420p 24fps + aac 44.1kHz stereo,
      // guaranteed by assembleSceneSegment/renderCaptions). Filters can't combine with -c copy, so no -vf here.
-     const stitchCmd = `"${ffmpeg}" -f concat -safe 0 -i "${listFile}" -c copy -movflags +faststart -y "${outputPath}"`;
+     const disclosure = await disclosureMetadataArgs(project);
+     const stitchCmd = `"${ffmpeg}" -f concat -safe 0 -i "${listFile}" -c copy ${disclosure} -movflags +faststart -y "${outputPath}"`;
      console.log('[Stitch] FFmpeg command:', stitchCmd);
      await guardedExec(stitchCmd, signal);
      try {
@@ -910,7 +1075,7 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
          const outputWithMusic = path.join(tmpDir, `final_music_${Date.now()}.mp4`);
          try {
            await guardedExec(
-             `"${ffmpeg}" -i "${outputPath}" -stream_loop -1 -i "${musicPath}" -filter_complex "[0:a]aformat=sample_rates=44100:channel_layouts=stereo[a0];[1:a]volume=${volume}[bg];[a0][bg]amix=inputs=2:duration=first[aout]" -map 0:v -map "[aout]" -c:v copy -c:a aac -ar 44100 -ac 2 -b:a 192k -y "${outputWithMusic}"`,
+             `"${ffmpeg}" -i "${outputPath}" -stream_loop -1 -i "${musicPath}" -filter_complex "[0:a]aformat=sample_rates=44100:channel_layouts=stereo[a0];[1:a]volume=${volume}[bg];[a0][bg]amix=inputs=2:duration=first[aout]" -map 0:v -map "[aout]" -c:v copy -c:a aac -ar 44100 -ac 2 -b:a 192k ${disclosure} -y "${outputWithMusic}"`,
              signal
            );
            fs.promises.unlink(outputPath).catch(() => {});

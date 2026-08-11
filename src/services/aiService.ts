@@ -249,7 +249,9 @@ async function generateImageWithVertexImagen(
     dbgOk('1:VertexImagen', model, bytes);
     return bytes;
   } catch (e: any) {
-    console.warn('[ImageGen] Vertex Imagen failed:', e.message?.slice(0, 160), 'status:', e.status);
+    // 160 chars cut off mid-model-id, which is the one detail needed to tell an
+    // unavailable model apart from a disabled API or an unallowlisted project.
+    console.warn('[ImageGen] Vertex Imagen failed:', e.message?.slice(0, 400), 'status:', e.status, 'model:', model);
     dbgFail('1:VertexImagen', e, '1.5:GeminiImage');
     tripBreakerIfDead('1:VertexImagen', e);
     return null;
