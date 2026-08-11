@@ -72,3 +72,7 @@ policy*.yaml
 
 rife/
 test_veer_voice.txt
+
+# Audit artifacts — kept on disk, not in git.
+# merged_file.md alone is 64MB and tripped GitHub's size warning.
+audit_output/

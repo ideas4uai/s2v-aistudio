@@ -22,6 +22,23 @@ let rembgRunning = false;
  * Sources that do not exist locally (an http asset URL, an optional input) are skipped
  * rather than treated as stale — something absent cannot have changed after the output.
  */
+/**
+ * Where a visual's rendered clip lives.
+ *
+ * The motion is part of the identity, not just an argument. Keyed on visual_id alone,
+ * changing the Cinematic Effect on an existing project silently reused the clip with
+ * the old movement: the still had not changed, so the mtime guard saw nothing stale.
+ * Motion is not a file, so it cannot be caught by comparing timestamps — it has to be
+ * in the name.
+ */
+export function visualClipPath(
+  tmpDir: string, projectId: string, visualId: string, motion?: string,
+): string {
+  // Same default as the render body below, or the path and the content disagree.
+  const m = String(motion || 'zoom_in').replace(/[^a-z0-9_-]/gi, '');
+  return path.join(tmpDir, `${projectId}_visual_${visualId}_${m}.mp4`);
+}
+
 export function isFreshOutput(output: string, ...sources: (string | undefined | null)[]): boolean {
   if (!fs.existsSync(output)) return false;
   const outputMtime = fs.statSync(output).mtimeMs;
@@ -352,7 +369,7 @@ async function renderMultiFrameVisual(visual: any, project: any, signal?: AbortS
   // and isFreshOutput ignores sources that aren't on disk.
   const frameSources = (visual.frames || []).flatMap((f: any) => [
     f.asset_path,
-    path.join(tmpDir, `${projectId}_visual_${f.frame_id}.mp4`),
+    visualClipPath(tmpDir, projectId, f.frame_id, f.motion),
   ]);
   if (isFreshOutput(outputPath, ...frameSources)) return outputPath;
 
@@ -417,9 +434,12 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
   const tmpDir = path.join(os.tmpdir(), 'ais-renderer');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
-  const outputPath = path.join(tmpDir, `${project.project_id}_visual_${visual.visual_id}.mp4`);
+  const outputPath = visualClipPath(
+    tmpDir, String(project.project_id), visual.visual_id, visual.motion_instruction,
+  );
   // Same staleness rule as the multi-frame path: a regenerated still must invalidate the
-  // clip built from it, or an image edit never reaches the video.
+  // clip built from it, or an image edit never reaches the video. The motion lives in the
+  // path itself, so changing the Cinematic Effect lands on a different file.
   if (isFreshOutput(outputPath, visual.asset_path)) return outputPath;
 
   const duration = visual.duration_target || 5;

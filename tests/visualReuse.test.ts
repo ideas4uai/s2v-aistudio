@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { isFreshOutput, renderVisualClip } from '../src/services/renderService.js';
+import { isFreshOutput, renderVisualClip, visualClipPath } from '../src/services/renderService.js';
 
 // Visual-side counterpart to segmentReuse.test.ts.
 //
@@ -126,4 +126,36 @@ describe('multi-frame visual cache is project-scoped', () => {
     expect(await renderVisualClip(visual, { project_id: 'proj-two' })).toBe(two);
     expect(one).not.toBe(two);
   }, 30_000);
+});
+
+describe('motion effect invalidates the cached clip', () => {
+  it('gives each motion its own clip path', () => {
+    const a = visualClipPath(RENDER_DIR, 'p1', 'vis-1', 'zoom_in');
+    const b = visualClipPath(RENDER_DIR, 'p1', 'vis-1', 'pan_right');
+    // Before the fix both motions resolved to `p1_visual_vis-1.mp4`, so changing the
+    // Cinematic Effect silently reused the clip rendered with the old movement.
+    expect(a).not.toBe(b);
+    expect(a).toContain('zoom_in');
+    expect(b).toContain('pan_right');
+  });
+
+  it('is stable for the same motion', () => {
+    expect(visualClipPath(RENDER_DIR, 'p1', 'v', 'pan_left'))
+      .toBe(visualClipPath(RENDER_DIR, 'p1', 'v', 'pan_left'));
+  });
+
+  it('defaults to zoom_in so the path matches what the renderer actually draws', () => {
+    expect(visualClipPath(RENDER_DIR, 'p1', 'v', undefined))
+      .toBe(visualClipPath(RENDER_DIR, 'p1', 'v', 'zoom_in'));
+  });
+
+  it('still separates projects sharing a visual id', () => {
+    expect(visualClipPath(RENDER_DIR, 'p1', 'v', 'zoom_in'))
+      .not.toBe(visualClipPath(RENDER_DIR, 'p2', 'v', 'zoom_in'));
+  });
+
+  it('strips path separators out of the motion', () => {
+    const p = visualClipPath(RENDER_DIR, 'p1', 'v', '../../evil');
+    expect(path.dirname(p)).toBe(RENDER_DIR);
+  });
 });

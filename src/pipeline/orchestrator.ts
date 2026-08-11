@@ -1,7 +1,7 @@
 import { Project } from '../models/project.js';
 import { StyleProfile } from '../models/types.js';
 import { Scene, Visual, VisualFrame } from '../models/scene.js';
-import { calculateQualityScore } from '../services/qualityService.js';
+import { runQualityGate } from '../services/qualityService.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import os from 'os';
@@ -17,7 +17,7 @@ import { fallbackHook, fallbackScript, fallbackSceneGraph } from './fallbacks.js
 import { generateSceneAudio } from '../services/voiceService.js';
 import { generateCaptions } from '../services/captionService.js';
 import { generateAsset } from '../services/assetService.js';
-import { renderVisualClip, validateVisualClip, assembleSceneSegment, renderCaptions, stitchScenes, getAudioDuration } from '../services/renderService.js';
+import { renderVisualClip, validateVisualClip, assembleSceneSegment, renderCaptions, stitchScenes, getAudioDuration, visualClipPath } from '../services/renderService.js';
 import { generateHash, generateAudioHash, generateVisualHash, generateSceneHash, generateAssetHash } from '../utils/hash.js';
 import { getScenesToRender } from '../utils/diff.js';
 import { getFromCache } from '../services/cacheService.js';
@@ -1021,7 +1021,26 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   }
 
   for (const visual of scene.visuals) {
-    const existingRendered = (visual as any).rendered_path as string | undefined;
+    let existingRendered = (visual as any).rendered_path as string | undefined;
+    // A clip rendered with a different Cinematic Effect is not this scene's clip.
+    // The motion is part of the clip's path, so a mismatch means the stored one was
+    // built with the old movement — drop it rather than skip the render and ship it.
+    if (existingRendered?.endsWith('.mp4')) {
+      const expected = visualClipPath(
+        path.join(os.tmpdir(), 'ais-renderer'),
+        String(project.project_id),
+        visual.visual_id,
+        (visual as any).motion_instruction,
+      );
+      if (path.resolve(existingRendered) !== path.resolve(expected)) {
+        console.log(
+          `[Orchestrator] Visual clip was rendered with a different motion — regenerating`,
+          `(have ${path.basename(existingRendered)}, want ${path.basename(expected)})`,
+        );
+        (visual as any).rendered_path = undefined;
+        existingRendered = undefined;
+      }
+    }
     const isLocalMp4 = !!(existingRendered && existingRendered.endsWith('.mp4') && fs.existsSync(existingRendered));
     // Promote a Supabase image URL from rendered_path to asset_path so renderVisualClip can use it
     // (generateSceneImage sets rendered_path but not asset_path; pipeline requires asset_path)
@@ -1334,12 +1353,24 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
       }
       activeProject.completed_at = new Date();
       
-      // Calculate Quality Score
-      activeProject.quality_score = calculateQualityScore(activeProject);
-      
+      // Pre-publish quality gate. Runs on the finished video, so its verdict is about
+      // what was actually produced rather than what was intended.
+      const gate = await runQualityGate(activeProject);
+      activeProject.quality_gate = gate;
+      activeProject.quality_score = gate.score;
+
+      for (const check of gate.checks) {
+        console.log(`[QualityGate] ${check.status.toUpperCase().padEnd(7)} ${check.label} — ${check.detail}`);
+      }
+
       const anyFailed = activeProject.scenes.some((s: Scene) => s.status === 'failed');
       const anyDegraded = activeProject.scenes.some((s: Scene) => s.status === 'degraded');
-      activeProject.status = (anyFailed || anyDegraded) ? 'degraded' : 'completed';
+      // A gate failure marks the project degraded rather than completed: the video
+      // exists and is downloadable, but it is not cleared to publish unattended.
+      activeProject.status = (anyFailed || anyDegraded || !gate.passed) ? 'degraded' : 'completed';
+      if (!gate.passed) {
+        console.error(`[QualityGate] BLOCKED for ${project_id}: ${gate.failures.join(' | ')}`);
+      }
       
       // Track video generation
       await logUserEvent('video_generated', project_id, { status: activeProject.status, qualityScore: activeProject.quality_score });

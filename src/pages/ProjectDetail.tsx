@@ -36,7 +36,7 @@ export function ProjectDetail() {
   // Poll status while a render is in progress; apply output_path as soon as it lands
   useEffect(() => {
     if (!project) return;
-    if (project.status === 'completed' || project.status === 'failed' || project.status === 'cancelled') return;
+    if (['completed', 'degraded', 'failed', 'cancelled'].includes(project.status)) return;
 
     const interval = setInterval(async () => {
       try {
@@ -53,7 +53,10 @@ export function ProjectDetail() {
           } : prev);
         }
 
-        if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+        // 'degraded' is terminal too — it is what a finished render that failed the
+        // quality gate reports. Leaving it out polled forever and never refetched, so
+        // the gate result never reached the page.
+        if (['completed', 'degraded', 'failed', 'cancelled'].includes(data.status)) {
           clearInterval(interval);
           setReloadKey((k) => k + 1); // pull the finished project in full
         }
@@ -92,6 +95,55 @@ export function ProjectDetail() {
             </div>
           )}
         </div>
+
+        {/* Quality gate. A video that failed the gate still renders and downloads —
+            it is simply not cleared to publish, and the reasons say exactly why. */}
+        {project.quality_gate && (
+          <div
+            className={`mt-6 rounded-2xl border p-5 ${
+              project.quality_gate.passed
+                ? 'border-green-200 bg-green-50'
+                : 'border-amber-300 bg-amber-50'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm font-bold uppercase tracking-wider text-neutral-700">
+                {project.quality_gate.passed ? 'Quality gate passed' : 'Not ready to publish'}
+              </span>
+              <span className="text-xs text-neutral-500">
+                score {project.quality_gate.score}/100
+              </span>
+            </div>
+
+            {!project.quality_gate.passed && (
+              <ul className="list-disc list-inside space-y-1 mb-3">
+                {project.quality_gate.failures.map((f: string, i: number) => (
+                  <li key={i} className="text-sm text-amber-900">{f}</li>
+                ))}
+              </ul>
+            )}
+
+            <details>
+              <summary className="text-xs text-neutral-500 cursor-pointer">All checks</summary>
+              <ul className="mt-2 space-y-1">
+                {project.quality_gate.checks.map((c: any) => (
+                  <li key={c.id} className="text-xs text-neutral-600">
+                    <span
+                      className={
+                        c.status === 'pass' ? 'text-green-700'
+                          : c.status === 'fail' ? 'text-amber-700'
+                          : 'text-neutral-400'
+                      }
+                    >
+                      {c.status === 'pass' ? 'PASS' : c.status === 'fail' ? 'FAIL' : 'NOT CHECKED'}
+                    </span>{' '}
+                    {c.label} — {c.detail}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </div>
+        )}
       </div>
     </div>
   );

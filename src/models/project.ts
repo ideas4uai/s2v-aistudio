@@ -79,6 +79,14 @@ export interface Project {
     objects: { name: string; description: string; prompt: string }[];
   };
   quality_score?: number;
+  /** Pre-publish gate verdict — see services/qualityService.runQualityGate. */
+  quality_gate?: {
+    passed: boolean;
+    score: number;
+    checks: { id: string; label: string; status: 'pass' | 'fail' | 'skipped'; detail: string }[];
+    failures: string[];
+    checkedAt: string;
+  };
   tier?: string;
   export_preset?: string;
   export_resolution?: string;

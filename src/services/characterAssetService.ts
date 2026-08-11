@@ -82,7 +82,7 @@ const CONSISTENCY_THRESHOLD = 15;
 export function validateAssetConsistency(
   assetPath: string,
   referencePath: string
-): { passed: boolean; deltaE: number } {
+): { passed: boolean; deltaE: number; ran: boolean } {
   try {
     const result = spawnSync('py', [
       VALIDATOR_SCRIPT,
@@ -93,25 +93,25 @@ export function validateAssetConsistency(
 
     if (result.error) {
       console.warn('[AssetPack] Consistency validator spawn error:', result.error.message, '— skipping check');
-      return { passed: true, deltaE: 0 };
+      return { passed: true, deltaE: 0, ran: false };
     }
 
     const stdout = result.stdout?.trim();
     if (!stdout) {
       console.warn('[AssetPack] Consistency validator empty output, stderr:', result.stderr?.slice(0, 120), '— skipping check');
-      return { passed: true, deltaE: 0 };
+      return { passed: true, deltaE: 0, ran: false };
     }
 
     const data = JSON.parse(stdout) as any;
     if (data.error) {
       console.warn('[AssetPack] Consistency validator:', data.error, '— skipping check');
-      return { passed: true, deltaE: 0 };
+      return { passed: true, deltaE: 0, ran: false };
     }
 
-    return { passed: Boolean(data.passed), deltaE: Number(data.deltaE) || 0 };
+    return { passed: Boolean(data.passed), deltaE: Number(data.deltaE) || 0, ran: true };
   } catch (e: any) {
     console.warn('[AssetPack] Consistency validator exception:', e.message, '— skipping check');
-    return { passed: true, deltaE: 0 };
+    return { passed: true, deltaE: 0, ran: false };
   }
 }
 
