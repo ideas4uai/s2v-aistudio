@@ -201,6 +201,7 @@ export function ProjectEditor() {
   const [previewingTrack, setPreviewingTrack] = useState<string | null>(null);
   const [musicVolume, setMusicVolume] = useState<number>(0.08);
   const [musicSaved, setMusicSaved] = useState(false);
+  const [musicError, setMusicError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const isBusyStatus = (status: string) =>
@@ -251,33 +252,42 @@ export function ProjectEditor() {
     return () => clearTimeout(timer);
   }, [scriptText, project?.id]);
 
+  // authenticatedFetch resolves for 4xx/5xx too, so awaiting it is not "it saved".
+  // Without the res.ok check the picker showed "Saved ✓" on the 404 the endpoint was
+  // returning, which is why a track could look selected and still be absent from the render.
+  const saveMusic = async (body: { music_track: string; music_volume: number }) => {
+    const res = await authenticatedFetch(`/api/projects/${id}/music`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({} as any));
+      throw new Error(detail?.error || `save failed (${res.status})`);
+    }
+  };
+
   const handleMusicSelect = async (filename: string | null) => {
     setSelectedMusic(filename);
     setMusicSaved(false);
+    setMusicError(null);
     try {
-      await authenticatedFetch(`/api/projects/${id}/music`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ music_track: filename ?? '', music_volume: musicVolume }),
-      });
+      await saveMusic({ music_track: filename ?? '', music_volume: musicVolume });
       setMusicSaved(true);
       setTimeout(() => setMusicSaved(false), 2000);
-    } catch {
-      console.error('Failed to save music selection');
+    } catch (e: any) {
+      setMusicError(e.message);
     }
   };
 
   const handleMusicVolumeChange = async (volume: number) => {
     setMusicVolume(volume);
     if (audioRef.current) audioRef.current.volume = volume;
+    setMusicError(null);
     try {
-      await authenticatedFetch(`/api/projects/${id}/music`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ music_track: selectedMusic ?? '', music_volume: volume }),
-      });
-    } catch {
-      console.error('Failed to save music volume');
+      await saveMusic({ music_track: selectedMusic ?? '', music_volume: volume });
+    } catch (e: any) {
+      setMusicError(e.message);
     }
   };
 
@@ -1129,7 +1139,6 @@ export function ProjectEditor() {
                       <option value="English">English</option>
                       <option value="Telugu">Telugu (తెలుగు)</option>
                       <option value="Hindi">Hindi (हिन्दी)</option>
-                      <option value="Spanish">Spanish (Español)</option>
                     </select>
                   </div>
 
@@ -1802,6 +1811,12 @@ export function ProjectEditor() {
                     </span>
                   )}
                 </div>
+
+                {musicError && (
+                  <p className="mb-3 text-sm text-red-600">
+                    Not saved — this track will not be in the render. {musicError}
+                  </p>
+                )}
 
                 <div className="space-y-1 mb-4 max-h-64 overflow-y-auto">
                   <label className="flex items-center gap-3 p-3 rounded-xl hover:bg-neutral-50 cursor-pointer">

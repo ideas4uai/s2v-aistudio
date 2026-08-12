@@ -17,7 +17,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { fallbackHook, fallbackScript, fallbackSceneGraph } from './fallbacks.js';
 import { generateSceneAudio } from '../services/voiceService.js';
 import { generateAsset } from '../services/assetService.js';
-import { renderVisualClip, validateVisualClip, assembleSceneSegment, stitchScenes, getAudioDuration, visualClipPath } from '../services/renderService.js';
+import { renderVisualClip, validateVisualClip, assembleSceneSegment, stitchScenes, getAudioDuration, visualClipPath, isShortsProject } from '../services/renderService.js';
 import { generateHash, generateAudioHash, generateVisualHash, generateSceneHash, generateAssetHash } from '../utils/hash.js';
 import { getScenesToRender, sceneRenderHash } from '../utils/diff.js';
 import { getFromCache } from '../services/cacheService.js';
@@ -1060,12 +1060,24 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   if (scene.background_prompt && !scene.background_path && !(scene as any).unified) {
     try {
       const bgArtStyle = (project.universe as any)?.backgroundArtStyle || '';
+      // The aspect the render will actually crop to. Both this hint and the API-level
+      // aspectRatio below have to agree with it, or the image is generated for the wrong
+      // frame and the centre-crop throws most of it away.
+      const bgAspect = isShortsProject(project) ? '9:16' : '16:9';
       const aestheticSuffix = (project as any).universeId
         ? INDIAN_AESTHETIC_SUFFIX
-        : 'cinematic lighting, clean professional style, suitable for educational content, main subject centered with generous margins on all sides (frame edges will be cropped to 9:16 vertical), absolutely no text, no words, no numbers, no lettering, no typography anywhere in the image';
+        : `cinematic lighting, clean professional style, suitable for educational content, main subject centered with generous margins on all sides (frame edges will be cropped to ${bgAspect === '16:9' ? '16:9 landscape' : '9:16 vertical'}), absolutely no text, no words, no numbers, no lettering, no typography anywhere in the image`;
       const fullBgPrompt = [scene.background_prompt, aestheticSuffix, bgArtStyle].filter(Boolean).join(', ');
       console.log('[Orchestrator] Background full prompt:', fullBgPrompt.slice(0, 120));
-      const bgBase64 = await AIService.generateImageBase64(fullBgPrompt, { isStoryEpisode: !!(project as any).universeId });
+      // aspectRatio was missing here, and generateImageBase64 defaults to 9:16 without
+      // it. So every background in a 16:9 project came back 768x1344 portrait, and the
+      // cover-crop to 1920x1080 kept only the middle 32% of the height — which is the
+      // "top of the image is cut off" report. assetService and projectController both
+      // already pass it; this was the one caller that did not.
+      const bgBase64 = await AIService.generateImageBase64(fullBgPrompt, {
+        aspectRatio: bgAspect,
+        isStoryEpisode: !!(project as any).universeId,
+      });
       if (bgBase64) {
         const bgBuffer = Buffer.from(bgBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
         fs.writeFileSync(bgLocalPath, bgBuffer);

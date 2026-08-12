@@ -34,8 +34,19 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 },
 });
 
-const PREVIEW_TEXT =
-  'Nexus City never sleeps, and neither does the signal running underneath it.';
+/**
+ * Kept short on purpose. Kokoro synthesises at roughly 1.18x realtime on this CPU, so
+ * preview latency is essentially the length of the clip: the previous 74-character line
+ * produced 5.5s of audio and took 4.7-6.5s to appear on every first click of a voice.
+ * The sidecar is not the problem — measured, it stays warm and the 3rd and 4th distinct
+ * voices cost the same as the 1st. Auditioning a voice needs a couple of seconds of it,
+ * not a paragraph.
+ */
+const PREVIEW_TEXT = 'Hi, this is how I sound.';
+
+/** Short digest of the preview text, so changing it invalidates previously cached clips
+ *  instead of serving audio of a sentence that is no longer the preview sentence. */
+const PREVIEW_TAG = sha256(Buffer.from(PREVIEW_TEXT)).slice(0, 8);
 
 function uid(req: any): string {
   return req.user?.uid || 'dev-user';
@@ -87,7 +98,7 @@ voicesRouter.post('/preview', async (req: any, res) => {
   try {
     const dir = path.join(os.tmpdir(), 'ais-voice-previews');
     await fs.mkdir(dir, { recursive: true });
-    const out = path.join(dir, `preview-${engine}-${clonedVoiceId || voice}.wav`);
+    const out = path.join(dir, `preview-${engine}-${clonedVoiceId || voice}-${PREVIEW_TAG}.wav`);
 
     try {
       const cached = await fs.readFile(out);

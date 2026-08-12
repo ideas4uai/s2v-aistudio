@@ -25,10 +25,7 @@ type Catalog = {
   cloned: { id: string; name: string; createdAt: string }[];
 };
 
-const LANG_LABEL: Record<string, string> = {
-  english: 'English', hindi: 'Hindi', spanish: 'Spanish', french: 'French',
-  italian: 'Italian', portuguese: 'Portuguese', japanese: 'Japanese', mandarin: 'Mandarin',
-};
+const LANG_LABEL: Record<string, string> = { english: 'English', hindi: 'Hindi' };
 
 export function VoicePicker({ value, onChange }: { value: VoiceSelection; onChange: (v: VoiceSelection) => void }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -102,8 +99,12 @@ export function VoicePicker({ value, onChange }: { value: VoiceSelection; onChan
   return (
     <div>
       <div className="flex gap-2">
+        {/* min-w-0: a flex item's default min-width is auto, which for a <select> is the
+            width of its longest option. flex-1 could not shrink it below that, so the row
+            overflowed by the width of the Preview button and the button rendered on top of
+            the Visual Style field in the next grid column. */}
         <select
-          className="flex-1 px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
+          className="flex-1 min-w-0 px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
           value={selected}
           onChange={(e) => handleChange(e.target.value)}
         >

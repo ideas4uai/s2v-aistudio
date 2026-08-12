@@ -5,10 +5,22 @@ import {
 } from '../src/server/services/ttsService.js';
 
 describe('Kokoro voice roster', () => {
-  it('matches the model card: 54 voices across 8 languages', () => {
-    expect(Object.keys(KOKORO_VOICES)).toHaveLength(54);
-    // "8 languages" on the card counts American and British English as one.
-    expect(KOKORO_LANGUAGES.size).toBe(8);
+  // The roster is deliberately a subset of the model card. Kokoro ships Spanish, French,
+  // Italian, Portuguese, Japanese and Mandarin voices too; this product speaks English,
+  // Hindi and Telugu, so offering the rest only invites picking one by accident.
+  it('offers English and Hindi only', () => {
+    expect([...KOKORO_LANGUAGES].sort()).toEqual(['english', 'hindi']);
+  });
+
+  it('has dropped every language the product does not speak', () => {
+    for (const lang of ['spanish', 'french', 'italian', 'portuguese', 'japanese', 'mandarin']) {
+      expect(KOKORO_LANGUAGES.has(lang), `${lang} is still offered`).toBe(false);
+    }
+    // The prefix is how Kokoro derives its lang_code, so a stray e_/f_/i_/p_/j_/z_ id
+    // would still synthesise in that language even with the label removed.
+    for (const id of Object.keys(KOKORO_VOICES)) {
+      expect('abh', `voice "${id}" has a non-English/Hindi prefix`).toContain(id[0]);
+    }
   });
 
   it('has no Telugu voice — the gap that keeps Piper in the chain', () => {
@@ -16,11 +28,13 @@ describe('Kokoro voice roster', () => {
     expect(KOKORO_LANGUAGES.has('hindi')).toBe(true);
   });
 
+  it('keeps the Hindi voices, which are the only non-English ones left', () => {
+    const hindi = Object.entries(KOKORO_VOICES).filter(([, v]) => v.lang === 'hindi');
+    expect(hindi.map(([id]) => id).sort()).toEqual(['hf_alpha', 'hf_beta', 'hm_omega', 'hm_psi']);
+  });
+
   it('names every voice with the language prefix Kokoro derives lang_code from', () => {
-    const prefixByLang: Record<string, string[]> = {
-      english: ['a', 'b'], hindi: ['h'], spanish: ['e'], french: ['f'],
-      italian: ['i'], portuguese: ['p'], japanese: ['j'], mandarin: ['z'],
-    };
+    const prefixByLang: Record<string, string[]> = { english: ['a', 'b'], hindi: ['h'] };
     for (const [id, v] of Object.entries(KOKORO_VOICES)) {
       expect(prefixByLang[v.lang], `${id} has unknown lang ${v.lang}`).toContain(id[0]);
     }
@@ -121,13 +135,20 @@ describe('resolveKokoroVoice — a missing voice must never become silent audio'
   });
 
   it('picks the best-graded voice for the language', () => {
-    // French has exactly one voice; Spanish/Hindi must come back graded-best-first.
-    expect(resolveKokoroVoice('af_heart', 'french')).toBe('ff_siwis');
+    // All four Hindi voices are grade C, so this pins the ordering rather than a tie-break:
+    // whatever comes back must be Hindi and must be the first in graded order.
+    const picked = resolveKokoroVoice('af_heart', 'hindi')!;
+    expect(KOKORO_VOICES[picked].lang).toBe('hindi');
+    expect(picked).toBe('hf_alpha');
   });
 
   it('returns null for a language Kokoro cannot speak, so Piper can take it', () => {
     // Null is a routing decision, not a failure: Piper has te_IN-maya-medium.
     expect(resolveKokoroVoice('af_heart', 'telugu')).toBeNull();
+    // Spanish is no longer in the roster, so it routes the same way — and since Spanish
+    // was also removed from LANGUAGE_VOICES, Piper then fails loudly rather than
+    // handing Spanish text to an English model.
+    expect(resolveKokoroVoice('af_heart', 'spanish')).toBeNull();
   });
 
   it('is case-insensitive about the language name', () => {

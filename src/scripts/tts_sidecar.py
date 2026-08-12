@@ -37,7 +37,11 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 
 # Kokoro voice name -> KPipeline lang_code. The first letter of every Kokoro voice
-# encodes its language, so the map is over prefixes, not over the 54 voice names.
+# encodes its language, so the map is over prefixes, not over individual voice names.
+# Every prefix the model card defines is kept here even though the app now only offers
+# the English and Hindi voices: this map decodes whatever name it is handed, and
+# narrowing it would turn an unoffered voice into a wrong-language synthesis rather
+# than a clean lookup. The roster is enforced in ttsService, not here.
 # https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md
 LANG_BY_PREFIX = {
     "a": "a",  # American English

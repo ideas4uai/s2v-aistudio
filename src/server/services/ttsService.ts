@@ -60,30 +60,11 @@ export const KOKORO_VOICES: Record<string, { lang: string; grade: string; label:
   hf_beta:  { lang: 'hindi', grade: 'C', label: 'Beta — Hindi female' },
   hm_omega: { lang: 'hindi', grade: 'C', label: 'Omega — Hindi male' },
   hm_psi:   { lang: 'hindi', grade: 'C', label: 'Psi — Hindi male' },
-  // Spanish
-  ef_dora:  { lang: 'spanish', grade: '',  label: 'Dora — Spanish female' },
-  em_alex:  { lang: 'spanish', grade: '',  label: 'Alex — Spanish male' },
-  em_santa: { lang: 'spanish', grade: '',  label: 'Santa — Spanish male, character' },
-  // French / Italian / Portuguese / Japanese / Mandarin
-  ff_siwis:      { lang: 'french',     grade: 'B-', label: 'Siwis — French female' },
-  if_sara:       { lang: 'italian',    grade: 'C',  label: 'Sara — Italian female' },
-  im_nicola:     { lang: 'italian',    grade: 'C',  label: 'Nicola — Italian male' },
-  pf_dora:       { lang: 'portuguese', grade: '',   label: 'Dora — Brazilian Portuguese female' },
-  pm_alex:       { lang: 'portuguese', grade: '',   label: 'Alex — Brazilian Portuguese male' },
-  pm_santa:      { lang: 'portuguese', grade: '',   label: 'Santa — Brazilian Portuguese male' },
-  jf_alpha:      { lang: 'japanese',   grade: 'C+', label: 'Alpha — Japanese female' },
-  jf_gongitsune: { lang: 'japanese',   grade: 'C',  label: 'Gongitsune — Japanese female' },
-  jf_tebukuro:   { lang: 'japanese',   grade: 'C',  label: 'Tebukuro — Japanese female' },
-  jf_nezumi:     { lang: 'japanese',   grade: 'C-', label: 'Nezumi — Japanese female' },
-  jm_kumo:       { lang: 'japanese',   grade: 'C-', label: 'Kumo — Japanese male' },
-  zf_xiaobei:    { lang: 'mandarin',   grade: 'D',  label: 'Xiaobei — Mandarin female' },
-  zf_xiaoni:     { lang: 'mandarin',   grade: 'D',  label: 'Xiaoni — Mandarin female' },
-  zf_xiaoxiao:   { lang: 'mandarin',   grade: 'D',  label: 'Xiaoxiao — Mandarin female' },
-  zf_xiaoyi:     { lang: 'mandarin',   grade: 'D',  label: 'Xiaoyi — Mandarin female' },
-  zm_yunjian:    { lang: 'mandarin',   grade: 'D',  label: 'Yunjian — Mandarin male' },
-  zm_yunxi:      { lang: 'mandarin',   grade: 'D',  label: 'Yunxi — Mandarin male' },
-  zm_yunxia:     { lang: 'mandarin',   grade: 'D',  label: 'Yunxia — Mandarin male' },
-  zm_yunyang:    { lang: 'mandarin',   grade: 'D',  label: 'Yunyang — Mandarin male' },
+  // Kokoro also ships Spanish (e*), French (ff_siwis), Italian (i*), Brazilian
+  // Portuguese (p*), Japanese (j*) and Mandarin (z*) voices. They are deliberately not
+  // listed: this product speaks English, Hindi and Telugu, and a roster is a menu — every
+  // voice in it is a voice someone can pick and then get a video in a language nobody
+  // involved was expecting. Re-add the block from the model card if that changes.
 };
 
 export type TtsEngine = 'kokoro' | 'piper';
@@ -170,9 +151,8 @@ export function resolveVoiceProfile(character?: string, voiceStyle?: string) {
 // fail loudly rather than get handed an English model that reads the script as
 // gibberish. Models: https://huggingface.co/rhasspy/piper-voices (~63MB each).
 const LANGUAGE_VOICES: Record<string, string> = {
-  hindi:   'hi_IN-rohan-medium',
-  telugu:  'te_IN-maya-medium',
-  spanish: 'es_ES-davefx-medium',
+  hindi:  'hi_IN-rohan-medium',
+  telugu: 'te_IN-maya-medium',
 };
 
 // Substituted for an English voice that isn't installed. English style/character

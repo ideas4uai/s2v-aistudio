@@ -404,7 +404,6 @@ export function CreateProject() {
                   <option value="en">English</option>
                   <option value="hi">Hindi (हिन्दी)</option>
                   <option value="te">Telugu (తెలుగు)</option>
-                  <option value="es">Spanish (Español)</option>
                 </select>
               </div>
 

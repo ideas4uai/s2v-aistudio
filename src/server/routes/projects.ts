@@ -32,7 +32,7 @@ import { projectVideoFileName } from '../../utils/filename.js';
 
 import { AIService } from '../../services/aiService.js';
 import { FirestoreService } from '../db/firestore.js';
-import { loadProject, saveProjectState, listLocalProjects } from '../../pipeline/orchestrator.js';
+import { loadProject, saveProjectState, listLocalProjects, patchProject } from '../../pipeline/orchestrator.js';
 
 export const projectsRouter = Router();
 
@@ -383,14 +383,20 @@ projectsRouter.get('/:id/progress', (req, res) => {
 
 projectsRouter.patch('/:id/music', async (req, res) => {
   try {
-    const project: any = await FirestoreService.getProject(req.params.id);
-    if (!project) return res.status(404).json({ error: 'Project not found' });
+    // patchProject, NOT FirestoreService — same bug the download route above documents.
+    // With DISABLE_FIRESTORE=true the project lives only in the local store, so
+    // getProject() returned null and every music save 404'd. The picker reported
+    // "Saved" regardless, so the selection looked stored and the render then read
+    // music_track: undefined and muxed no music at all.
     const { music_track, music_volume } = req.body;
-    if (music_track !== undefined) project.music_track = music_track || null;
-    if (music_volume !== undefined) project.music_volume = Number(music_volume);
-    await FirestoreService.saveProject(project);
+    const saved = await patchProject(req.params.id, (project: any) => {
+      if (music_track !== undefined) project.music_track = music_track || null;
+      if (music_volume !== undefined) project.music_volume = Number(music_volume);
+    }, 'music');
+    if (!saved) return res.status(409).json({ error: 'Music selection could not be saved — try again.' });
     res.json({ ok: true });
-  } catch (err) {
+  } catch (err: any) {
+    if (/not found/i.test(err?.message || '')) return res.status(404).json({ error: 'Project not found' });
     res.status(500).json({ error: 'Failed to update music' });
   }
 });

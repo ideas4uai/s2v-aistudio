@@ -21,9 +21,13 @@ describe('resolveVoiceModel — missing model must never become silent audio', (
     expect(m).toBe('te_IN-maya-medium');
   });
 
-  it('uses the mapped Spanish model when it is installed', async () => {
-    const m = await resolveVoiceModel(VOICES, 'en_US-lessac-medium', 'spanish', installed('es_ES-davefx-medium'));
-    expect(m).toBe('es_ES-davefx-medium');
+  it('THROWS for Spanish, which the product no longer offers', async () => {
+    // Spanish was dropped from both dropdowns and from LANGUAGE_VOICES. The model file
+    // may well still be sitting in the voices dir, so "installed" is not the question —
+    // an unoffered language must fail loudly rather than quietly still work.
+    await expect(
+      resolveVoiceModel(VOICES, 'en_US-lessac-medium', 'spanish', installed('es_ES-davefx-medium')),
+    ).rejects.toBeInstanceOf(MissingVoiceModelError);
   });
 
   // The actual bug: this used to fall through to a Piper failure that the caller
@@ -58,9 +62,10 @@ describe('resolveVoiceModel — missing model must never become silent audio', (
   it('lists the supported languages when the language has no mapping at all', async () => {
     const err = await resolveVoiceModel(VOICES, 'en_US-lessac-medium', 'french', installed()).catch((e) => e);
     expect(err.modelName).toBeNull();
-    for (const supported of ['english', 'hindi', 'telugu', 'spanish']) {
+    for (const supported of ['english', 'hindi', 'telugu']) {
       expect(err.message).toContain(supported);
     }
+    expect(err.message).not.toContain('spanish');
   });
 
   it('falls back to the default English voice with a warning when an English style voice is absent', async () => {
@@ -124,17 +129,30 @@ describe('every language the UI offers maps to a real model on this machine', as
   const path = await import('path');
   const dir = process.env.PIPER_VOICES_DIR;
 
-  // Both dropdowns, in the value formats they actually send.
-  const UI_LANGUAGES = ['en', 'hi', 'te', 'es', 'English', 'Hindi', 'Telugu', 'Spanish'];
+  // Both dropdowns, in the value formats they actually send. CreateProject sends the
+  // ISO code, ProjectEditor sends the English name — and the set is now exactly
+  // English, Hindi and Telugu in both.
+  const UI_LANGUAGES = ['en', 'hi', 'te', 'English', 'Hindi', 'Telugu'];
+  const toLang = (ui: string) => {
+    const raw = ui.toLowerCase();
+    return raw === 'te' ? 'telugu' : raw === 'hi' ? 'hindi' : raw === 'en' ? 'english' : raw;
+  };
 
   for (const ui of UI_LANGUAGES) {
     it(`"${ui}" resolves to an installed model`, async () => {
       if (!dir) return; // no Piper configured on this machine — nothing to assert
-      const raw = ui.toLowerCase();
-      const lang = raw === 'te' ? 'telugu' : raw === 'hi' ? 'hindi'
-                 : raw === 'es' ? 'spanish' : raw === 'en' ? 'english' : raw;
-      const model = await resolveVoiceModel(dir, 'en_US-lessac-medium', lang);
+      const model = await resolveVoiceModel(dir, 'en_US-lessac-medium', toLang(ui));
       expect(fs.existsSync(path.join(dir, `${model}.onnx`))).toBe(true);
     });
   }
+
+  it('offers nothing beyond those three', async () => {
+    // The removed languages must not still resolve through a leftover mapping.
+    for (const gone of ['spanish', 'french', 'italian', 'portuguese', 'japanese', 'mandarin']) {
+      await expect(
+        resolveVoiceModel(dir || VOICES, 'en_US-lessac-medium', gone),
+        `"${gone}" still resolves to a model`,
+      ).rejects.toBeInstanceOf(MissingVoiceModelError);
+    }
+  });
 });
