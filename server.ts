@@ -6,6 +6,8 @@ import fs from 'fs';
 import os from 'os';
 import { execSync } from 'child_process';
 import { projectsRouter } from './src/server/routes/projects.js';
+import { analyticsRouter } from './src/server/routes/analytics.js';
+import { youtubeRouter } from './src/server/routes/youtube.js';
 import { universeController } from './src/controllers/universeController.js';
 import { jobsRouter } from './src/server/routes/jobs.js';
 import { assetsRouter } from './src/server/routes/assets.js';
@@ -217,6 +219,8 @@ async function startServer() {
   app.use('/api/projects', projectsRouter);
   app.use('/v1/projects', projectsRouter);
   app.use('/api/content-studio', contentStudioRouter);
+  app.use('/api/analytics', analyticsRouter);
+  app.use('/api/youtube', youtubeRouter);
   app.post('/api/universes', universeController.save);
   app.get('/api/universes', universeController.list);
   app.get('/api/universes/:id', universeController.get);

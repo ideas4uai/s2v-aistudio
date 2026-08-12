@@ -77,3 +77,10 @@ test_veer_voice.txt
 # generated merge of them is oversized: 64MB, which trips GitHub's size warning
 # on every push and would land a fresh 64MB blob each time it is regenerated.
 audit_output/merged_file.md
+
+# YouTube OAuth tokens. A refresh token is a long-lived credential to publish on
+# someone's channel — this must never be committed.
+config/youtube-tokens.json
+
+# Local analytics event log.
+analytics/

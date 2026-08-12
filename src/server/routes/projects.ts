@@ -33,6 +33,11 @@ import { projectVideoFileName } from '../../utils/filename.js';
 import { AIService } from '../../services/aiService.js';
 import { FirestoreService } from '../db/firestore.js';
 import { loadProject, saveProjectState, listLocalProjects, patchProject, deleteLocalProject, resetSceneForRetry } from '../../pipeline/orchestrator.js';
+import { logEvent } from '../../services/logService.js';
+import {
+  buildMetadata, uploadVideo, YouTubeNotConfiguredError, YouTubeNotConnectedError,
+  YouTubeUploadError, type YouTubePrivacy,
+} from '../services/youtubeService.js';
 
 export const projectsRouter = Router();
 
@@ -296,6 +301,11 @@ projectsRouter.post('/', async (req, res) => {
     } else {
       await FirestoreService.saveProject(newProject);
     }
+    logEvent('project_created', id, {
+      title, projectType: newProject.projectType,
+      aspectRatio: (newProject as any).settings?.aspectRatio,
+      universeId: (newProject as any).universeId ?? null,
+    });
     res.status(201).json(newProject);
   } catch (error) {
     console.error('Error creating project:', error);
@@ -419,6 +429,118 @@ projectsRouter.patch('/:id/music', async (req, res) => {
   } catch (err: any) {
     if (/not found/i.test(err?.message || '')) return res.status(404).json({ error: 'Project not found' });
     res.status(500).json({ error: 'Failed to update music' });
+  }
+});
+
+/**
+ * Resolves a project's rendered video to a path on this disk.
+ *
+ * output_path is written absolute by the renderer but served to the UI as a
+ * root-relative URL, and older records carry either — so the leading slash has to go
+ * before joining or path.join discards the cwd.
+ */
+export function resolveOutputFile(outputPath: string): string {
+  const stored = outputPath.replace(/\\/g, '/');
+  return path.isAbsolute(stored) ? stored : path.join(process.cwd(), stored.replace(/^\/+/, ''));
+}
+
+/**
+ * Publishes a rendered video to the connected YouTube channel.
+ *
+ * Manual trigger only: this runs because someone clicked publish on this project. The
+ * quality gate is enforced here rather than trusted to the caller — the whole point of
+ * having a gate is that a bad video cannot reach the channel, and a UI check is a
+ * suggestion while a server check is a rule. `force` exists because the operator is
+ * allowed to overrule their own gate, but it has to be said out loud.
+ */
+projectsRouter.post('/:id/publish/youtube', async (req, res) => {
+  const { id } = req.params;
+  const privacyStatus: YouTubePrivacy = ['private', 'unlisted', 'public'].includes(req.body?.privacyStatus)
+    ? req.body.privacyStatus : 'private';
+  const force = req.body?.force === true;
+
+  try {
+    let project: any;
+    try {
+      project = await loadProject(id);
+    } catch {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    if (!project?.output_path) {
+      return res.status(409).json({ error: 'This project has no rendered video yet. Render it first.' });
+    }
+    if (project.output_path.startsWith('http')) {
+      return res.status(409).json({
+        error: 'The only copy of this video is remote. Re-render locally before publishing.',
+      });
+    }
+
+    const filePath = resolveOutputFile(project.output_path);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'The rendered file is missing from disk. Re-render before publishing.' });
+    }
+
+    // The gate. A project is publishable when its gate passed; anything else needs an
+    // explicit override, and the override is recorded on the project.
+    const gate = project.quality_gate;
+    if (!gate) {
+      return res.status(409).json({
+        error: 'This video has not been through the quality gate. Re-render it before publishing.',
+      });
+    }
+    if (!gate.passed && !force) {
+      logEvent('publish_blocked', id, { score: gate.score, failures: gate.failures });
+      return res.status(409).json({
+        error: 'Blocked by the quality gate.',
+        score: gate.score,
+        failures: gate.failures,
+        hint: 'Fix the failures and re-render, or repeat the request with force: true to publish anyway.',
+      });
+    }
+
+    const meta = buildMetadata(project);
+    console.log(`[Publish] ${id} -> YouTube as "${meta.title}" (${privacyStatus}, ${(fs.statSync(filePath).size / 1e6).toFixed(1)} MB)`);
+
+    const started = Date.now();
+    const result = await uploadVideo(filePath, meta, privacyStatus);
+    const durationSec = Number(((Date.now() - started) / 1000).toFixed(1));
+
+    await patchProject(id, (p: any) => {
+      p.youtube = {
+        videoId: result.videoId,
+        url: result.url,
+        privacyStatus: result.privacyStatus,
+        title: result.title,
+        publishedAt: new Date().toISOString(),
+        forcedPastQualityGate: !gate.passed,
+      };
+    }, 'youtube-publish');
+
+    logEvent('publish_uploaded', id, {
+      videoId: result.videoId, privacyStatus: result.privacyStatus, durationSec,
+      qualityScore: gate.score, forced: !gate.passed,
+    });
+    console.log(`[Publish] ${id} published: ${result.url}`);
+    res.json(result);
+  } catch (err: any) {
+    // Loud, and with the next action in it — the same contract as cloud backup.
+    const message = err?.message || String(err);
+    console.error(`[Publish] FAILED for ${id}: ${message}`);
+    logEvent('publish_failed', id, { error: message, name: err?.name });
+
+    if (err instanceof YouTubeNotConfiguredError) {
+      return res.status(503).json({ error: message, needsConfig: true });
+    }
+    if (err instanceof YouTubeNotConnectedError) {
+      return res.status(412).json({ error: message, needsAuth: true });
+    }
+    if (err instanceof YouTubeUploadError) {
+      return res.status(err.status === 401 ? 412 : 502).json({
+        error: message, reason: err.reason, retryable: err.retryable,
+        needsAuth: err.status === 401,
+      });
+    }
+    res.status(500).json({ error: `Publish failed: ${message}` });
   }
 });
 

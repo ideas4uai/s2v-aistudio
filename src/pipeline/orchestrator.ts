@@ -21,7 +21,7 @@ import { renderVisualClip, validateVisualClip, assembleSceneSegment, stitchScene
 import { generateHash, generateAudioHash, generateVisualHash, generateSceneHash, generateAssetHash } from '../utils/hash.js';
 import { getScenesToRender, sceneRenderHash } from '../utils/diff.js';
 import { getFromCache } from '../services/cacheService.js';
-import { logUserEvent } from '../services/logService.js';
+import { logUserEvent, logEvent, estimateCostUsd } from '../services/logService.js';
 import { buildSceneTimeline } from '../utils/timeline.js';
 import { targetLengthSeconds, planScenePadding, MAX_PAD_FACTOR } from '../utils/targetLength.js';
 import { projectVideoFileName } from '../utils/filename.js';
@@ -143,6 +143,25 @@ export function deleteLocalProject(project_id: string): boolean {
  * content-hash guarded elsewhere, and a failed image is not a reason to re-synthesise
  * audio that was fine.
  */
+/**
+ * Scenes holding a generated image right now.
+ *
+ * Sampled before and after a run and differenced, so what gets recorded is images this
+ * render actually paid for. Counting all of them would bill every incremental re-render
+ * for work it reused, which would make the cost figure worse than useless — it would be
+ * confidently wrong in the expensive direction.
+ */
+export function countGeneratedImages(project?: Project | null): number {
+  let n = 0;
+  for (const scene of project?.scenes || []) {
+    for (const visual of (scene as any).visuals || []) {
+      if (visual.asset_path) n++;
+    }
+    if ((scene as any).background_path) n++;
+  }
+  return n;
+}
+
 export function resetSceneForRetry(scene: any): void {
   scene.status = 'pending';
   scene.error_log = null;
@@ -296,6 +315,9 @@ export async function uploadFinalVideo(
       `[CloudBackup] ${projectId}: ${(bytes / 1e6).toFixed(1)} MB in ` +
       `${((Date.now() - started) / 1000).toFixed(1)}s -> ${url.slice(-60)}`);
     await record({ status: 'uploaded', url, sizeBytes: bytes });
+    logEvent('cloud_backup_uploaded', projectId, {
+      sizeBytes: bytes, durationSec: Number(((Date.now() - started) / 1000).toFixed(1)), compressed: !!compressed,
+    });
     progressBus.emit({ projectId, stage: 'cloud_backup', message: 'Cloud backup complete' });
   } catch (err: any) {
     const reason = err?.message || String(err);
@@ -306,6 +328,7 @@ export async function uploadFinalVideo(
       `[CloudBackup] The render is unaffected — the video is at ${localPath} — but there ` +
       `is no cloud copy. Fix the cause and re-run the upload.`);
     await record({ status: 'failed', error: reason });
+    logEvent('cloud_backup_failed', projectId, { error: reason });
     progressBus.emit({ projectId, stage: 'cloud_backup',
       message: `Cloud backup failed: ${reason}`, error: reason });
   } finally {
@@ -569,6 +592,11 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
   runningPipelines.add(project_id);
   let project: Project | undefined;
   const signal = abortManager.getOrCreate(project_id);
+  // Wall clock, not CPU time: "how long until I have a video" is the question this
+  // answers, and it is measured from here so a queue wait would show up too.
+  const renderStartedMs = Date.now();
+  const imagesBefore = countGeneratedImages(await loadProject(project_id).catch(() => undefined));
+  logEvent('render_started', project_id, { preview: options?.preview === true, mode: options?.mode ?? 'production' });
 
   try {
     const isPreview = options?.preview === true;
@@ -946,6 +974,27 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
     // watching a spinner that will never resolve, which is the thing this replaces.
     // error_log carries the pipeline's real reason rather than a generic phase message.
     const finished = project?.status;
+
+    // Analytics terminal event, here for the same reason the SSE one is: every exit
+    // path passes through this block, including the throws. imagesGenerated is the
+    // delta over the run, so a fully cached re-render correctly records zero cost.
+    const durationSec = Number(((Date.now() - renderStartedMs) / 1000).toFixed(1));
+    const imagesGenerated = Math.max(0, countGeneratedImages(project) - imagesBefore);
+    if (finished === 'cancelled') {
+      logEvent('render_cancelled', project_id, { durationSec, imagesGenerated });
+    } else if (finished === 'failed') {
+      logEvent('render_failed', project_id, {
+        durationSec, imagesGenerated, error: project?.error_log || 'Render failed',
+      });
+    } else {
+      logEvent('render_completed', project_id, {
+        durationSec, imagesGenerated,
+        estimatedCostUsd: estimateCostUsd(imagesGenerated),
+        status: finished, scenes: project?.scenes?.length ?? 0,
+        qualityScore: project?.quality_score ?? null,
+      });
+    }
+
     progressBus.emit({
       projectId: project_id,
       stage: finished === 'cancelled' ? 'cancelled' : finished === 'failed' ? 'failed' : 'done',
@@ -1624,6 +1673,14 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
       
       // Track video generation
       await logUserEvent('video_generated', project_id, { status: activeProject.status, qualityScore: activeProject.quality_score });
+      // The gate verdict is its own event: the score is the number worth trending, and
+      // which check failed is the thing you want when the trend turns.
+      logEvent('quality_gate', project_id, {
+        passed: gate.passed,
+        score: gate.score,
+        failures: gate.failures,
+        failedChecks: gate.checks.filter((c: any) => c.status === 'fail').map((c: any) => c.label),
+      });
 
       console.log(`[Orchestrator] Final video saved to: ${activeProject.output_path}`);
 
