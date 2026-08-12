@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import ffmpeg from 'ffmpeg-static';
 import { generateCaptions } from './captionService.js';
+import { progressBus, ProgressStage } from '../server/progressBus.js';
 
 const execAsync = promisify(exec);
 
@@ -55,6 +56,26 @@ function moveInto(src: string, dest: string): void {
     fs.copyFileSync(src, dest);
     try { fs.unlinkSync(src); } catch { /* non-fatal */ }
   }
+}
+
+/**
+ * Report a reuse-or-rebuild decision for live progress.
+ *
+ * Emitted from inside the functions that make the call, not from the caller. The caller
+ * cannot know: renderVisualClip and assembleSceneSegment both check freshness internally
+ * and return a cached path without doing any work, so announcing "regenerating" before
+ * invoking them reported every cache hit as a 40-second render.
+ */
+function emitStep(project: any, scene: any, stage: ProgressStage, message: string, reused: boolean) {
+  const projectId = project?.project_id;
+  if (!projectId || !scene) return;
+  const scenes = project?.scenes || [];
+  const idx = scenes.findIndex((s: any) => s?.scene_id === scene.scene_id) + 1;
+  progressBus.emit({
+    projectId, stage, message, reused,
+    sceneIndex: idx > 0 ? idx : undefined,
+    sceneTotal: scenes.length || undefined,
+  });
 }
 
 export function isFreshOutput(output: string, ...sources: (string | undefined | null)[]): boolean {
@@ -468,7 +489,11 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
   // Same staleness rule as the multi-frame path: a regenerated still must invalidate the
   // clip built from it, or an image edit never reaches the video. The motion lives in the
   // path itself, so changing the Cinematic Effect lands on a different file.
-  if (isFreshOutput(outputPath, visual.asset_path)) return outputPath;
+  if (isFreshOutput(outputPath, visual.asset_path)) {
+    emitStep(project, scene, 'synthesis', 'Animation already rendered', true);
+    return outputPath;
+  }
+  emitStep(project, scene, 'synthesis', 'Rendering animation', false);
 
   const duration = visual.duration_target || 5;
   let imagePath = visual.asset_path;
@@ -900,8 +925,10 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
   // every subsequent render, with nothing rebuilt that would put it back.
   if (isFreshOutput(finalPath, visualPath, audioValid ? audioPath : undefined)) {
     console.log('[RenderService] Segment still fresh — reusing:', path.basename(finalPath));
+    emitStep(project, scene, 'segment', 'Video segment already built', true);
     return finalPath;
   }
+  emitStep(project, scene, 'segment', 'Encoding video and burning captions', false);
 
   const fallbackDuration = scene.duration_target || 5;
 

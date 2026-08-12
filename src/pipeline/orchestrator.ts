@@ -1,4 +1,5 @@
 import { Project, CloudBackup } from '../models/project.js';
+import { progressBus, ProgressStage } from '../server/progressBus.js';
 import { StyleProfile } from '../models/types.js';
 import { Scene, Visual, VisualFrame } from '../models/scene.js';
 import { runQualityGate } from '../services/qualityService.js';
@@ -255,6 +256,7 @@ export async function uploadFinalVideo(
       `[CloudBackup] ${projectId}: ${(bytes / 1e6).toFixed(1)} MB in ` +
       `${((Date.now() - started) / 1000).toFixed(1)}s -> ${url.slice(-60)}`);
     await record({ status: 'uploaded', url, sizeBytes: bytes });
+    progressBus.emit({ projectId, stage: 'cloud_backup', message: 'Cloud backup complete' });
   } catch (err: any) {
     const reason = err?.message || String(err);
     // Loud on purpose. The local video is fine and the project stays completed; what is
@@ -264,6 +266,8 @@ export async function uploadFinalVideo(
       `[CloudBackup] The render is unaffected — the video is at ${localPath} — but there ` +
       `is no cloud copy. Fix the cause and re-run the upload.`);
     await record({ status: 'failed', error: reason });
+    progressBus.emit({ projectId, stage: 'cloud_backup',
+      message: `Cloud backup failed: ${reason}`, error: reason });
   } finally {
     if (compressed) fs.promises.unlink(compressed).catch(() => {});
   }
@@ -440,8 +444,45 @@ export async function runScenePipeline(project_id: string, scene_id: string, opt
   }
 }
 
+/**
+ * Map the coarse phase messages onto stages the UI can style. Derived from the message
+ * the pipeline already emits rather than threaded through every call site, because these
+ * strings ARE the pipeline's own vocabulary — inventing a parallel set would let the two
+ * drift apart, and the log line is the thing that gets updated when behaviour changes.
+ */
+function stageForAction(action: string): ProgressStage {
+  const a = action.toLowerCase();
+  if (a.includes('script') || a.includes('narrative')) return 'script';
+  if (a.includes('scene') && a.includes('breaking')) return 'storyboard';
+  if (a.includes('visual prompt') || a.includes('entities')) return 'storyboard';
+  if (a.includes('stitch')) return 'stitch';
+  if (a.includes('complete')) return 'done';
+  if (a.includes('asset') || a.includes('batch')) return 'scene';
+  return 'init';
+}
+
+/** Emit a scene-scoped progress event. `reused` is the bit a spinner cannot express. */
+function emitScene(
+  project: Project, scene: Scene, stage: ProgressStage, message: string, reused: boolean,
+) {
+  const sceneIndex = project.scenes.indexOf(scene) + 1;
+  progressBus.emit({
+    projectId: project.project_id!,
+    stage, message, reused,
+    sceneIndex: sceneIndex > 0 ? sceneIndex : undefined,
+    sceneTotal: project.scenes.length,
+  });
+}
+
 async function updateProgress(project: Project, action: string, percent?: number, signal?: AbortSignal) {
   await guardedSaveProjectState(project, signal);
+
+  progressBus.emit({
+    projectId: project.project_id!,
+    stage: stageForAction(action),
+    message: action,
+    percent,
+  });
 
   if (!project.logs) project.logs = [];
   const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -544,6 +585,14 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
         `[Orchestrator] Incremental re-render: ${staleSceneIds.size} scene(s) changed, ` +
         `${unchangedCount} unchanged and will reuse their existing output.`,
       );
+      progressBus.emit({
+        projectId: project.project_id!,
+        stage: 'init',
+        message: `${staleSceneIds.size} scene(s) changed, ${unchangedCount} reusing cached output`,
+        sceneTotal: (project.scenes || []).length,
+        // No `reused` flag: this is a summary of the whole run, and a badge saying
+        // "regenerating" against it read as though all of them were.
+      });
     }
 
     // Clear stale paths from previous runs — HTTP URLs and local files that no longer exist
@@ -729,6 +778,12 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
           const sceneIndex = project!.scenes.indexOf(scene) + 1;
           const totalScenes = project!.scenes.length;
           console.log(`[Orchestrator] Processing scene ${sceneIndex} of ${totalScenes} (${scene.scene_id})`);
+          progressBus.emit({
+            projectId: project!.project_id!,
+            stage: 'scene',
+            message: `Scene ${sceneIndex} of ${totalScenes}`,
+            sceneIndex, sceneTotal: totalScenes,
+          });
           scene.status = 'processing';
           await guardedSaveProjectState(project!, signal);
           try {
@@ -847,6 +902,18 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
   } finally {
     runningPipelines.delete(project_id);
     abortManager.remove(project_id);
+    // Always terminal, on every exit path. A stream that just stops leaves the user
+    // watching a spinner that will never resolve, which is the thing this replaces.
+    // error_log carries the pipeline's real reason rather than a generic phase message.
+    const finished = project?.status;
+    progressBus.emit({
+      projectId: project_id,
+      stage: finished === 'cancelled' ? 'cancelled' : finished === 'failed' ? 'failed' : 'done',
+      message: project?.current_action
+        || (finished === 'failed' ? 'Render failed' : 'Render complete'),
+      error: finished === 'failed' ? (project?.error_log || 'Render failed') : undefined,
+      percent: finished === 'failed' || finished === 'cancelled' ? undefined : 100,
+    });
   }
 }
 
@@ -889,6 +956,8 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   scene.audio_hash = audioHash;
 
   const audioPromise = (async () => {
+     emitScene(project, scene, 'tts',
+       audioFresh ? 'Narration already recorded' : 'Recording narration', audioFresh);
      if (!audioFresh) {
         console.log(`[Orchestrator] Generating audio for scene ${scene.scene_id}`);
         // ownerUid rides along with the settings so the TTS layer can check that a
@@ -1206,6 +1275,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
       if (renderedLocal) (visual as any).rendered_path = renderedLocal;
     } else if (isLocalMp4) {
       console.log('[Orchestrator] Visual already rendered, skipping:', path.basename(existingRendered!));
+      emitScene(project, scene, 'synthesis', 'Animation already rendered', true);
     }
   }
 
@@ -1229,6 +1299,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
 
      if (scene.segment_path && fs.existsSync(scene.segment_path)) {
        console.log('[Orchestrator] Reusing segment:', scene.segment_path.slice(-40));
+       emitScene(project, scene, 'segment', 'Video segment already built', true);
      } else {
        // One call, one video encode: assembleSceneSegment scales, burns the captions and
        // muxes the audio in a single pass, so there is no separate caption stage to run.
@@ -1480,6 +1551,8 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
       
       // Pre-publish quality gate. Runs on the finished video, so its verdict is about
       // what was actually produced rather than what was intended.
+      progressBus.emit({ projectId: activeProject.project_id!, stage: 'quality_gate',
+        message: 'Running quality checks', percent: 95 });
       const gate = await runQualityGate(activeProject);
       activeProject.quality_gate = gate;
       activeProject.quality_score = gate.score;
@@ -1506,6 +1579,8 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
       // playable. A 34 MB episode takes ~20s to push at the measured 1.76 MB/s, and no
       // one should wait on that to see their video.
       if (activeProject.cloud_backup?.status === 'pending') {
+        progressBus.emit({ projectId: activeProject.project_id!, stage: 'cloud_backup',
+          message: 'Backing up to cloud storage (the video is already ready)', percent: 100 });
         void uploadFinalVideo(activeProject.project_id!, backupPath, fileName, ffmpegPath);
       }
       

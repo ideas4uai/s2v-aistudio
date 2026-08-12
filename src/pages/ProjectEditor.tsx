@@ -8,6 +8,39 @@ import {
 import { authenticatedFetch } from '../utils/api';
 import { projectVideoFileName } from '../utils/filename';
 
+/** Stage names the user sees, keyed by the server's stage ids. */
+const STAGE_LABELS: Record<string, string> = {
+  init: 'PREPARING',
+  script: 'WRITING SCRIPT',
+  storyboard: 'STORYBOARDING',
+  scene: 'BUILDING SCENE',
+  tts: 'NARRATION',
+  image: 'IMAGE',
+  synthesis: 'ANIMATION',
+  segment: 'ENCODING',
+  captions: 'CAPTIONS',
+  stitch: 'STITCHING',
+  quality_gate: 'QUALITY CHECKS',
+  cloud_backup: 'CLOUD BACKUP',
+  done: 'COMPLETE',
+  failed: 'FAILED',
+  cancelled: 'CANCELLED',
+};
+
+/** Mirror of the server's progress event. Kept local: the client bundle does not import
+ *  from src/server, and this is the wire shape, not shared logic. */
+type ProgressEvent = {
+  projectId: string;
+  stage: string;
+  message: string;
+  sceneIndex?: number;
+  sceneTotal?: number;
+  reused?: boolean;
+  percent?: number;
+  error?: string;
+  at: string;
+};
+
 interface Scene {
   id?: string;
   scene_id?: string;
@@ -154,6 +187,8 @@ export function ProjectEditor() {
   const [currentAction, setCurrentAction] = useState<string>('');
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [activityLogs, setActivityLogs] = useState<string[]>([]);
+  /** Latest live event from the SSE stream. Null until one arrives. */
+  const [liveEvent, setLiveEvent] = useState<ProgressEvent | null>(null);
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
 
   const [hookOptions, setHookOptions] = useState<Array<{ type: string; text: string }> | null>(null);
@@ -335,6 +370,44 @@ export function ProjectEditor() {
     fetchProject();
   }, [id, fetchProject]);
 
+  /**
+   * Live render progress over SSE.
+   *
+   * Opened whenever this project is rendering — including on mount, so reopening the tab
+   * or refreshing mid-render reconnects and the server replays the current stage rather
+   * than showing a blank panel until the next event happens to fire.
+   *
+   * EventSource reconnects on its own if the connection drops, so there is no retry loop
+   * here. The polling below is kept as a slow fallback; see the comment there.
+   */
+  useEffect(() => {
+    if (!id) return;
+    const busy = isRendering || isBusyStatus(renderStatus);
+    if (!busy) return;
+
+    const source = new EventSource(`/api/projects/${id}/progress`);
+    source.onmessage = (message) => {
+      let event: ProgressEvent;
+      try { event = JSON.parse(message.data); } catch { return; }
+      // Belt and braces — the server subscribes per project id, so this should never
+      // be another project's event, but a stray one must not be rendered as ours.
+      if (event.projectId && event.projectId !== id) return;
+      setLiveEvent(event);
+      if (typeof event.percent === 'number') setProgressPercent(event.percent);
+      if (event.message) setCurrentAction(event.message);
+      if (event.stage === 'done' || event.stage === 'failed' || event.stage === 'cancelled') {
+        source.close();
+        setIsRendering(false);
+        fetchProject();
+      }
+    };
+    source.onerror = () => {
+      // Leave it to EventSource to retry. The fallback poll below is what guarantees the
+      // UI still reaches a terminal state if the stream never recovers.
+    };
+    return () => source.close();
+  }, [id, isRendering, renderStatus, fetchProject]);
+
   useEffect(() => {
     if (isRendering) {
       pollInterval.current = setInterval(async () => {
@@ -359,7 +432,12 @@ export function ProjectEditor() {
         } catch (e) {
           console.error('Polling error', e);
         }
-      }, 3000);
+      // Slowed from 3s: SSE carries the live detail now. This stays as a fallback for
+      // the case the stream never establishes (a proxy that buffers, EventSource
+      // unavailable) — without it the UI could sit rendering forever. It also reconciles
+      // fields the stream does not carry, notably cloud_backup, whose outcome lands after
+      // the render is already done and the stream has closed.
+      }, 10000);
     }
     return () => {
       if (pollInterval.current) clearInterval(pollInterval.current);
@@ -1887,9 +1965,32 @@ export function ProjectEditor() {
                 {(isRendering || isBusyStatus(renderStatus) || progressPercent > 0) && (
                   <div className="mb-8 space-y-4">
                     <div className="flex justify-between items-end mb-1">
-                      <div className="flex flex-col items-start">
-                         <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">{renderStatus === 'processing' ? 'BUILDING' : renderStatus.toUpperCase()}</span>
+                      <div className="flex flex-col items-start gap-1">
+                         <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">
+                           {STAGE_LABELS[liveEvent?.stage ?? ''] ?? (renderStatus === 'processing' ? 'BUILDING' : renderStatus.toUpperCase())}
+                         </span>
                          <span className="text-sm font-medium text-neutral-900">{currentAction || 'Initializing...'}</span>
+                         <div className="flex items-center gap-2">
+                           {liveEvent?.sceneIndex && liveEvent?.sceneTotal && (
+                             <span className="text-xs font-medium text-neutral-600">
+                               Scene {liveEvent.sceneIndex} of {liveEvent.sceneTotal}
+                             </span>
+                           )}
+                           {/* The distinction a spinner cannot make: a reused step is
+                               instant, a regenerating one is tens of seconds. */}
+                           {liveEvent?.reused !== undefined && (
+                             <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                               liveEvent.reused
+                                 ? 'bg-emerald-100 text-emerald-700'
+                                 : 'bg-amber-100 text-amber-800'
+                             }`}>
+                               {liveEvent.reused ? 'reusing cached' : 'regenerating'}
+                             </span>
+                           )}
+                         </div>
+                         {liveEvent?.error && (
+                           <span className="text-xs text-red-700 font-medium max-w-md">{liveEvent.error}</span>
+                         )}
                       </div>
                       <span className="text-sm font-bold text-neutral-900">{Math.round(progressPercent)}%</span>
                     </div>

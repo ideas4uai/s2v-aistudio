@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { progressBus, isTerminal, ProgressEvent } from '../progressBus.js';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -303,6 +304,82 @@ projectsRouter.post('/:id/reset', resetProject);
 projectsRouter.post('/:id/analyze-image', analyzeImageAndCreateScript);
 projectsRouter.get('/:id/status', getProjectStatus);
 projectsRouter.get('/:id/timeline', getProjectTimeline);
+
+/**
+ * Live render progress as Server-Sent Events.
+ *
+ * Subscribed per project id, so a client watching A is never registered on B's channel.
+ * On connect it replays the most recent event, if a render is in flight — reconnecting
+ * after a refresh should show where the render is, not an empty panel until whatever is
+ * running next happens to finish.
+ *
+ * Everything here is about not leaking the connection. The listener is removed on close,
+ * on error, and after a terminal event; the heartbeat exists so a client that vanished
+ * without a FIN (laptop closed, network dropped) still surfaces as a write failure rather
+ * than a listener held forever against a project nobody is watching.
+ */
+projectsRouter.get('/:id/progress', (req, res) => {
+  const projectId = req.params.id;
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    // Without this, a proxy that buffers responses turns a live stream into one big
+    // payload delivered when the render is already over.
+    'X-Accel-Buffering': 'no',
+  });
+  res.flushHeaders?.();
+
+  let closed = false;
+  const send = (event: ProgressEvent) => {
+    if (closed) return;
+    try {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    } catch {
+      cleanup();
+      return;
+    }
+    if (isTerminal(event.stage)) {
+      // The render is over. Close rather than hold an idle connection open, and let the
+      // browser's EventSource reconnect only if a new render starts.
+      cleanup();
+      res.end();
+    }
+  };
+
+  const unsubscribe = progressBus.subscribe(projectId, send);
+
+  const heartbeat = setInterval(() => {
+    if (closed) return;
+    // A comment line: valid SSE, ignored by EventSource, and it fails loudly if the
+    // socket is gone — which is what releases the listener for a client that never
+    // sent a close.
+    try { res.write(': keepalive\n\n'); } catch { cleanup(); }
+  }, 15000);
+
+  function cleanup() {
+    if (closed) return;
+    closed = true;
+    clearInterval(heartbeat);
+    unsubscribe();
+  }
+
+  req.on('close', cleanup);
+  req.on('error', cleanup);
+  res.on('error', cleanup);
+
+  // Replay: what is happening right now, for a client that joined mid-render.
+  const latest = progressBus.latest(projectId);
+  if (latest) {
+    send(latest);
+  } else {
+    send({
+      projectId, stage: 'init', message: 'Waiting for a render to start…',
+      at: new Date().toISOString(),
+    });
+  }
+});
 
 projectsRouter.patch('/:id/music', async (req, res) => {
   try {
