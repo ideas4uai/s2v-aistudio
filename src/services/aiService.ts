@@ -338,12 +338,30 @@ async function generateImageWithGeminiNative(
   }
 }
 
-const INDIAN_AESTHETIC_KEYWORDS = ['south asian','indian','graphic novel','nexus city','terracotta','devanagari','hyderabad','mughal','jali','saffron','trigger studio'];
+/**
+ * Terms that mean the prompt has already said what it should look like.
+ *
+ * Guards the photorealistic default below. That default previously fired for anything
+ * that was not literally photorealistic or anime, so picking Watercolour Illustration
+ * produced "...watercolor illustration, ..., photorealistic, cinematic lighting, sharp
+ * focus" — a prompt asking for two incompatible looks at once. Every phrase in
+ * VISUAL_STYLE_PHRASES is covered here, plus the house illustrated styles, so a chosen
+ * style is never argued with. Anything genuinely unstyled still gets the photoreal
+ * default, which is the right neutral for a stock talking-head render.
+ */
+const EXPLICIT_STYLE_MARKERS = [
+  'photorealistic', 'photo-realistic', 'photoreal',
+  'anime', 'manga', 'cel shading', 'cel-shaded',
+  'watercolor', 'watercolour', 'illustration', 'illustrated',
+  'minimalist', 'flat design', 'flat colour', 'flat color',
+  '3d animated', '3d render', '3d rendered',
+  'cyberpunk', 'neon aesthetic',
+  'painterly', 'graphic novel', 'oil painting', 'sketch', 'pixel art', 'claymation',
+];
 
-const isAnime = (prompt: string): boolean => {
+const hasExplicitStyle = (prompt: string): boolean => {
   const lower = prompt.toLowerCase();
-  if (INDIAN_AESTHETIC_KEYWORDS.some(kw => lower.includes(kw))) return false;
-  return lower.includes('anime') || lower.includes('manga') || lower.includes('cel shading');
+  return EXPLICIT_STYLE_MARKERS.some((marker) => lower.includes(marker));
 };
 
 export const AIService = {
@@ -435,15 +453,35 @@ export const AIService = {
     const isStoryEpisode = options?.isStoryEpisode;
     const isLandscape = !isStoryEpisode && options?.aspectRatio === '16:9';
     const aspectRatio = isLandscape ? '16:9' : '9:16';
-    const qualityPrompt = (prompt.includes('photorealistic') || isAnime(prompt))
+    const qualityPrompt = hasExplicitStyle(prompt)
       ? prompt
       : `${prompt}, photorealistic, cinematic lighting, sharp focus`;
     const orientationHint = isLandscape ? 'Horizontal 16:9 landscape orientation.' : 'Vertical 9:16 portrait orientation.';
     const finalPrompt = `${qualityPrompt}. ${orientationHint}`;
-    const styledPrompt = finalPrompt.includes('anime')
-      ? finalPrompt
-      : `${finalPrompt}, semi-realistic anime style, flat colour shading, bold clean outlines`;
 
+    // The prompt's own style is the style. Nothing is appended here.
+    //
+    // This used to read: if the prompt does not contain the word "anime", append
+    // "semi-realistic anime style, flat colour shading, bold clean outlines". Which is
+    // every prompt that is not already anime — so choosing Cinematic Realism produced a
+    // prompt ending "...photorealistic, cinematic lighting, sharp focus. Horizontal 16:9
+    // landscape orientation., semi-realistic anime style, flat colour shading, bold clean
+    // outlines", with the anime terms last and therefore weighted hardest. Every
+    // non-anime style came out cel-shaded, which is exactly what the dropdown was
+    // reported as doing.
+    //
+    // It was meant to enforce the house look for the illustrated universe, but that
+    // universe already carries its own artStyle through resolveArtStyle, which puts it in
+    // the prompt ahead of everything else. So this only ever overrode the styles it was
+    // not meant to touch. Deleting it is the fix; there is nothing to replace it with.
+    const styledPrompt = finalPrompt;
+
+    if (DEBUG_IMAGEGEN) {
+      // The exact text the model receives. Diagnosing the anime-override bug needed this
+      // and there was no way to see it: the debug block below logged promptChars only, so
+      // a prompt that had been rewritten downstream looked identical to one that had not.
+      console.log(`[ImageGen:PROMPT] ${styledPrompt}`);
+    }
     if (DEBUG_IMAGEGEN) {
       console.log(`[ImageGen:DEBUG] ── ENTRY ${JSON.stringify({
         authMode: isAdcMode ? 'ADC/Vertex' : 'API-key/AI-Studio',
