@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Play, Pause, Loader2, FileText, Film, Image as ImageIcon,
   Settings, Clock, Plus, Wand2, Download, AlertCircle, Music, Volume2,
-  Edit2, Check, X, User, MapPin, Box, RefreshCw, XCircle, Mic
+  Edit2, Check, X, User, MapPin, Box, RefreshCw, XCircle, Mic, Zap
 } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 import { projectVideoFileName } from '../utils/filename';
@@ -703,13 +703,19 @@ export function ProjectEditor() {
     }
   };
 
-  const handleRender = async () => {
+  /**
+   * @param draft Draft renders skip depth parallax, render at 720p and encode with
+   *   x264 ultrafast. Same edit, same scenes — just the cheap version, for checking
+   *   pacing and wording before paying for a final.
+   */
+  const handleRender = async (draft = false) => {
     setIsRendering(true);
     setRenderStatus('processing');
     setActivityLogs([]);
     try {
-      const res = await authenticatedFetch(`/api/projects/${id}/pipeline/run`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to start render pipeline');
+      const endpoint = draft ? `/api/projects/${id}/preview` : `/api/projects/${id}/pipeline/run`;
+      const res = await authenticatedFetch(endpoint, { method: 'POST' });
+      if (!res.ok) throw new Error(`Failed to start ${draft ? 'draft' : 'render'} pipeline`);
     } catch (err: any) {
       alert(err.message);
       setIsRendering(false);
@@ -849,7 +855,7 @@ export function ProjectEditor() {
             </>
           )}
           <button
-            onClick={handleRender}
+            onClick={() => handleRender(false)}
             disabled={isRendering}
             className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 disabled:opacity-50"
           >
@@ -885,7 +891,7 @@ export function ProjectEditor() {
           <div className="max-w-5xl mx-auto mb-4 flex items-center justify-between gap-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
             <p className="text-sm font-medium text-amber-800">Changes saved. Click Re-render to generate an updated video.</p>
             <button
-              onClick={handleRender}
+              onClick={() => handleRender(false)}
               disabled={isRendering}
               className="shrink-0 px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
             >
@@ -1966,7 +1972,7 @@ export function ProjectEditor() {
                 )}
 
                 <button
-                  onClick={handleRender}
+                  onClick={() => handleRender(false)}
                   disabled={isRendering}
                   className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                 >
@@ -1974,6 +1980,17 @@ export function ProjectEditor() {
                   {isRendering
                     ? `${renderPhaseLabel(currentAction, progressPercent)} ${Math.round(progressPercent)}%`
                     : project.status === 'completed' ? 'Re-render Video' : 'Render Video'}
+                </button>
+
+                {/* The cheap pass, for checking pacing and wording before paying for a
+                    final: no depth parallax, 720p, x264 ultrafast. */}
+                <button
+                  onClick={() => handleRender(true)}
+                  disabled={isRendering}
+                  className="w-full mt-2 py-3 bg-white hover:bg-neutral-50 text-neutral-700 border border-neutral-300 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <Zap className="w-4 h-4" />
+                  Draft render (fast — 720p, no parallax)
                 </button>
               </div>
 

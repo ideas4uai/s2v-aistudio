@@ -19,7 +19,7 @@ import { generateCaptions } from '../services/captionService.js';
 import { generateAsset } from '../services/assetService.js';
 import { renderVisualClip, validateVisualClip, assembleSceneSegment, renderCaptions, stitchScenes, getAudioDuration, visualClipPath } from '../services/renderService.js';
 import { generateHash, generateAudioHash, generateVisualHash, generateSceneHash, generateAssetHash } from '../utils/hash.js';
-import { getScenesToRender } from '../utils/diff.js';
+import { getScenesToRender, sceneRenderHash } from '../utils/diff.js';
 import { getFromCache } from '../services/cacheService.js';
 import { logUserEvent } from '../services/logService.js';
 import { buildSceneTimeline } from '../utils/timeline.js';
@@ -398,6 +398,11 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
     // 1. Load Project
     const loadedProject = await loadProject(project_id);
     if (!loadedProject) throw new Error(`Project ${project_id} not found`);
+    // renderService decides draft behaviour from project.preview_mode (720p instead of
+    // 1080p, ultrafast x264, and now no depth parallax) — but nothing ever set that
+    // field, so every one of those branches was unreachable and a "preview" render
+    // cost exactly as much as a final one. Carry the option onto the project.
+    (loadedProject as any).preview_mode = isPreview;
     project = loadedProject;
 
     // If project has a universeId but not the embedded universe object, load it now
@@ -425,8 +430,34 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       project.error_log = null;
     }
 
+    // Which scenes actually changed since their last successful render. Everything
+    // below clears a scene's rendered output so it is rebuilt; doing that to every
+    // scene meant a one-line narration edit re-rendered the whole project. Scenes
+    // whose content and the project's global render settings are both unchanged keep
+    // their existing output and are skipped.
+    //
+    // Fail safe, not fast: a scene is re-rendered unless it is provably unchanged.
+    const staleSceneIds = new Set(
+      getScenesToRender(project.scenes || [], project.scenes || [], project),
+    );
+    const unchangedCount = (project.scenes || []).length - staleSceneIds.size;
+    if (unchangedCount > 0) {
+      console.log(
+        `[Orchestrator] Incremental re-render: ${staleSceneIds.size} scene(s) changed, ` +
+        `${unchangedCount} unchanged and will reuse their existing output.`,
+      );
+    }
+
     // Clear stale paths from previous runs — HTTP URLs and local files that no longer exist
     for (const scene of project.scenes || []) {
+      // Unchanged scene with its rendered segment still on disk: leave it alone.
+      if (!staleSceneIds.has(scene.scene_id)
+          && (scene as any).segment_path
+          && !String((scene as any).segment_path).startsWith('http')
+          && fs.existsSync((scene as any).segment_path)) {
+        scene.status = 'completed';
+        continue;
+      }
       if ((scene as any).rendered_path?.startsWith('http')) (scene as any).rendered_path = undefined;
       if ((scene as any).segment_path?.startsWith('http')) (scene as any).segment_path = undefined;
       if ((scene as any).captioned_path?.startsWith('http')) (scene as any).captioned_path = undefined;
@@ -1102,6 +1133,12 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
 
   scene.status = scene.fallback_used ? 'degraded' : 'completed';
   scene.stage = 'done';
+  // Stamp what this scene was rendered FROM. The next run compares against it to
+  // decide whether the scene needs rebuilding, so it is only recorded on success —
+  // a failed scene must never look up to date.
+  if (scene.status === 'completed') {
+    (scene as any).render_hash = sceneRenderHash(scene, project);
+  }
 }
 
   // --------------------------------------------------------------------------
@@ -1181,8 +1218,11 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
     for (const scene of sortedScenes) {
       if (scene.status !== 'completed' && scene.status !== 'degraded') continue;
 
+      // scene.preview_path is never assigned by anything, so a preview stitch found
+      // no segments and produced an empty video. A draft writes its segments to
+      // segment_path like any other render, so fall back to it.
       const segPath: string | undefined = isPreview
-        ? scene.preview_path
+        ? (scene.preview_path || (scene as any).segment_path)
         : (scene as any).segment_path;
 
       if (!segPath) {

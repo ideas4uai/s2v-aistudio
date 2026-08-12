@@ -161,6 +161,8 @@ async function callSceneAnimatorV3(
     partsDir?: string;
     width?: number;
     height?: number;
+    /** Draft render: skip the depth-parallax pass, which is the engine's biggest cost. */
+    draft?: boolean;
   } = {}
 ): Promise<boolean> {
   return new Promise((resolve) => {
@@ -218,7 +220,15 @@ async function callSceneAnimatorV3(
     console.log('[SceneAnimV3] Duration:', duration, 's');
     console.log('[SceneAnimV3] Emotion:', emotion);
 
-    const proc = spawn('py', args);
+    // Depth parallax is the single most expensive thing the engine does. A draft
+    // turns it off for this child only, leaving the operator's USE_DEPTH_PARALLAX
+    // default untouched for final renders.
+    const childEnv = opts.draft
+      ? { ...process.env, USE_DEPTH_PARALLAX: 'false' }
+      : process.env;
+    if (opts.draft) console.log('[SceneAnimV3] Draft render — depth parallax disabled');
+
+    const proc = spawn('py', args, { env: childEnv });
     let stderr = '';
 
     proc.stdout.on('data', (d) => { process.stdout.write(d); });
@@ -642,6 +652,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                   audioPath: scene.narration_path,
                   width: engineW,
                   height: engineH,
+                  draft: isPreview,
                 }
               );
               if (cutoutSuccess) {
@@ -681,6 +692,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 audioPath: scene.narration_path,
                 width: engineW,
                 height: engineH,
+                draft: isPreview,
               }
             );
             if (unifiedSuccess) {
@@ -717,6 +729,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 audioPath: scene.narration_path,
                 width: engineW,
                 height: engineH,
+                draft: isPreview,
               }
             );
             if (compositeSuccess) {
