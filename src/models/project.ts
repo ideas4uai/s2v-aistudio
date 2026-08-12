@@ -133,6 +133,18 @@ export interface Project {
     tags: string[];
     thumbnailText: string;
   };
+  /**
+   * Back-link to the Content Studio run this project came from.
+   *
+   * Without it a project is an orphan the moment it is handed off, and nothing
+   * downstream can ask whether its story was ever approved — which is exactly what
+   * scheduled publishing has to know before it acts unattended.
+   */
+  contentStudio?: {
+    episodeId: string;
+    packageId: string;
+    workflowRunId?: string;
+  };
   /** Set once the video has been published. Its presence is what "already on YouTube" means. */
   youtube?: {
     videoId: string;

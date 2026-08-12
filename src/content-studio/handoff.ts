@@ -36,6 +36,10 @@ export function packageToProjectPayload(pkg: ProductionPackage, userId: string, 
     ...(universe ? { universe, episodeNumber: 1 } : {}),
     project_id: uuidv4(),
     userId,
+    // Carry the origin across the handoff. A project that cannot name the run it came
+    // from cannot be asked whether its story was approved, and scheduled publishing has
+    // to be able to ask that before it acts unattended.
+    contentStudio: { episodeId: pkg.episodeId, packageId: pkg.id },
     mode,
     topic: pkg.story.title,
     hook_strategy: pkg.story.hook || 'question',

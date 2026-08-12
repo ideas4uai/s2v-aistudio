@@ -8,6 +8,8 @@ import { execSync } from 'child_process';
 import { projectsRouter } from './src/server/routes/projects.js';
 import { analyticsRouter } from './src/server/routes/analytics.js';
 import { youtubeRouter } from './src/server/routes/youtube.js';
+import { scheduleRouter } from './src/server/routes/schedule.js';
+import { startScheduler } from './src/server/services/scheduleRunner.js';
 import { universeController } from './src/controllers/universeController.js';
 import { jobsRouter } from './src/server/routes/jobs.js';
 import { assetsRouter } from './src/server/routes/assets.js';
@@ -221,6 +223,7 @@ async function startServer() {
   app.use('/api/content-studio', contentStudioRouter);
   app.use('/api/analytics', analyticsRouter);
   app.use('/api/youtube', youtubeRouter);
+  app.use('/api/schedule', scheduleRouter);
   app.post('/api/universes', universeController.save);
   app.get('/api/universes', universeController.list);
   app.get('/api/universes/:id', universeController.get);
@@ -800,7 +803,12 @@ async function startServer() {
 
   app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    
+
+    // Picks up anything already overdue. A slot missed while the server was down should
+    // still run rather than be skipped silently — both gates are re-checked first.
+    startScheduler();
+
+
     console.log('[STARTUP] GEMINI_KEY_SCRIPT:', process.env.GEMINI_KEY_SCRIPT ? 'loaded' : 'MISSING');
     console.log('[STARTUP] GEMINI_KEY_SCENES:', process.env.GEMINI_KEY_SCENES ? 'loaded' : 'MISSING');
     console.log('[STARTUP] GEMINI_KEY_VISUAL:', process.env.GEMINI_KEY_VISUAL ? 'loaded' : 'MISSING');
