@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'child_process';
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 // Frame synthesis is split across processes by frame range. render(fi) is NOT a pure
 // function of fi — the particle system integrates position on every call — so a worker
@@ -43,6 +45,24 @@ describe('parallel frame synthesis', () => {
     ].join('\n'));
     // If this is 0, every worker after the first renders the wrong particle state.
     expect(out.trim().endsWith('1')).toBe(true);
+  });
+
+  it('an aborted encode leaves no partial file behind', () => {
+    // Frames now stream into ffmpeg rather than cv2, so a clip that dies half way is a
+    // real, playable-looking mp4 of the wrong length. isFreshOutput would date it after
+    // its sources and hand it to the next render as finished work.
+    const out = path.join(os.tmpdir(), 'ais-abort-probe.mp4');
+    const written = py([
+      'import sys, os; sys.path.insert(0, "src/scripts")',
+      'import numpy as np, metro_engine_v4 as m',
+      `out = r"${out.replace(/\\/g, '/')}"`,
+      'w, _ = m.open_writer(out, 24, 320, 240)',
+      '[w.write(np.zeros((240, 320, 3), dtype=np.uint8)) for _ in range(10)]',
+      'w.abort()',
+      'print(int(os.path.exists(out)), int(w.proc.poll() is not None))',
+    ].join('\n'));
+    // file gone, encoder reaped — no partial, no orphan.
+    expect(written.trim().endsWith('0 1')).toBe(true);
   });
 
   it('worker count auto-detects and is overridable, not pinned to 4', () => {

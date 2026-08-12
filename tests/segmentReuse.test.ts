@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { assembleSceneSegment, renderCaptions } from '../src/services/renderService.js';
+import { assembleSceneSegment } from '../src/services/renderService.js';
 
 // Regression cover for the bug that made three "one TTS engine each" comparison renders
 // ship byte-identical audio.
@@ -30,14 +30,21 @@ function scopedDir(projectId: string) {
   return d;
 }
 
-/** A scene the caption stage will act on: it needs a segment and at least one chunk. */
-function sceneWith(segmentPath: string) {
+/**
+ * A captioned scene, whose single assembly pass writes `${scene_id}_captioned.mp4`.
+ *
+ * Assembly, caption burn and audio mux are now one ffmpeg call, so the staleness guard
+ * that used to sit on the separate caption stage lives on this one output instead. The
+ * property under test is unchanged: a burn-in older than the clip it claims to come
+ * from must never be handed back.
+ */
+function sceneWith(visualPath: string) {
   return {
     scene_id: SCENE_ID,
-    segment_path: segmentPath,
     caption_text: 'hello',
-    caption_chunks: [{ text: 'hello', start: 0, end: 1 }],
-    duration_actual: 1,
+    narration_text: 'hello there',
+    duration_target: 1,
+    visuals: [{ rendered_path: visualPath }],
   };
 }
 
@@ -66,40 +73,61 @@ describe('scene segment paths are project-scoped', () => {
   });
 });
 
-describe('renderCaptions staleness guard', () => {
-  it('reuses a captioned file that is newer than its segment', async () => {
+describe('captioned segment staleness guard', () => {
+  it('reuses a captioned file that is newer than the clip it was burned from', async () => {
     const dir = scopedDir('proj-fresh');
     fs.mkdirSync(dir, { recursive: true });
-    const segment = path.join(dir, `${SCENE_ID}_segment.mp4`);
+    const visual = path.join(dir, 'visual.mp4');
     const captioned = path.join(dir, `${SCENE_ID}_captioned.mp4`);
 
-    fs.writeFileSync(segment, 'segment');
+    fs.writeFileSync(visual, 'visual clip');
     fs.writeFileSync(captioned, 'captioned');
-    // Burned after the segment was assembled, so it matches the current audio.
+    // Burned after the clip was rendered, so it matches the current visual and audio.
     const later = new Date(Date.now() + 10_000);
     fs.utimesSync(captioned, later, later);
 
-    expect(await renderCaptions(sceneWith(segment))).toBe(captioned);
+    const result = await assembleSceneSegment(
+      sceneWith(visual), undefined, 'k', undefined, { project_id: 'proj-fresh' });
+    expect(result).toBe(captioned);
   });
 
-  it('does NOT reuse a captioned file older than its segment', async () => {
+  it('leaves the stored segment duration alone when it reuses', async () => {
+    const dir = scopedDir('proj-nodrift');
+    fs.mkdirSync(dir, { recursive: true });
+    const visual = path.join(dir, 'visual.mp4');
+    const captioned = path.join(dir, `${SCENE_ID}_captioned.mp4`);
+    fs.writeFileSync(visual, 'visual clip');
+    fs.writeFileSync(captioned, 'captioned');
+    const later = new Date(Date.now() + 10_000);
+    fs.utimesSync(captioned, later, later);
+
+    // duration_actual is the length of the assembled SEGMENT, which is shorter than the
+    // narration it came from — silenceremove strips the pauses. Probing the raw audio on
+    // the reuse path overwrote it with the longer number and nothing ever put it back.
+    const scene: any = { ...sceneWith(visual), duration_actual: 6.88 };
+    await assembleSceneSegment(scene, undefined, 'k', undefined, { project_id: 'proj-nodrift' });
+    expect(scene.duration_actual).toBe(6.88);
+  });
+
+  it('does NOT reuse a captioned file older than its visual clip', async () => {
     const dir = scopedDir('proj-stale');
     fs.mkdirSync(dir, { recursive: true });
-    const segment = path.join(dir, `${SCENE_ID}_segment.mp4`);
+    const visual = path.join(dir, 'visual.mp4');
     const captioned = path.join(dir, `${SCENE_ID}_captioned.mp4`);
 
-    // The exact shape of the bug: a leftover burn-in predating a re-assembled segment.
+    // The exact shape of the bug: a leftover burn-in predating a re-rendered clip.
     fs.writeFileSync(captioned, 'stale caption burn from an older render');
     const earlier = new Date(Date.now() - 600_000);
     fs.utimesSync(captioned, earlier, earlier);
-    fs.writeFileSync(segment, 'freshly assembled segment with the new voice');
+    fs.writeFileSync(visual, 'freshly rendered clip with the new voice');
 
-    // These are not real MP4s, so the re-burn ffmpeg fails and renderCaptions falls back
-    // to its input. That is the point: anything but the stale file means the guard fired.
-    // Returning `captioned` here is precisely what shipped the wrong audio three times.
-    const result = await renderCaptions(sceneWith(segment));
+    // Not a real MP4, so the single assembly pass fails and falls back to its input.
+    // That is the point: anything but the stale file means the guard fired. Returning
+    // `captioned` here is precisely what shipped the wrong audio three times.
+    const result = await assembleSceneSegment(
+      sceneWith(visual), undefined, 'k', undefined, { project_id: 'proj-stale' });
     expect(result).not.toBe(captioned);
-    expect(result).toBe(segment);
+    expect(result).toBe(visual);
     // Generous timeout: passing the guard spawns a real ffmpeg, and process startup on a
     // machine that is busy rendering takes well over vitest's 5s default.
   }, 30_000);

@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import ffmpeg from 'ffmpeg-static';
+import { generateCaptions } from './captionService.js';
 
 const execAsync = promisify(exec);
 
@@ -37,6 +38,23 @@ export function visualClipPath(
   // Same default as the render body below, or the path and the content disagree.
   const m = String(motion || 'zoom_in').replace(/[^a-z0-9_-]/gi, '');
   return path.join(tmpDir, `${projectId}_visual_${visualId}_${m}.mp4`);
+}
+
+/**
+ * Move a finished clip into place.
+ *
+ * Rename, not copy-then-delete. Every engine writes its clip under a working name and
+ * then put it where the pipeline expects it, which meant writing the whole file a second
+ * time — 210 MB of pure duplication on a five-scene episode, on a laptop disk. Falls back
+ * to a copy if the two ever land on different volumes, where rename cannot work.
+ */
+function moveInto(src: string, dest: string): void {
+  try {
+    fs.renameSync(src, dest);
+  } catch {
+    fs.copyFileSync(src, dest);
+    try { fs.unlinkSync(src); } catch { /* non-fatal */ }
+  }
 }
 
 export function isFreshOutput(output: string, ...sources: (string | undefined | null)[]): boolean {
@@ -656,7 +674,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 }
               );
               if (cutoutSuccess) {
-                fs.copyFileSync(cutoutPath, outputPath);
+                moveInto(cutoutPath, outputPath);
                 scene.rendered_path = outputPath;
                 try {
                   if (fs.existsSync(animatedPath)) fs.unlinkSync(animatedPath);
@@ -696,7 +714,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
               }
             );
             if (unifiedSuccess) {
-              fs.copyFileSync(unifiedPath, outputPath);
+              moveInto(unifiedPath, outputPath);
               scene.rendered_path = outputPath;
               try {
                 if (fs.existsSync(animatedPath)) fs.unlinkSync(animatedPath);
@@ -736,7 +754,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
               console.log('[RenderVisual] Composite succeeded — writing to output');
               // renderVisualClip returns video-only; assembleSceneSegment adds audio downstream.
               // mergeVideoAudio is available for direct use if the caller needs a self-contained clip.
-              fs.copyFileSync(compositedPath, outputPath);
+              moveInto(compositedPath, outputPath);
               scene.rendered_path = outputPath;
               // Clean up intermediate files
               try {
@@ -748,7 +766,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
               console.log('[RenderVisual] Composite failed — falling back to Stage 1');
               // Fall through to Stage 1 below
               if (animatorSucceeded) {
-                fs.copyFileSync(animatedPath, outputPath);
+                moveInto(animatedPath, outputPath);
                 fs.promises.unlink(animatedPath).catch(() => {});
               } else {
                 const storedPreset = project?.settings?.exportPreset;
@@ -759,7 +777,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
             }
           } else if (animatorSucceeded) {
             // Stage 1: animator output
-            fs.copyFileSync(animatedPath, outputPath);
+            moveInto(animatedPath, outputPath);
             console.log('[RenderVisual] Stage 1: using animator output directly — Ken Burns skipped');
             fs.promises.unlink(animatedPath).catch(() => {});
           } else {
@@ -857,7 +875,11 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
   const outputPath = path.join(tmpDir, `${scene.scene_id}_segment.mp4`);
-  
+  // Captions are burned in the same pass, so a captioned scene lands straight here.
+  const captionedPath = path.join(tmpDir, `${scene.scene_id}_captioned.mp4`);
+  const hasCaptions = Boolean(scene.caption_text);
+  const finalPath = hasCaptions ? captionedPath : outputPath;
+
   const visualPath = (scene.visuals?.[0] as any)?.rendered_path;
   if (!visualPath || !fs.existsSync(visualPath)) {
     console.error('[RenderService] No rendered visual for scene:', scene.scene_id, 'visual path:', visualPath);
@@ -868,6 +890,18 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
     try { return audioPath && fs.existsSync(audioPath) && fs.statSync(audioPath).size > 1000; }
     catch { return false; }
   })();
+
+  // Reuse a finished segment only if it is newer than BOTH things it was built from.
+  //
+  // This has to come BEFORE the probe below. duration_actual is the length of the
+  // assembled SEGMENT, but the probe measures the raw narration, which is longer —
+  // silenceremove has not run yet. Checking freshness after it meant a reused scene got
+  // its stored duration overwritten with the wrong number (measured: 6.88s -> 8.05s) on
+  // every subsequent render, with nothing rebuilt that would put it back.
+  if (isFreshOutput(finalPath, visualPath, audioValid ? audioPath : undefined)) {
+    console.log('[RenderService] Segment still fresh — reusing:', path.basename(finalPath));
+    return finalPath;
+  }
 
   const fallbackDuration = scene.duration_target || 5;
 
@@ -887,9 +921,6 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
   const audioInputArg = audioValid
     ? `-i "${audioPath}"`
     : `-f lavfi -i anullsrc=r=44100:cl=stereo`;
-  const audioOutputOpts = audioValid
-    ? '-c:a aac -ar 44100 -ac 2 -b:a 192k'
-    : '-c:a aac';
 
   // Target-length hold: extra still time the orchestrator budgeted for this scene
   // (see planScenePadding). The video input is -stream_loop'd and the clip was
@@ -910,29 +941,68 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
     : padSeconds > 0 ? `-t ${(outputDuration + padSeconds).toFixed(3)}`
     : `-shortest`;
 
+  // Hard bound for the audio-only pass below. `apad` is unbounded whenever there is a
+  // hold to fill, and `-shortest` means nothing when a single input is being filtered —
+  // so an audio-only command must carry its own limit or ffmpeg pads silence until the
+  // disk is full. That is not hypothetical: it wrote a 240 GB WAV in about twenty
+  // minutes while this change was being measured. Never let this be implied by another
+  // flag. Where silenceremove makes the real output shorter this is only a ceiling; the
+  // true length is measured off the file afterwards.
+  //
+  // Each branch matches the length the old muxed command produced, so segments come out
+  // exactly as long as they used to: pad is exact, and the +0.1 is the pad_dur tail.
+  const audioCapArg = `-t ${(
+    !audioValid ? outputDuration
+      : padSeconds > 0 ? outputDuration + padSeconds
+      : outputDuration + 0.1
+  ).toFixed(3)}`;
+
   // Normalise the segment to the project's export resolution here: this is the one
   // point every render path (Ken Burns, animator, Metro/Doraemon engines) flows
   // through, and the engines ignore the size we hand them. Downstream stitching is
   // -c copy, so getting it right here is what reaches the final MP4.
   let sizeFilter = '';
+  // Caption geometry must match the frame the captions land on. The scale below is the
+  // last thing to touch the picture, so these are the final dimensions — no ffprobe of an
+  // intermediate needed any more, because there is no intermediate.
+  let capW = 1080, capH = 1920;
   if (project) {
-    const isPreview = project?.quality === 'draft' || project?.preview_mode || false;
-    const { w, h } = outputResolution(project?.settings?.exportResolution, isShortsProject(project), isPreview);
+    const isPreviewSize = project?.quality === 'draft' || project?.preview_mode || false;
+    const { w, h } = outputResolution(project?.settings?.exportResolution, isShortsProject(project), isPreviewSize);
     sizeFilter = `,scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1`;
+    capW = w; capH = h;
   }
 
   try {
-     await guardedExec(`"${ffmpeg}" -stream_loop -1 -i "${visualPath}" ${audioInputArg} -vf "setpts=PTS-STARTPTS${sizeFilter}" ${audioFilterChain} -c:v libx264 -preset fast -crf 20 ${audioOutputOpts} ${durationArg} -y "${outputPath}"`, signal);
+     // ── Pass 1 (audio only): apply the audio chain to a WAV.
+     //
+     // This exists so the whole tail can be ONE video encode. Caption timings come from
+     // detectSpeechSpan, which used to measure the assembled MP4 — forcing the video to be
+     // encoded before captions could be written, and then encoded a second time to burn
+     // them. silencedetect only ever looked at the audio, so measuring the processed WAV
+     // gives byte-identical spans for a fraction of a second of audio-only work.
+     const processedAudio = path.join(tmpDir, `${scene.scene_id}_audio.wav`);
+     await guardedExec(`"${ffmpeg}" ${audioInputArg} ${audioFilterChain} -c:a pcm_s16le -ar 44100 -ac 2 ${audioCapArg} -y "${processedAudio}"`, signal);
+
      // Captions and drift correction must track the SEGMENT length, not the raw
      // WAV: silenceremove strips pauses/tails, so segment audio runs shorter than
      // the narration file. Anchoring to the raw duration made captions lag.
-     const segmentDuration = await getAudioDuration(outputPath);
+     const segmentDuration = await getAudioDuration(processedAudio);
+     // Backstop for the bound above. If the cap is ever dropped from that command the
+     // failure is not a wrong number, it is ffmpeg padding silence until the volume is
+     // full — so notice here rather than at the next render.
+     if (segmentDuration > outputDuration + padSeconds + 1) {
+       try { fs.unlinkSync(processedAudio); } catch { /* non-fatal */ }
+       throw new Error(
+         `processed audio ran to ${segmentDuration.toFixed(1)}s for a scene budgeted at ` +
+         `${(outputDuration + padSeconds).toFixed(1)}s — the audio pass lost its duration cap`);
+     }
      if (segmentDuration > 0) {
        scene.duration_actual = segmentDuration;
        // Captions anchor to the speech span, NOT to duration_actual: the segment also
        // holds pad_seconds of deliberate silence, and spreading captions over that is
        // what made them lag further and further behind the narration.
-       const span = await detectSpeechSpan(outputPath, segmentDuration);
+       const span = await detectSpeechSpan(processedAudio, segmentDuration);
        scene.speech_start = Number(span.start.toFixed(3));
        scene.speech_end = Number(span.end.toFixed(3));
        console.log(
@@ -940,24 +1010,64 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
          `speech ${span.start.toFixed(3)}→${span.end.toFixed(3)}s (captions anchored to the speech)`
        );
      }
-     return outputPath;
+
+     // ── Captions: chunks depend only on the speech span measured above, never on the
+     // video, so they can be laid out before a single frame is encoded.
+     let assFilter = '';
+     if (hasCaptions) {
+       const { chunks } = await generateCaptions(scene, audioPath, 'default');
+       scene.caption_chunks = chunks;
+       const assPath = writeCaptionAss(scene, tmpDir, capW, capH);
+       if (assPath) {
+         const escaped = assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+         assFilter = `,ass='${escaped}'`;
+       }
+     }
+
+     // ── Pass 2 (the only video encode): scale to the export resolution, burn the
+     // captions and mux the finished audio, all in one go. The audio is already in its
+     // final form, so it is copied through the filter graph untouched.
+     // Same preset the two passes it replaces both used. exportPreset deliberately does
+     // not feed in here: it governs the Ken Burns path, and routing it in as well would
+     // have quietly changed every existing project's output size along with this change.
+     const isPreview = project?.quality === 'draft' || project?.preview_mode || false;
+     const preset = isPreview ? 'ultrafast' : 'fast';
+     const lengthArg = segmentDuration > 0 ? `-t ${segmentDuration.toFixed(3)}` : durationArg;
+     // crf 20, not the 18 the old caption burn used. The old chain's real quality ceiling
+     // was its FIRST pass at crf 20; re-encoding that at 18 could only add generation
+     // loss while inflating the file. Measured against a lossless reference of the same
+     // scene: old two-pass 7.15 MB / SSIM 0.96902, this 7.24 MB / SSIM 0.97018 — better
+     // picture at the same size. crf 18 here doubles the file for no visible gain
+     // (15.6 MB), and crf 22 drops below the old quality.
+     await guardedExec(`"${ffmpeg}" -stream_loop -1 -i "${visualPath}" -i "${processedAudio}" -vf "setpts=PTS-STARTPTS${sizeFilter}${assFilter}" -c:v libx264 -preset ${preset} -crf 20 -c:a aac -ar 44100 -ac 2 -b:a 192k ${lengthArg} -y "${finalPath}"`, signal);
+
+     // A truncated encode that ffmpeg still exited 0 on would be cached as valid by the
+     // freshness check above and shipped. Cheap to rule out; expensive to miss.
+     if (!fs.existsSync(finalPath) || fs.statSync(finalPath).size < 1000) {
+       try { fs.unlinkSync(finalPath); } catch { /* already gone */ }
+       throw new Error(`segment encode produced no usable file: ${path.basename(finalPath)}`);
+     }
+     try { fs.unlinkSync(processedAudio); } catch { /* non-fatal */ }
+     return finalPath;
   } catch(e: any) {
      if (e.message === 'PIPELINE_CANCELLED') throw e;
      console.error('assembly ffmpeg failed', e);
+     // Never leave a partial behind for the next run's freshness check to trust.
+     try { if (fs.existsSync(finalPath) && fs.statSync(finalPath).size < 1000) fs.unlinkSync(finalPath); } catch { /* non-fatal */ }
      return visualPath;
   }
 };
 
-export const renderCaptions = async (scene: any, signal?: AbortSignal) => {
-  console.log('[Captions] Starting for scene:', scene.scene_id, 'chunks:', scene.caption_chunks?.length ?? 0, 'segment_path:', scene.segment_path?.slice(-40));
-  if (!scene.segment_path || !scene.caption_chunks || scene.caption_chunks.length === 0) {
-    return scene.segment_path;
-  }
-
-  const inputPath = scene.segment_path;
-  const outputPath = inputPath.replace('_segment.mp4', '_captioned.mp4');
-  // Reuse the burned-in copy only if it was built from the segment that is here NOW.
-  if (isFreshOutput(outputPath, inputPath)) return outputPath;
+/**
+ * Write the scene's ASS subtitle file and return its path (or '' if there is nothing
+ * to burn).
+ *
+ * `playResX/Y` must be the dimensions of the frame the captions are drawn onto, or
+ * libass stretches the geometry — e.g. a portrait caption layout mapped onto 16:9.
+ * The caller knows them from the export resolution it is about to scale to.
+ */
+function writeCaptionAss(scene: any, tmpDir: string, playResX: number, playResY: number): string {
+  if (!scene.caption_chunks || scene.caption_chunks.length === 0) return '';
 
   const toAssTime = (seconds: number): string => {
     const h = Math.floor(seconds / 3600);
@@ -966,15 +1076,6 @@ export const renderCaptions = async (scene: any, signal?: AbortSignal) => {
     const cs = Math.floor((seconds % 1) * 100);
     return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
   };
-
-  // PlayRes must match the segment's real dimensions or libass stretches the
-  // caption geometry (e.g. portrait canvas mapped onto a 16:9 video).
-  let playResX = 1080, playResY = 1920;
-  try {
-    const { stdout } = await execAsync(`ffprobe -v quiet -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "${inputPath}"`, { timeout: 10000 });
-    const [vw, vh] = stdout.trim().split(',').map(Number);
-    if (vw > 0 && vh > 0) { playResX = vw; playResY = vh; }
-  } catch { /* keep portrait default */ }
 
   const assHeader = `[Script Info]
 ScriptType: v4.00+
@@ -1008,24 +1109,11 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     return `Dialogue: 0,${start},${end},Default,,0,0,0,,${text}`;
   }).join('\n');
 
-  const assPath = inputPath.replace('_segment.mp4', '_captions.ass');
+  const assPath = path.join(tmpDir, `${scene.scene_id}_captions.ass`);
   fs.writeFileSync(assPath, assHeader + assEvents, 'utf8');
-
-  const escapedAss = assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
-  const subtitleFilter = `ass='${escapedAss}'`;
-
-  try {
-    const isPreview = scene.quality === 'draft' || scene.preview_mode || false;
-    const preset = isPreview ? 'ultrafast' : 'fast';
-    await guardedExec(`"${ffmpeg}" -i "${inputPath}" -vf "${subtitleFilter}" -c:v libx264 -preset ${preset} -crf 18 -b:v 4M -c:a copy -y "${outputPath}"`, signal);
-    console.log('[Captions] Output file exists:', fs.existsSync(outputPath), outputPath.slice(-40));
-    return outputPath;
-  } catch(e: any) {
-    if (e.message === 'PIPELINE_CANCELLED') throw e;
-    console.error('renderCaptions ffmpeg failed', e);
-    return inputPath;
-  }
-};
+  console.log(`[Captions] Scene ${scene.scene_id}: ${wordChunks.length} cues at ${playResX}x${playResY}`);
+  return assPath;
+}
 
 /**
  * ffmpeg `-metadata` arguments disclosing that the narration is synthetic.
@@ -1086,7 +1174,7 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
 
   try {
      // Stream copy requires all segments encoded identically (h264 1080x1920 yuv420p 24fps + aac 44.1kHz stereo,
-     // guaranteed by assembleSceneSegment/renderCaptions). Filters can't combine with -c copy, so no -vf here.
+     // guaranteed by assembleSceneSegment). Filters can't combine with -c copy, so no -vf here.
      const disclosure = await disclosureMetadataArgs(project);
      const stitchCmd = `"${ffmpeg}" -f concat -safe 0 -i "${listFile}" -c copy ${disclosure} -movflags +faststart -y "${outputPath}"`;
      console.log('[Stitch] FFmpeg command:', stitchCmd);

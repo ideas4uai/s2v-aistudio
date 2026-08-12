@@ -1107,15 +1107,126 @@ class SceneRendererV4:
 # VIDEO OUTPUT
 # ═══════════════════════════════════════════════════════════════════════════
 
+# This clip is an intermediate: assembleSceneSegment re-encodes it to the export
+# resolution, so what matters here is being cheap and faithful, not small.
+#
+# ultrafast, measured, is the whole point. The engine's synthesised film grain is
+# expensive to compress, and a slower preset spends that cost on the render's critical
+# path: veryfast made frame synthesis 88.9s -> 118.8s across a five-scene episode, which
+# swallowed the ~22s the collapsed encode tail saves and left the render 24s SLOWER than
+# before any of this. ultrafast encodes at roughly the speed of the cv2 writer it
+# replaces while still producing real h264 at a controlled rate — the point being to stop
+# cv2 emitting 50 Mbps mp4v, not to win a compression contest against a file that is
+# deleted minutes later.
+ENCODE_CRF = int(os.environ.get('METRO_V4_CRF', '18'))
+ENCODE_PRESET = os.environ.get('METRO_V4_PRESET', 'ultrafast')
+ENCODER_TIMEOUT_S = 300      # draining a few hundred queued frames, not a whole render
+
+
+class FFmpegPipeWriter:
+    """Frame sink that pipes raw BGR straight into ffmpeg instead of cv2.VideoWriter.
+
+    cv2's writer gives no bitrate control: it turned 276 frames into 71 MB, and a
+    five-scene episode into 188 MB of intermediates that downstream re-encodes to 30 MB.
+    Every one of those megabytes is a write and a read on a laptop disk. Encoding
+    here at a real CRF costs a little CPU inside a worker (which is parallel) to
+    remove I/O from the serial part of the render.
+
+    It also removes the avc1/mp4v uncertainty: whichever codec OpenCV happened to
+    ship with decided the segment's stream parameters, which is what made the
+    parallel-join `-c copy` a gamble worth a fallback.
+
+    Drop-in for the cv2 writer: .write(frame) / .release().
+    """
+
+    def __init__(self, path: str, fps: int, w: int, h: int):
+        self.path = path
+        self.w, self.h = w, h
+        self._err_path = path + '.enc.log'
+        self._err = open(self._err_path, 'wb')
+        # stderr goes to a file, never a pipe: nothing drains a pipe while we are
+        # blocked writing frames, so a chatty ffmpeg would deadlock the render.
+        self.proc = subprocess.Popen(
+            [_ffmpeg_bin(), '-hide_banner', '-loglevel', 'error', '-y',
+             '-f', 'rawvideo', '-pix_fmt', 'bgr24',
+             '-s', f'{w}x{h}', '-r', str(fps), '-i', 'pipe:0',
+             '-an', '-c:v', 'libx264', '-preset', ENCODE_PRESET,
+             '-crf', str(ENCODE_CRF), '-pix_fmt', 'yuv420p', path],
+            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=self._err)
+        self.closed = False
+
+    def write(self, frame: np.ndarray):
+        if frame.shape[0] != self.h or frame.shape[1] != self.w:
+            raise RuntimeError(
+                f'frame {frame.shape[1]}x{frame.shape[0]} != writer {self.w}x{self.h}')
+        try:
+            # tobytes() already copies, and returns C-order regardless of the view.
+            self.proc.stdin.write(frame.tobytes())
+        except (BrokenPipeError, OSError) as exc:
+            raise RuntimeError(f'ffmpeg closed the pipe early: {self._tail()}') from exc
+
+    def release(self):
+        """Close the pipe and wait. Raises if ffmpeg failed — a half-written mp4
+        must not be left behind looking like a finished clip."""
+        if self.closed:
+            return
+        self.closed = True
+        try:
+            if self.proc.stdin and not self.proc.stdin.closed:
+                self.proc.stdin.close()
+        except OSError:
+            pass
+        try:
+            code = self.proc.wait(timeout=ENCODER_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            self.proc.wait()
+            code = -1
+        self._err.close()
+        if code != 0:
+            self._discard()
+            raise RuntimeError(f'ffmpeg encode failed ({code}): {self._tail()}')
+        try:
+            os.remove(self._err_path)
+        except OSError:
+            pass
+
+    def abort(self):
+        """Tear down without raising — for the error path, so no ffmpeg outlives us."""
+        if self.closed:
+            return
+        self.closed = True
+        for closer in (lambda: self.proc.stdin and self.proc.stdin.close(),
+                       self.proc.kill, self.proc.wait, self._err.close):
+            try:
+                closer()
+            except Exception:
+                pass
+        self._discard()
+
+    def _discard(self):
+        """Remove the partial output so no later freshness check mistakes it for real."""
+        try:
+            if os.path.exists(self.path):
+                os.remove(self.path)
+        except OSError:
+            pass
+
+    def _tail(self) -> str:
+        try:
+            self._err.flush()
+        except Exception:
+            pass
+        try:
+            with open(self._err_path, 'rb') as fh:
+                return fh.read()[-400:].decode('utf-8', 'replace').strip()
+        except OSError:
+            return '(no encoder output)'
+
+
 def open_writer(path: str, fps: int, w: int, h: int):
-    """Prefer avc1 (h264) so clips concat cleanly with libx264 fallback clips;
-    fall back to mp4v when OpenCV ships without openh264."""
-    for cc in ('avc1', 'mp4v'):
-        writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*cc),
-                                 float(fps), (w, h))
-        if writer.isOpened():
-            return writer, cc
-    raise RuntimeError(f"VideoWriter failed for: {path}")
+    """Open the frame sink. Returns (writer, label) — the label is only for logging."""
+    return FFmpegPipeWriter(path, fps, w, h), f'libx264 crf{ENCODE_CRF} (piped)'
 
 # ═══════════════════════════════════════════════════════════════════════════
 # CLI
@@ -1173,18 +1284,25 @@ def _render_range(job):
     try:
         for fi in range(start, end):
             writer.write(renderer.render(fi))
-    finally:
         writer.release()
+    except BaseException:
+        # abort(), not release(): kill the encoder and delete the partial segment, so a
+        # failed range can never be concatenated as if it were complete.
+        writer.abort()
+        raise
     return (start, seg_path)
 
 
 def _concat_segments(segments, output, fps, w, h):
-    """Join the per-worker segments in frame order.
+    """Join the per-worker segments in frame order — stream-copied, never re-encoded.
 
-    Re-encoded rather than stream-copied: the segments come from cv2's VideoWriter,
-    whose exact stream parameters depend on which codec OpenCV shipped with, and a
-    concat -c copy across a parameter mismatch produces a file that plays only up to
-    the first seam. Downstream assembleSceneSegment re-encodes anyway.
+    Every segment now comes from the same FFmpegPipeWriter invocation with identical
+    encoder settings, so the streams are copy-compatible by construction. This used to
+    be a gamble (cv2 chose the codec) and re-encoding the join cost 19s of a 59s
+    render — a third of it, serial, undoing much of the parallel gain.
+
+    The re-encode fallback below stays as a safety net only. It must never become the
+    normal path: if you see its log line, something upstream changed the writer.
     """
     list_path = output + '.concat.txt'
     with open(list_path, 'w', encoding='utf-8') as fh:
@@ -1192,11 +1310,6 @@ def _concat_segments(segments, output, fps, w, h):
             fh.write(f"file '{seg.replace(chr(92), '/')}'\n")
     base = [_ffmpeg_bin(), '-hide_banner', '-loglevel', 'error', '-y',
             '-f', 'concat', '-safe', '0', '-i', list_path]
-    # Every segment comes from the same open_writer() on the same machine, so codec
-    # and parameters match and the segments can simply be stitched. Re-encoding here
-    # cost 19s of a 59s render — a third of it, all serial, undoing much of the
-    # parallel gain. Fall back to re-encoding if a copy ever fails to produce a
-    # playable file, rather than trusting that the parameters always line up.
     copy_ok = False
     try:
         subprocess.run(base + ['-c', 'copy', '-movflags', '+faststart', output],
@@ -1337,11 +1450,15 @@ def main():
         print(f'[MetroV4] Codec: {codec}')
         print(f'[MetroV4] Rendering {total} frames (sequential)...')
         # Stream frames straight to the writer — no full-episode frame list in RAM
-        for fi in range(total):
-            writer.write(renderer.render(fi))
-            if fi and fi % 96 == 0:
-                print(f'[MetroV4] ... {fi}/{total} frames')
-        writer.release()
+        try:
+            for fi in range(total):
+                writer.write(renderer.render(fi))
+                if fi and fi % 96 == 0:
+                    print(f'[MetroV4] ... {fi}/{total} frames')
+            writer.release()
+        except BaseException:
+            writer.abort()
+            raise
 
     if not os.path.exists(args.output) or os.path.getsize(args.output) < 10000:
         print('[MetroV4] ERROR: output missing or too small', file=sys.stderr)

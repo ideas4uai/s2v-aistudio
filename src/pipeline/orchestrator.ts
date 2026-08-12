@@ -15,9 +15,8 @@ import { withRetry } from '../utils/retry.js';
 import { v4 as uuidv4 } from 'uuid';
 import { fallbackHook, fallbackScript, fallbackSceneGraph } from './fallbacks.js';
 import { generateSceneAudio } from '../services/voiceService.js';
-import { generateCaptions } from '../services/captionService.js';
 import { generateAsset } from '../services/assetService.js';
-import { renderVisualClip, validateVisualClip, assembleSceneSegment, renderCaptions, stitchScenes, getAudioDuration, visualClipPath } from '../services/renderService.js';
+import { renderVisualClip, validateVisualClip, assembleSceneSegment, stitchScenes, getAudioDuration, visualClipPath } from '../services/renderService.js';
 import { generateHash, generateAudioHash, generateVisualHash, generateSceneHash, generateAssetHash } from '../utils/hash.js';
 import { getScenesToRender, sceneRenderHash } from '../utils/diff.js';
 import { getFromCache } from '../services/cacheService.js';
@@ -646,7 +645,7 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
             scene.error_log = e instanceof Error ? e.message : String(e);
           }
           // Explicitly sync mutated fields back to project.scenes to guard against
-          // reference drift (e.g. renderCaptions returning undefined overwrites segment_path).
+          // reference drift (e.g. assembleSceneSegment returning undefined overwrites segment_path).
           const idx = project!.scenes.findIndex(s => s.scene_id === scene.scene_id);
           if (idx !== -1) {
             (project!.scenes[idx] as any).segment_path = (scene as any).segment_path;
@@ -768,10 +767,20 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   }
 
   scene.stage = 'audio_and_visuals';
-  if (!scene.audio_hash) scene.audio_hash = generateAudioHash(scene.narration_text, voicePreset, (scene as any).character);
-  
+  // Recompute every run and compare. Computing this only when absent, then skipping TTS
+  // on file existence alone, meant an edited script kept the narration recorded from the
+  // text it replaced: the scene was correctly marked stale, the video was re-encoded, and
+  // the words never changed. The hash already covers text, voice preset and character, so
+  // it is exactly the question "is the audio on disk still the audio this scene wants".
+  const audioHash = generateAudioHash(scene.narration_text, voicePreset, (scene as any).character);
+  const audioStale = scene.audio_hash !== undefined && scene.audio_hash !== audioHash;
+  if (audioStale) {
+    console.log(`[Orchestrator] Narration changed for scene ${scene.scene_id} — re-synthesising`);
+  }
+  scene.audio_hash = audioHash;
+
   const audioPromise = (async () => {
-     const audioExists = scene.narration_path && !scene.narration_path.startsWith('http') && fs.existsSync(scene.narration_path);
+     const audioExists = !audioStale && scene.narration_path && !scene.narration_path.startsWith('http') && fs.existsSync(scene.narration_path);
      if (!audioExists) {
         console.log(`[Orchestrator] Generating audio for scene ${scene.scene_id}`);
         // ownerUid rides along with the settings so the TTS layer can check that a
@@ -1113,20 +1122,13 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
      if (scene.segment_path && fs.existsSync(scene.segment_path)) {
        console.log('[Orchestrator] Reusing segment:', scene.segment_path.slice(-40));
      } else {
+       // One call, one video encode: assembleSceneSegment scales, burns the captions and
+       // muxes the audio in a single pass, so there is no separate caption stage to run.
        const sceneRenderedPath = await withRetry(() => assembleSceneSegment(scene, localAudio, scene.cache_key, signal, project), { retries: 2 });
        if (sceneRenderedPath) {
           scene.segment_path = sceneRenderedPath;
-
-          if (scene.caption_text) {
-             const { chunks } = await generateCaptions(scene, localAudio, 'default');
-             scene.caption_chunks = chunks;
-             const captionedLocal = await renderCaptions(scene, signal);
-             scene.captioned_path = captionedLocal;
-             scene.segment_path = captionedLocal;
-             scene.rendered_path = captionedLocal;
-          } else {
-             scene.rendered_path = sceneRenderedPath;
-          }
+          scene.rendered_path = sceneRenderedPath;
+          if (scene.caption_text) scene.captioned_path = sceneRenderedPath;
        }
      }
   }
