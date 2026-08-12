@@ -84,3 +84,6 @@ config/youtube-tokens.json
 
 # Local analytics event log.
 analytics/
+
+# Local scheduled-job state.
+config/schedule.json
