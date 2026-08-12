@@ -1,4 +1,4 @@
-import { Project } from '../models/project.js';
+import { Project, CloudBackup } from '../models/project.js';
 import { StyleProfile } from '../models/types.js';
 import { Scene, Visual, VisualFrame } from '../models/scene.js';
 import { runQualityGate } from '../services/qualityService.js';
@@ -28,7 +28,6 @@ import { QuotaService } from '../server/services/quotaService.js';
 import { AIService } from '../services/aiService.js';
 import { FirestoreService } from '../server/db/firestore.js';
 import { storageMode } from '../services/sceneImageStore.js';
-import { createClient } from '@supabase/supabase-js';
 import { DirectorAgent } from './agents/directorAgent.js';
 import { ScriptwriterAgent } from './agents/scriptwriterAgent.js';
 import { StoryboardAgent } from './agents/storyboardAgent.js';
@@ -140,7 +139,15 @@ export async function loadProject(project_id: string): Promise<Project> {
   } as Project;
 }
 
-export async function saveProjectState(project: Project): Promise<void> {
+/**
+ * Persist project state.
+ *
+ * Returns false when the write was refused because disk already holds newer state.
+ * Callers that are patching a single field after the fact — a cloud upload landing
+ * long after the render finished — need to know that, or their field is silently
+ * dropped. See patchProject, which retries against the reloaded copy.
+ */
+export async function saveProjectState(project: Project): Promise<boolean> {
   const errorMsg = project.error_log ? ` ErrorLog: ${project.error_log}.` : '';
   console.log(`[DB] Saving project state for ${project.project_id}. Status: ${project.status}.${errorMsg} Scenes count: ${project.scenes?.length || 0}`);
 
@@ -167,20 +174,112 @@ export async function saveProjectState(project: Project): Promise<void> {
         } catch (reloadErr: any) {
           console.error(`[DB] Could not reload ${pid} after a blocked write:`, reloadErr?.message);
         }
-        return;
+        return false;
       }
       console.warn(`[DB] Could not persist project JSON:`, e?.message);
     }
-    return;
+    return true;
   }
 
   try {
      project.updated_at = new Date();
      await FirestoreService.saveProject(project);
      console.log(`[DB] Project state synced to Firestore. Status: ${project.status}`);
+     return true;
   } catch (err) {
      console.error(`[DB] Failed to sync project ${project.project_id} to Firestore:`, err);
+     return false;
   }
+}
+
+/**
+ * Apply one field change to whatever the current project state is, and persist it.
+ *
+ * Not `mutate the object we captured earlier, then save it`. That is how an
+ * asynchronous upload loses its own result: by the time it lands the render has written
+ * the project several times over, the captured copy is stale, and the disk store refuses
+ * the write and throws the new URL away with it. So re-read first, patch, save — and if
+ * the write still loses a race, take the reloaded copy and apply the patch to that.
+ */
+/** Objects above this go through a compression pass first. Supabase's default per-object
+ *  ceiling is 50 MB; a normal episode lands well under it, so compressing every render
+ *  was a full extra encode paid for nothing. */
+const CLOUD_OBJECT_LIMIT_MB = 45;
+
+/**
+ * Copy a finished video to cloud storage, in the background.
+ *
+ * Deliberately started without being awaited, and deliberately not able to fail the
+ * render: by the time this runs the project is already complete and the video is already
+ * playable from disk. What it must not do is fail quietly. The previous version uploaded
+ * to a bucket named `videos`, which does not exist in this project — every upload for
+ * three weeks returned "Bucket not found", was written to the console, and left
+ * output_path silently pointing at the local file. Nothing in the product ever said so.
+ */
+export async function uploadFinalVideo(
+  projectId: string, localPath: string, fileName: string, ffmpegBin: string,
+): Promise<void> {
+  const record = (patch: Omit<CloudBackup, 'updatedAt'>) =>
+    patchProject(projectId, (p) => {
+      p.cloud_backup = { ...patch, updatedAt: new Date().toISOString() };
+    }, 'cloud_backup');
+
+  let uploadPath = localPath;
+  let compressed = '';
+  try {
+    if (!fs.existsSync(localPath)) throw new Error(`local file is gone: ${localPath}`);
+    const sizeMB = fs.statSync(localPath).size / 1024 / 1024;
+
+    if (sizeMB > CLOUD_OBJECT_LIMIT_MB) {
+      compressed = localPath.replace(/\.mp4$/, '_upload.mp4');
+      console.log(`[CloudBackup] ${sizeMB.toFixed(1)} MB exceeds ${CLOUD_OBJECT_LIMIT_MB} MB — compressing for upload`);
+      await new Promise<void>((resolve, reject) => {
+        const proc = spawn(ffmpegBin, [
+          '-i', localPath,
+          '-c:v', 'libx264', '-preset', 'fast', '-crf', '28',
+          '-c:a', 'aac', '-b:a', '128k', '-y', compressed,
+        ]);
+        proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`compress exit ${code}`))));
+        proc.on('error', reject);
+      });
+      uploadPath = compressed;
+    }
+
+    const bytes = fs.statSync(uploadPath).size;
+    const started = Date.now();
+    // FirestoreService.uploadAsset, not a hand-rolled client: it is the one place that
+    // knows the bucket, and the reason the old code was broken is that it guessed.
+    const url = await FirestoreService.uploadAsset(
+      projectId, fileName, await fs.promises.readFile(uploadPath), 'video/mp4');
+    console.log(
+      `[CloudBackup] ${projectId}: ${(bytes / 1e6).toFixed(1)} MB in ` +
+      `${((Date.now() - started) / 1000).toFixed(1)}s -> ${url.slice(-60)}`);
+    await record({ status: 'uploaded', url, sizeBytes: bytes });
+  } catch (err: any) {
+    const reason = err?.message || String(err);
+    // Loud on purpose. The local video is fine and the project stays completed; what is
+    // not fine is nobody knowing there is no off-machine copy.
+    console.error(
+      `[CloudBackup] FAILED for ${projectId}: ${reason}\n` +
+      `[CloudBackup] The render is unaffected — the video is at ${localPath} — but there ` +
+      `is no cloud copy. Fix the cause and re-run the upload.`);
+    await record({ status: 'failed', error: reason });
+  } finally {
+    if (compressed) fs.promises.unlink(compressed).catch(() => {});
+  }
+}
+
+export async function patchProject(
+  projectId: string, mutate: (project: Project) => void, label = 'patch',
+): Promise<boolean> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const current = await loadProject(projectId);
+    mutate(current);
+    if (await saveProjectState(current)) return true;
+    console.warn(`[DB] ${label} for ${projectId} lost a write race (attempt ${attempt}) — retrying against the newer copy`);
+  }
+  console.error(`[DB] ${label} for ${projectId} could not be persisted; the change is not on disk.`);
+  return false;
 }
 
 async function parseIntent(project: Project): Promise<Partial<Project>> {
@@ -1312,48 +1411,16 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
         console.warn('[Orchestrator] Backup copy failed (non-fatal):', backupErr?.message);
       }
 
-      // Compress to stay under Supabase 50MB object limit
-      const compressedPath = stitchedVideoPath.replace('.mp4', '_upload.mp4');
-      let uploadPath = stitchedVideoPath;
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const proc = spawn(ffmpegPath, [
-            '-i', stitchedVideoPath,
-            '-c:v', 'libx264', '-preset', 'fast', '-crf', '28',
-            '-c:a', 'aac', '-b:a', '128k',
-            '-y', compressedPath,
-          ]);
-          proc.on('close', code => code === 0 ? resolve() : reject(new Error(`compress exit ${code}`)));
-          proc.on('error', reject);
-        });
-        const sizeMB = fs.statSync(compressedPath).size / 1024 / 1024;
-        console.log('[Orchestrator] Compressed for upload:', sizeMB.toFixed(1), 'MB');
-        uploadPath = compressedPath;
-      } catch (compErr: any) {
-        console.warn('[Orchestrator] Compression failed, will upload original:', compErr?.message);
-      }
-
-      // Upload to Supabase videos bucket via direct client
-      let finalUrl = '';
-      try {
-        const supaUrl = process.env.SUPABASE_URL;
-        const supaKey = process.env.SUPABASE_SERVICE_KEY;
-        if (!supaUrl || !supaKey) throw new Error('SUPABASE_URL / SUPABASE_SERVICE_KEY not set');
-        const supa = createClient(supaUrl, supaKey);
-        const filePath = `projects/${activeProject.project_id!}/${fileName}`;
-        const fileData = fs.readFileSync(uploadPath);
-        const { error: upErr } = await supa.storage.from('videos').upload(filePath, fileData, { contentType: 'video/mp4', upsert: true });
-        if (upErr) throw upErr;
-        const { data: urlData } = supa.storage.from('videos').getPublicUrl(filePath);
-        finalUrl = urlData.publicUrl;
-        console.log('[Orchestrator] Supabase upload complete:', finalUrl.slice(-60));
-        if (stitchedVideoPath.startsWith(os.tmpdir())) {
-          fs.promises.unlink(stitchedVideoPath).catch(() => {});
-        }
-        if (uploadPath !== stitchedVideoPath) fs.promises.unlink(uploadPath).catch(() => {});
-      } catch (err) {
-        console.error('[Orchestrator] Supabase upload failed — local backup at:', backupPath, err);
-      }
+      // The cloud copy is redundancy, not the deliverable. It is started below, after the
+      // project has been marked complete, and it never gates that: the render is finished
+      // when the file is on disk. Marked pending here so a copy that never lands is
+      // visibly unfinished rather than indistinguishable from one never attempted.
+      const localOnly = !fs.existsSync(backupPath);
+      activeProject.cloud_backup = {
+        status: localOnly ? 'skipped' : 'pending',
+        error: localOnly ? 'No local file to upload — the backup copy was not written.' : undefined,
+        updatedAt: new Date().toISOString(),
+      };
 
       // Extract thumbnail from final video (best frame at 1.5s hook moment)
       if (!isPreview && stitchedVideoPath && fs.existsSync(stitchedVideoPath)) {
@@ -1366,10 +1433,13 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
             // Fire-and-forget: don't hold up output_path / finalization on the upload
             FirestoreService.uploadAsset(activeProject.project_id!, `${project_id}_thumbnail.jpg`, thumbBuffer, 'image/jpeg')
               .then(thumbUrl => {
-                activeProject.thumbnail_path = thumbUrl;
                 console.log('[Orchestrator] Thumbnail saved:', thumbUrl);
-                // Re-persist: the final saveProjectState usually runs before this upload lands
-                return saveProjectState(activeProject);
+                // Patch the CURRENT project rather than saving the copy captured when this
+                // upload started. The final saveProjectState normally lands first, so
+                // saving the captured object was a stale write — refused by the disk store,
+                // taking thumbnail_path down with it.
+                return patchProject(activeProject.project_id!,
+                  (p) => { p.thumbnail_path = thumbUrl; }, 'thumbnail_path');
               })
               .catch((thumbUpErr: any) => console.warn('[Storage] Thumbnail upload failed (non-blocking):', thumbUpErr?.message));
             fs.promises.unlink(thumbnailLocal).catch(() => {});
@@ -1397,10 +1467,14 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
         }
       }
 
+      // Always the local file. It exists now, it plays instantly over /outputs, and it
+      // cannot be taken away by a network failure. The cloud URL lives on cloud_backup;
+      // pointing output_path at it made playback depend on an upload succeeding, and made
+      // a failed upload look exactly like a successful local render.
       if (isPreview) {
-        activeProject.preview_video_path = finalUrl || backupPath;
+        activeProject.preview_video_path = backupPath;
       } else {
-        activeProject.output_path = finalUrl || backupPath;
+        activeProject.output_path = backupPath;
       }
       activeProject.completed_at = new Date();
       
@@ -1426,7 +1500,14 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
       // Track video generation
       await logUserEvent('video_generated', project_id, { status: activeProject.status, qualityScore: activeProject.quality_score });
 
-      console.log(`[Orchestrator] Final video saved to: ${finalUrl || stitchedVideoPath}`);
+      console.log(`[Orchestrator] Final video saved to: ${activeProject.output_path}`);
+
+      // Started here and not awaited: the project is already complete and already
+      // playable. A 34 MB episode takes ~20s to push at the measured 1.76 MB/s, and no
+      // one should wait on that to see their video.
+      if (activeProject.cloud_backup?.status === 'pending') {
+        void uploadFinalVideo(activeProject.project_id!, backupPath, fileName, ffmpegPath);
+      }
       
       // Cleanup intermediate assets
       if (activeProject.status === 'completed') {

@@ -728,6 +728,9 @@ export async function getProjectStatus(req: Request, res: Response) {
        error_log: project.error_log,
        output_path: toUrl(project.output_path || ''),
        outputPath:  toUrl(project.output_path || ''),
+       // Passed through as-is: cloud_backup.url is already an absolute public URL, and
+       // the status is what tells the UI whether an off-machine copy actually exists.
+       cloud_backup: project.cloud_backup,
      });
   } catch (error) {
      res.status(500).json({ error: String(error) });

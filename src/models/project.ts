@@ -48,6 +48,18 @@ export interface Universe {
   targetDurationSeconds?: number;
 }
 
+export type CloudBackupStatus = 'pending' | 'uploaded' | 'failed' | 'skipped';
+
+export interface CloudBackup {
+  status: CloudBackupStatus;
+  /** Public URL of the uploaded copy. Only set when status is 'uploaded'. */
+  url?: string;
+  /** Why it failed, in words a person can act on. Only set when status is 'failed'. */
+  error?: string;
+  sizeBytes?: number;
+  updatedAt: string;
+}
+
 export interface Project {
   project_id: string;
   userId?: string;
@@ -72,6 +84,16 @@ export interface Project {
   preview_mode?: boolean;
   preview_video_path?: string;
   output_path?: string;
+  /**
+   * Off-machine copy of the finished video.
+   *
+   * `output_path` stays local and is what the app plays: the render is done when the
+   * file is on disk, and nothing about playback should wait on, or be broken by, a
+   * network round trip. This records what happened to the redundant cloud copy, so a
+   * failed upload is a visible state rather than a line in a log nobody reads — which
+   * is how uploads to a bucket that did not exist went unnoticed for three weeks.
+   */
+  cloud_backup?: CloudBackup;
   character_description?: string;
   world_entities?: {
     characters: { name: string; description: string; prompt: string }[];

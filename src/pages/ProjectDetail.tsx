@@ -96,6 +96,32 @@ export function ProjectDetail() {
           )}
         </div>
 
+        {/* Cloud backup. Separate from the quality gate on purpose: a failed upload says
+            nothing about the video, which is finished and playing above from local disk.
+            It is shown because the alternative — a console line — is how three weeks of
+            uploads went missing without anyone noticing. */}
+        {project.cloud_backup && project.cloud_backup.status !== 'uploaded' && (
+          <div
+            className={`mt-6 rounded-2xl border p-4 ${
+              project.cloud_backup.status === 'failed'
+                ? 'border-red-300 bg-red-50'
+                : 'border-neutral-200 bg-neutral-50'
+            }`}
+          >
+            <div className="text-sm font-bold uppercase tracking-wider text-neutral-700">
+              {project.cloud_backup.status === 'failed' ? 'No cloud backup' : 'Cloud backup in progress'}
+            </div>
+            <p className="mt-1 text-sm text-neutral-700">
+              {project.cloud_backup.status === 'failed'
+                ? 'This video exists only on this machine. The render itself is fine and the video plays above — but it is not backed up.'
+                : 'Uploading a copy to cloud storage. The video above is already final and playable.'}
+            </p>
+            {project.cloud_backup.error && (
+              <p className="mt-2 text-xs text-red-900 font-mono break-all">{project.cloud_backup.error}</p>
+            )}
+          </div>
+        )}
+
         {/* Quality gate. A video that failed the gate still renders and downloads —
             it is simply not cleared to publish, and the reasons say exactly why. */}
         {project.quality_gate && (
