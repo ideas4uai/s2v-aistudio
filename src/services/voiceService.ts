@@ -33,7 +33,10 @@ export const generateSceneAudio = async (scene: Scene, preset: any, hash: string
     scene.scene_id,
     projectId,
     { ...projectSettings, character: scene.character },
-    scene.duration_target
+    scene.duration_target,
+    // Keys the file to this exact text/voice/character, so a script edit cannot be
+    // served the previous recording. See narrationPath.
+    hash
   );
   if (audioPath) {
     if (audioPath.endsWith('-silence.wav')) {

@@ -470,16 +470,35 @@ export class ClonedVoiceAccessError extends Error {
   }
 }
 
+/**
+ * Where a scene's narration lives.
+ *
+ * The content hash is part of the identity, not just a cache key — the same reason the
+ * motion lives in `visualClipPath`. Keyed on scene_id alone, editing a script left the
+ * new text pointing at the recording of the old one: the file still existed, so TTS was
+ * skipped, and the video shipped speaking words that were no longer in the script while
+ * the captions showed the new ones. Text is not a file, so no mtime comparison can catch
+ * that; it has to be in the name.
+ *
+ * Callers without a hash (the single-scene regenerate endpoint) get the unkeyed path,
+ * which behaves exactly as before.
+ */
+export function narrationPath(projectId: string, sceneId: string, contentHash?: string): string {
+  const suffix = contentHash ? `-${String(contentHash).replace(/[^a-z0-9]/gi, '')}` : '';
+  return path.join(os.tmpdir(), 'ais-audio', projectId, `narration-${sceneId}${suffix}.wav`);
+}
+
 export async function generateNarration(
   text: string,
   sceneId: string,
   projectId: string,
   settings?: any,
-  durationSec?: number
+  durationSec?: number,
+  contentHash?: string
 ): Promise<string> {
   const projectAudioDir = path.join(os.tmpdir(), 'ais-audio', projectId);
   await fs.mkdir(projectAudioDir, { recursive: true });
-  const outputPath = path.join(projectAudioDir, `narration-${sceneId}.wav`);
+  const outputPath = narrationPath(projectId, sceneId, contentHash);
   const silenceDuration = estimateDurationSec(text, durationSec);
   const textFilePath = path.join(projectAudioDir, `text-${sceneId}.txt`);
 

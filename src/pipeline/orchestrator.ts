@@ -767,21 +767,30 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   }
 
   scene.stage = 'audio_and_visuals';
-  // Recompute every run and compare. Computing this only when absent, then skipping TTS
-  // on file existence alone, meant an edited script kept the narration recorded from the
-  // text it replaced: the scene was correctly marked stale, the video was re-encoded, and
-  // the words never changed. The hash already covers text, voice preset and character, so
-  // it is exactly the question "is the audio on disk still the audio this scene wants".
+  // Recomputed every run, never "only if absent". Caching the hash on first write and
+  // then skipping TTS on file existence alone meant an edited script kept the narration
+  // recorded from the text it replaced: the scene was correctly marked stale, the video
+  // was re-encoded, and the words never changed — measured, the WAV came back
+  // byte-identical after the script was replaced wholesale. The hash covers text, voice
+  // preset and character, which is exactly "is the audio on disk the audio this wants".
   const audioHash = generateAudioHash(scene.narration_text, voicePreset, (scene as any).character);
-  const audioStale = scene.audio_hash !== undefined && scene.audio_hash !== audioHash;
-  if (audioStale) {
-    console.log(`[Orchestrator] Narration changed for scene ${scene.scene_id} — re-synthesising`);
+  // Reuse only audio we can prove came from THIS text. A different hash, no hash at all,
+  // or a missing file all mean re-synthesise. That is not expensive: the synthesisers are
+  // content-addressed too (cachePathFor), so unchanged text is a cache hit rather than a
+  // second run of the model. Re-synthesising is also what keeps generateSceneAudio — which
+  // stamps duration_actual with the RAW narration length — off the reuse path, where
+  // assembleSceneSegment returns early and would leave that wrong number in place.
+  const audioFresh = scene.audio_hash === audioHash
+     && !!scene.narration_path
+     && !scene.narration_path.startsWith('http')
+     && fs.existsSync(scene.narration_path);
+  if (!audioFresh && scene.audio_hash !== undefined && scene.audio_hash !== audioHash) {
+     console.log(`[Orchestrator] Narration changed for scene ${scene.scene_id} — re-synthesising`);
   }
   scene.audio_hash = audioHash;
 
   const audioPromise = (async () => {
-     const audioExists = !audioStale && scene.narration_path && !scene.narration_path.startsWith('http') && fs.existsSync(scene.narration_path);
-     if (!audioExists) {
+     if (!audioFresh) {
         console.log(`[Orchestrator] Generating audio for scene ${scene.scene_id}`);
         // ownerUid rides along with the settings so the TTS layer can check that a
         // cloned voice belongs to whoever owns this project. Cloned voices are
