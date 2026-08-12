@@ -32,7 +32,7 @@ import { projectVideoFileName } from '../../utils/filename.js';
 
 import { AIService } from '../../services/aiService.js';
 import { FirestoreService } from '../db/firestore.js';
-import { loadProject, saveProjectState, listLocalProjects, patchProject } from '../../pipeline/orchestrator.js';
+import { loadProject, saveProjectState, listLocalProjects, patchProject, deleteLocalProject, resetSceneForRetry } from '../../pipeline/orchestrator.js';
 
 export const projectsRouter = Router();
 
@@ -80,25 +80,23 @@ projectsRouter.post('/clear-ai-quota', (req, res) => {
 projectsRouter.post('/:id/retry-failed-assets', async (req, res) => {
   const { id } = req.params;
   try {
-    const project: any = await FirestoreService.getProject(id);
-    if (!project) return res.status(404).json({ error: 'Project not found' });
-    
-    if (project.scenes) {
-      project.scenes.forEach((scene: any) => {
-        scene.status = 'pending';
-        scene.error_log = null;
-        scene.errorLog = null;
-        if (scene.visuals) {
-          scene.visuals.forEach((v: any) => {
-            v.status = 'pending';
-          });
-        }
-      });
-      await FirestoreService.saveProject(project);
-    }
+    // patchProject, NOT FirestoreService — same bug as the delete and music routes:
+    // under DISABLE_FIRESTORE=true this 404'd and no local project could be retried.
+    let scenesReset = 0;
+    const saved = await patchProject(id, (project: any) => {
+      scenesReset = 0;
+      for (const scene of project.scenes || []) {
+        resetSceneForRetry(scene);
+        scenesReset++;
+      }
+    }, 'retry-failed-assets');
 
-    res.json({ message: 'Assets reset to pending. Start render to regenerate.' });
-  } catch (error) {
+    if (!saved) return res.status(409).json({ error: 'Could not reset assets — try again.' });
+    res.json({ message: 'Assets reset to pending. Start render to regenerate.', scenesReset });
+  } catch (error: any) {
+    if (/not found/i.test(error?.message || '')) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
     console.error('Failed to reset assets:', error);
     res.status(500).json({ error: 'Failed to reset assets' });
   }
@@ -211,19 +209,42 @@ projectsRouter.get('/:id', async (req, res) => {
 projectsRouter.delete('/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    const project = await FirestoreService.getProject(id);
+    // loadProject, NOT FirestoreService.getProject — see the download route. Under
+    // DISABLE_FIRESTORE=true a local-only project is absent from Firestore, so this
+    // 404'd and no local project could ever be deleted.
+    let project: any;
+    try {
+      project = await loadProject(id);
+    } catch {
+      return res.status(404).json({ error: 'Project not found' });
+    }
     if (!project) return res.status(404).json({ error: 'Project not found' });
-    
+
     const userId = (req as any).user?.uid;
-    if (project.userId !== userId) {
+    // Locally-created projects predate per-user ownership and carry no userId. Treat an
+    // unowned local record as the caller's rather than making it undeletable forever.
+    if (project.userId && project.userId !== userId) {
       return res.status(403).json({ error: 'Unauthorized to delete this project' });
     }
 
     // Cancel running processes for the project
     abortProjectProcesses(id);
 
-    await FirestoreService.deleteProject(id);
-    res.json({ message: 'Project deleted successfully' });
+    const removedLocally = deleteLocalProject(id);
+    // Firestore may still hold a copy from a cloud-mode session. Best-effort: a local
+    // delete that succeeded must not be reported as a failure because Firestore is off.
+    let remoteError: string | null = null;
+    try {
+      await FirestoreService.deleteProject(id);
+    } catch (remoteErr: any) {
+      remoteError = remoteErr?.message || String(remoteErr);
+      console.warn(`[Projects] Firestore delete failed for ${id} (local copy removed):`, remoteError);
+    }
+
+    if (!removedLocally && remoteError) {
+      return res.status(500).json({ error: 'Failed to delete project', details: remoteError });
+    }
+    res.json({ message: 'Project deleted successfully', removedLocally });
   } catch (error) {
     console.error('Error deleting project:', error);
     res.status(500).json({ error: 'Failed to delete project' });

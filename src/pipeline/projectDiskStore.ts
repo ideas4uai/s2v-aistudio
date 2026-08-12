@@ -70,6 +70,26 @@ export function persistProjectToDisk(project: Project, dir: string = getOutputsD
   lastSeenMtimeMs.set(pid, fs.statSync(finalPath).mtimeMs);
 }
 
+/**
+ * Removes a project's on-disk state. Returns whether a file was actually there.
+ *
+ * The watermark has to go with it: if the id were ever reused, a leftover entry would
+ * make the next write look like it was overwriting something newer and refuse.
+ *
+ * Only {pid}.json is removed. Rendered videos, scene images and cached audio are left
+ * alone — they live outside this file, several are content-addressed and shared between
+ * projects, and deleting a project record is not a request to garbage-collect the disk.
+ */
+export function deleteProjectFromDisk(pid: string, dir: string = getOutputsDir()): boolean {
+  lastSeenMtimeMs.delete(pid);
+  try {
+    fs.unlinkSync(path.join(dir, `${pid}.json`));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function restoreProjectsFromDisk(dir: string = getOutputsDir()): Project[] {
   if (!fs.existsSync(dir)) return [];
   const projects: Project[] = [];

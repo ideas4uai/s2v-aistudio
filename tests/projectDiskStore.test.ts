@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { persistProjectToDisk, restoreProjectsFromDisk, sanitizeStalePaths } from '../src/pipeline/projectDiskStore.js';
+import { persistProjectToDisk, restoreProjectsFromDisk, sanitizeStalePaths, deleteProjectFromDisk } from '../src/pipeline/projectDiskStore.js';
 
 let dir: string;
 
@@ -88,5 +88,50 @@ describe('sanitizeStalePaths', () => {
     } as any, dir);
     const [restored] = restoreProjectsFromDisk(dir);
     expect((restored.scenes![0] as any).segment_path).toBeUndefined();
+  });
+});
+
+// DELETE /:id used to go through FirestoreService.getProject, which returns null under
+// DISABLE_FIRESTORE=true — so it 404'd and no local project could ever be deleted. The
+// route now needs a local delete, and "deleted" has to mean gone from disk, not just a
+// 200 response: a record left in outputs/ is restored at the next boot.
+describe('deleteProjectFromDisk', () => {
+  it('removes the project file', () => {
+    persistProjectToDisk({ project_id: 'gone', status: 'completed' } as any, dir);
+    expect(fs.existsSync(path.join(dir, 'gone.json'))).toBe(true);
+
+    expect(deleteProjectFromDisk('gone', dir)).toBe(true);
+    expect(fs.existsSync(path.join(dir, 'gone.json'))).toBe(false);
+  });
+
+  it('does not come back at the next boot', () => {
+    persistProjectToDisk({ project_id: 'keep', status: 'completed' } as any, dir);
+    persistProjectToDisk({ project_id: 'gone', status: 'completed' } as any, dir);
+    deleteProjectFromDisk('gone', dir);
+
+    const restored = restoreProjectsFromDisk(dir).map((p) => p.project_id);
+    expect(restored).toEqual(['keep']);
+  });
+
+  it('reports false for a project that was not on disk', () => {
+    expect(deleteProjectFromDisk('never-existed', dir)).toBe(false);
+  });
+
+  it('leaves other projects alone', () => {
+    for (const id of ['a', 'b', 'c']) {
+      persistProjectToDisk({ project_id: id, status: 'completed' } as any, dir);
+    }
+    deleteProjectFromDisk('b', dir);
+    expect(restoreProjectsFromDisk(dir).map((p) => p.project_id).sort()).toEqual(['a', 'c']);
+  });
+
+  it('clears the stale-write watermark, so a reused id can be written again', () => {
+    // The watermark is what makes persist refuse a write when disk looks newer. If it
+    // survived the delete, recreating the id would throw StaleProjectWriteError.
+    persistProjectToDisk({ project_id: 'reused', status: 'completed' } as any, dir);
+    deleteProjectFromDisk('reused', dir);
+    fs.writeFileSync(path.join(dir, 'reused.json'), JSON.stringify({ project_id: 'reused' }));
+
+    expect(() => persistProjectToDisk({ project_id: 'reused', status: 'draft' } as any, dir)).not.toThrow();
   });
 });

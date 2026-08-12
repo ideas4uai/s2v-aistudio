@@ -35,7 +35,7 @@ import { StoryboardAgent } from './agents/storyboardAgent.js';
 import { WorldAgent } from './agents/worldAgent.js';
 import { abortManager } from './abortManager.js';
 import { requestContext } from '../server/utils/context.js';
-import { persistProjectToDisk, restoreProjectsFromDisk } from './projectDiskStore.js';
+import { persistProjectToDisk, restoreProjectsFromDisk, deleteProjectFromDisk } from './projectDiskStore.js';
 import { seedAnchorsFromProject, recordAnchor, anchorSummary } from './anchorStore.js';
 
 
@@ -116,6 +116,46 @@ if (process.env.DISABLE_FIRESTORE === 'true') {
  */
 export function listLocalProjects(): Project[] {
   return [...projectMemoryStore.values()];
+}
+
+/**
+ * Forgets a project held locally, in memory and on disk.
+ *
+ * Both halves matter: dropping only the in-memory copy leaves outputs/{id}.json to be
+ * restored at the next boot, and deleting only the file leaves this process still
+ * serving — and re-persisting — the record it already holds.
+ */
+export function deleteLocalProject(project_id: string): boolean {
+  const inMemory = projectMemoryStore.delete(project_id);
+  const onDisk = deleteProjectFromDisk(project_id);
+  return inMemory || onDisk;
+}
+
+/**
+ * Returns a scene to the state the pipeline treats as "not done yet".
+ *
+ * Clearing status is not enough on its own. Every stage skips work whose artifact path
+ * is already set, so a scene that failed *after* writing a bad artifact came back
+ * "pending" and was then skipped on the very next render — the retry reported success
+ * and changed nothing. Dropping the paths is what makes it an actual retry.
+ *
+ * Narration and background are deliberately kept: they are the expensive half, they are
+ * content-hash guarded elsewhere, and a failed image is not a reason to re-synthesise
+ * audio that was fine.
+ */
+export function resetSceneForRetry(scene: any): void {
+  scene.status = 'pending';
+  scene.error_log = null;
+  scene.errorLog = null;
+  scene.rendered_path = undefined;
+  scene.segment_path = undefined;
+  scene.captioned_path = undefined;
+  scene.render_hash = undefined;
+  for (const visual of scene.visuals || []) {
+    visual.status = 'pending';
+    visual.asset_path = undefined;
+    visual.rendered_path = undefined;
+  }
 }
 
 export async function loadProject(project_id: string): Promise<Project> {
