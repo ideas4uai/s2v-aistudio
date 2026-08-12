@@ -133,6 +133,16 @@ export interface Project {
     tags: string[];
     thumbnailText: string;
   };
+  /** Set once the video has been published. Its presence is what "already on YouTube" means. */
+  youtube?: {
+    videoId: string;
+    url: string;
+    privacyStatus: 'private' | 'unlisted' | 'public';
+    title: string;
+    publishedAt: string;
+    /** True when the operator published past a failing quality gate. Recorded, not hidden. */
+    forcedPastQualityGate?: boolean;
+  };
   music_track?: string;
   music_volume?: number;
   thumbnail_path?: string;

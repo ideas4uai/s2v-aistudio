@@ -170,7 +170,129 @@ export function ProjectDetail() {
             </details>
           </div>
         )}
+
+        <PublishPanel project={project} onPublished={() => setReloadKey((k) => k + 1)} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Manual publish to YouTube.
+ *
+ * Deliberately a button per video, not a switch that publishes everything. Nothing here
+ * decides whether the video is publishable — the server enforces the quality gate, so
+ * this panel only has to explain the answer it gets back. Privacy defaults to unlisted:
+ * the first upload from a new pipeline should be reviewable before it is public.
+ */
+function PublishPanel({ project, onPublished }: { project: any; onPublished: () => void }) {
+  const [status, setStatus] = useState<any>(null);
+  const [privacy, setPrivacy] = useState<'private' | 'unlisted' | 'public'>('unlisted');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<{ failures: string[]; score: number } | null>(null);
+
+  useEffect(() => {
+    authenticatedFetch('/api/youtube/status')
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setStatus)
+      .catch(() => setStatus(null));
+  }, []);
+
+  const published = project.youtube;
+
+  async function publish(force = false) {
+    setBusy(true); setError(null); setBlocked(null);
+    try {
+      const res = await authenticatedFetch(`/api/projects/${project.project_id || project.id}/publish/youtube`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ privacyStatus: privacy, force }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // A gate block is not an error the user needs to debug — it is the system
+        // working, so it gets the reasons and an explicit way to overrule it.
+        if (res.status === 409 && body.failures) setBlocked({ failures: body.failures, score: body.score });
+        else setError(body.error || `Publish failed (${res.status})`);
+        return;
+      }
+      onPublished();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!project.output_path) return null;
+
+  return (
+    <div className="mt-6 rounded-2xl border border-neutral-200 bg-white p-5">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-bold uppercase tracking-wider text-neutral-700">Publish to YouTube</span>
+        {status?.channelTitle && <span className="text-xs text-neutral-500">{status.channelTitle}</span>}
+      </div>
+
+      {published ? (
+        <p className="text-sm text-green-700">
+          Published as <strong>{published.privacyStatus}</strong> —{' '}
+          <a className="underline" href={published.url} target="_blank" rel="noreferrer">{published.url}</a>
+          {published.forcedPastQualityGate && (
+            <span className="block mt-1 text-xs text-amber-700">Published past a failing quality gate.</span>
+          )}
+        </p>
+      ) : status && !status.configured ? (
+        <p className="text-sm text-neutral-600">
+          Not configured. Set <code>YOUTUBE_CLIENT_ID</code> and <code>YOUTUBE_CLIENT_SECRET</code> in{' '}
+          <code>.env</code>, then connect the channel.
+        </p>
+      ) : status && !status.connected ? (
+        <p className="text-sm text-neutral-600">
+          No channel connected.{' '}
+          <a className="text-indigo-600 underline" href="/api/youtube/auth">Connect a YouTube channel</a>.
+        </p>
+      ) : (
+        <div className="flex items-center gap-3">
+          <select
+            className="px-3 py-2 rounded-xl border border-neutral-300 bg-white text-sm"
+            value={privacy}
+            onChange={(e) => setPrivacy(e.target.value as any)}
+            disabled={busy}
+          >
+            <option value="unlisted">Unlisted</option>
+            <option value="private">Private</option>
+            <option value="public">Public</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => publish(false)}
+            disabled={busy}
+            className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {busy ? 'Uploading…' : 'Publish'}
+          </button>
+        </div>
+      )}
+
+      {blocked && (
+        <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+          <p className="text-sm font-bold text-amber-900">Blocked by the quality gate (score {blocked.score}/100)</p>
+          <ul className="list-disc list-inside mt-1">
+            {blocked.failures.map((f, i) => <li key={i} className="text-sm text-amber-900">{f}</li>)}
+          </ul>
+          <button
+            type="button"
+            onClick={() => publish(true)}
+            disabled={busy}
+            className="mt-2 text-xs underline text-amber-900"
+          >
+            Publish anyway
+          </button>
+        </div>
+      )}
+
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
     </div>
   );
 }
