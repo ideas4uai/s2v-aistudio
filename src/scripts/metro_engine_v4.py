@@ -59,7 +59,9 @@ erroring (v3's argparse `choices=` would exit(2)).
 
 import argparse
 import math
+import multiprocessing as mp
 import os
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -555,6 +557,24 @@ class ParticleSystemV4:
                     'vy': float(rng.uniform(-2.5, -0.5)),
                     'phase': float(rng.uniform(0, math.pi * 2)),
                 })
+
+    def warm_to(self, frame_index: int, dt: float, wind: float = 0.0):
+        """Advance particle state to what it would be at `frame_index`.
+
+        render(fi) is NOT a pure function of fi: it calls step() every frame, and
+        step() integrates position, so frame N's particles depend on the N calls
+        before it. A worker that starts mid-clip must replay those calls or its
+        first frame gets frame-0 particles and dust visibly restarts at every range
+        boundary.
+
+        Replaying is used rather than solving for position directly: step() has
+        wrap-around branches per mode, and reproducing them in closed form is a
+        second implementation to keep in sync. This one is correct by construction.
+        It is also cheap — vectorised numpy with no drawing, roughly three orders of
+        magnitude below the cost of rendering the frames being skipped.
+        """
+        for _ in range(max(0, frame_index)):
+            self.step(dt, wind)
 
     def step(self, dt: float, wind: float = 0.0):
         W, H = self.W, self.H
@@ -1101,6 +1121,109 @@ def open_writer(path: str, fps: int, w: int, h: int):
 # CLI
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _worker_count(total_frames: int) -> int:
+    """How many processes to split a clip across.
+
+    Auto-detected, not pinned to this machine's 4 cores. METRO_V4_WORKERS
+    overrides; 1 forces the sequential path. Short clips stay sequential because
+    each worker re-imports the module and rebuilds the renderer (Windows spawns
+    rather than forks), which costs more than it saves below a few seconds.
+    """
+    override = os.environ.get('METRO_V4_WORKERS')
+    if override:
+        try:
+            return max(1, int(override))
+        except ValueError:
+            pass
+    if total_frames < MIN_FRAMES_FOR_PARALLEL:
+        return 1
+    return max(1, min(os.cpu_count() or 1, MAX_AUTO_WORKERS))
+
+
+MIN_FRAMES_FOR_PARALLEL = 48   # ~2s at 24fps; below this, spawn overhead dominates
+MAX_AUTO_WORKERS = 4           # ceiling: each worker holds its own canvas + depth map
+WORKER_TIMEOUT_S = 900         # a wedged worker must not hang the render forever
+
+
+def _render_range(job):
+    """Render frames [start, end) in a worker process and write one segment.
+
+    Each worker builds its own renderer. The depth map is read from the .npy cache
+    written by the first process to need it, so this costs a disk read rather than
+    a second Depth-Anything inference — see _gen_depth.
+    """
+    (start, end, seg_path, background, char_path, duration, emotion, scene_type,
+     prev_t, next_t, seed, idle, w, h, fps) = job
+
+    char_rgba = None
+    if char_path and os.path.exists(char_path):
+        loaded = cv2.imread(char_path, cv2.IMREAD_UNCHANGED)
+        if loaded is not None and loaded.ndim == 3 and loaded.shape[2] == 4:
+            char_rgba = loaded
+
+    cfg = EngineConfig(w=w, h=h, fps=fps)
+    renderer = SceneRendererV4(
+        cfg, background, char_rgba, duration, emotion, scene_type,
+        prev_scene_type=prev_t, next_scene_type=next_t, seed=seed, idle=idle)
+
+    # Catch the particle system up to this range's first frame, or the seam shows.
+    renderer.particles.warm_to(start, 1.0 / cfg.fps, renderer.wind)
+
+    writer, _ = open_writer(seg_path, fps, w, h)
+    try:
+        for fi in range(start, end):
+            writer.write(renderer.render(fi))
+    finally:
+        writer.release()
+    return (start, seg_path)
+
+
+def _concat_segments(segments, output, fps, w, h):
+    """Join the per-worker segments in frame order.
+
+    Re-encoded rather than stream-copied: the segments come from cv2's VideoWriter,
+    whose exact stream parameters depend on which codec OpenCV shipped with, and a
+    concat -c copy across a parameter mismatch produces a file that plays only up to
+    the first seam. Downstream assembleSceneSegment re-encodes anyway.
+    """
+    list_path = output + '.concat.txt'
+    with open(list_path, 'w', encoding='utf-8') as fh:
+        for _, seg in segments:
+            fh.write(f"file '{seg.replace(chr(92), '/')}'\n")
+    base = [_ffmpeg_bin(), '-hide_banner', '-loglevel', 'error', '-y',
+            '-f', 'concat', '-safe', '0', '-i', list_path]
+    # Every segment comes from the same open_writer() on the same machine, so codec
+    # and parameters match and the segments can simply be stitched. Re-encoding here
+    # cost 19s of a 59s render — a third of it, all serial, undoing much of the
+    # parallel gain. Fall back to re-encoding if a copy ever fails to produce a
+    # playable file, rather than trusting that the parameters always line up.
+    copy_ok = False
+    try:
+        subprocess.run(base + ['-c', 'copy', '-movflags', '+faststart', output],
+                       check=True)
+        copy_ok = os.path.exists(output) and os.path.getsize(output) > 10000
+    except subprocess.CalledProcessError:
+        copy_ok = False
+    if not copy_ok:
+        print('[MetroV4] Segment copy failed — re-encoding the join', file=sys.stderr)
+        subprocess.run(base + ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
+                               '-pix_fmt', 'yuv420p', '-r', str(fps), output],
+                       check=True)
+    for path in [list_path] + [s for _, s in segments]:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def _ffmpeg_bin() -> str:
+    """The bundled ffmpeg the rest of the pipeline uses, or PATH as a fallback."""
+    candidate = os.path.join(
+        os.getcwd(), 'node_modules', 'ffmpeg-static',
+        'ffmpeg.exe' if os.name == 'nt' else 'ffmpeg')
+    return candidate if os.path.exists(candidate) else 'ffmpeg'
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Metro Engine V4 — cinematic scene animator')
@@ -1168,16 +1291,57 @@ def main():
               f'shadow opacity: {renderer.shadow_opacity:.2f}')
 
     os.makedirs(os.path.dirname(args.output) or '.', exist_ok=True)
-    writer, codec = open_writer(args.output, args.fps, args.width, args.height)
-    print(f'[MetroV4] Codec: {codec}')
-    print(f'[MetroV4] Rendering {renderer.total_frames} frames...')
+    total = renderer.total_frames
+    workers = _worker_count(total)
 
-    # Stream frames straight to the writer — no full-episode frame list in RAM
-    for fi in range(renderer.total_frames):
-        writer.write(renderer.render(fi))
-        if fi and fi % 96 == 0:
-            print(f'[MetroV4] ... {fi}/{renderer.total_frames} frames')
-    writer.release()
+    if workers > 1:
+        # Contiguous ranges, not interleaved: each worker writes one playable
+        # segment, and the particle warm-up it has to replay stays bounded.
+        step_n = math.ceil(total / workers)
+        ranges = [(s, min(s + step_n, total)) for s in range(0, total, step_n)]
+        jobs = [
+            (s, e, f'{args.output}.part{i:02d}.mp4', args.background, args.character,
+             args.duration, emotion, scene_type, args.prev_scene_type,
+             args.next_scene_type, args.seed, not args.no_idle,
+             args.width, args.height, args.fps)
+            for i, (s, e) in enumerate(ranges)
+        ]
+        print(f'[MetroV4] Rendering {total} frames across {len(jobs)} processes '
+              f'({os.cpu_count()} cores detected)...')
+
+        pool = mp.Pool(processes=len(jobs))
+        try:
+            # A wedged worker must not hang the render forever; the pool is torn
+            # down in finally so no strays outlive this process either way.
+            segments = pool.map_async(_render_range, jobs).get(WORKER_TIMEOUT_S)
+        except mp.TimeoutError:
+            pool.terminate(); pool.join()
+            print(f'[MetroV4] ERROR: frame workers exceeded {WORKER_TIMEOUT_S}s',
+                  file=sys.stderr)
+            sys.exit(1)
+        except Exception as exc:
+            pool.terminate(); pool.join()
+            print(f'[MetroV4] ERROR: frame worker failed: {exc}', file=sys.stderr)
+            sys.exit(1)
+        else:
+            pool.close(); pool.join()
+
+        t_workers = time.time() - t0
+        segments.sort(key=lambda item: item[0])   # frame order, not completion order
+        t_join = time.time()
+        _concat_segments(segments, args.output, args.fps, args.width, args.height)
+        print(f'[MetroV4] Workers: {t_workers:.1f}s | join: {time.time() - t_join:.1f}s')
+        print(f'[MetroV4] Joined {len(segments)} segments')
+    else:
+        writer, codec = open_writer(args.output, args.fps, args.width, args.height)
+        print(f'[MetroV4] Codec: {codec}')
+        print(f'[MetroV4] Rendering {total} frames (sequential)...')
+        # Stream frames straight to the writer — no full-episode frame list in RAM
+        for fi in range(total):
+            writer.write(renderer.render(fi))
+            if fi and fi % 96 == 0:
+                print(f'[MetroV4] ... {fi}/{total} frames')
+        writer.release()
 
     if not os.path.exists(args.output) or os.path.getsize(args.output) < 10000:
         print('[MetroV4] ERROR: output missing or too small', file=sys.stderr)
