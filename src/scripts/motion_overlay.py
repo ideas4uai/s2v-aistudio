@@ -151,8 +151,70 @@ def _sprite_fit(text: str, size: int, font_path: str, stroke: int, max_w: int) -
     return _sprite(text, scaled, font_path, stroke=max(2, int(stroke * scaled / size)))
 
 
+def _load_logo(path: str, box_h: int, max_w: int):
+    """A sourced brand asset as a BGRA sprite fitted to the card, or None.
+
+    Returns None on anything unexpected rather than raising: the whole entity-image
+    feature is an enhancement over generated imagery, and a card with no logo is a
+    perfectly good card. Alpha is preserved when the file has it (Commons renders SVG
+    logos to transparent PNG) and synthesised as opaque when it does not.
+    """
+    if not path or not os.path.exists(path):
+        return None
+    img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+    if img is None or img.size == 0:
+        return None
+    if img.ndim == 2:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    if img.shape[2] == 3:
+        img = np.dstack([img, np.full(img.shape[:2], 255, np.uint8)])
+    h, w = img.shape[:2]
+    # Whichever constraint binds first. A wordmark is often 5:1, so height alone would
+    # size it far wider than the card.
+    k = min(box_h / max(1, h), max_w / max(1, w))
+    if k <= 0:
+        return None
+    return cv2.resize(img, (max(1, int(w * k)), max(1, int(h * k))),
+                      interpolation=cv2.INTER_AREA if k < 1 else cv2.INTER_LINEAR)
+
+
+def _paste(dst: np.ndarray, src: np.ndarray, x: int, y: int) -> None:
+    """Alpha-composite one BGRA sprite into another at build time. Clipped."""
+    sh, sw = src.shape[:2]
+    x0, y0 = max(0, x), max(0, y)
+    x1, y1 = min(dst.shape[1], x + sw), min(dst.shape[0], y + sh)
+    if x1 <= x0 or y1 <= y0:
+        return
+    patch = src[y0 - y:y1 - y, x0 - x:x1 - x].astype(np.float32)
+    roi = dst[y0:y1, x0:x1].astype(np.float32)
+    a = patch[:, :, 3:4] / 255.0
+    dst[y0:y1, x0:x1, :3] = (patch[:, :, :3] * a + roi[:, :, :3] * (1.0 - a)).astype(np.uint8)
+    dst[y0:y1, x0:x1, 3] = np.maximum(roi[:, :, 3], patch[:, :, 3]).astype(np.uint8)
+
+
+def _is_dark(logo: np.ndarray, threshold: int = 118) -> bool:
+    """Whether a BGRA logo's visible ink is dark, i.e. drawn for a light background.
+
+    Weighted by alpha, so the transparent margin around a mark does not vote.
+    """
+    a = logo[:, :, 3].astype(np.float32)
+    total = a.sum()
+    if total < 1.0:
+        return False
+    lum = logo[:, :, :3].astype(np.float32).mean(axis=2)
+    return float((lum * a).sum() / total) < threshold
+
+
+def _panel_text_x0(h: int, stripe: int, logo) -> int:
+    """Left edge of a panel's text area. One definition, so the caller that CHOOSES the
+    type size and the code that DRAWS it cannot disagree — they did, and the label ran
+    over the logo and off the right edge of the card."""
+    inset = max(6, h // 8)
+    return stripe + inset + ((logo.shape[1] + inset) if logo is not None else 0)
+
+
 def _panel_sprite(text: str, font_path: str, w: int, h: int, accent, size: int,
-                  stripe: int = 0) -> np.ndarray:
+                  stripe: int = 0, logo=None) -> np.ndarray:
     """A filled card with its label already baked in, rasterised once.
 
     Everything the diagram, comparison and name-card treatments put on screen is a
@@ -173,12 +235,29 @@ def _panel_sprite(text: str, font_path: str, w: int, h: int, accent, size: int,
         # anchor to slide out from.
         d.rounded_rectangle([0, 0, stripe, h - 1], radius=radius // 2,
                             fill=(accent[2], accent[1], accent[0], 255))
+    # A logo takes the left of the card and the label centres in what is left, so the
+    # two never overlap however long the label is. Baked in here at build time: the
+    # finished card is still one sprite and still one blit per frame.
+    text_x0 = _panel_text_x0(h, stripe, logo)
+    if logo is not None and _is_dark(logo):
+        # Brand marks are drawn for the background their owner expects, and a dark
+        # wordmark on this card's near-black fill is barely there — the real Playwright
+        # asset is dark slate. A light plate behind it is the same thing a press kit
+        # asks for and leaves the mark itself untouched, which recolouring would not.
+        lh, lw = logo.shape[:2]
+        lx, ly = stripe + max(6, h // 8), (h - lh) // 2
+        m = max(3, h // 16)
+        d.rounded_rectangle([lx - m, ly - m, lx + lw + m, ly + lh + m],
+                            radius=max(4, h // 10), fill=(244, 244, 248, 255))
     font = ImageFont.truetype(font_path, size)
     x0, y0, x1, y1 = d.textbbox((0, 0), text, font=font)
-    d.text(((w - (x1 - x0)) / 2 - x0, (h - (y1 - y0)) / 2 - y0), text, font=font,
-           fill=(245, 245, 250, 255))
+    d.text((text_x0 + (w - text_x0 - (x1 - x0)) / 2 - x0, (h - (y1 - y0)) / 2 - y0),
+           text, font=font, fill=(245, 245, 250, 255))
     rgba = np.array(img)
-    return np.dstack([rgba[:, :, 2], rgba[:, :, 1], rgba[:, :, 0], rgba[:, :, 3]])
+    card = np.dstack([rgba[:, :, 2], rgba[:, :, 1], rgba[:, :, 0], rgba[:, :, 3]])
+    if logo is not None:
+        _paste(card, logo, stripe + max(6, h // 8), (h - logo.shape[0]) // 2)
+    return card
 
 
 def _fit_size(text: str, font_path: str, box_w: int, start: int) -> int:
@@ -334,6 +413,12 @@ class OverlayLayer:
         self.sides = self.spec.get('sides') or []
         self.name = str(self.spec.get('name') or '')
         self.descriptor = str(self.spec.get('descriptor') or '')
+        # A sourced, safely-licensed brand asset and the credit its licence requires.
+        # An empty credit is the normal case for public-domain and CC0 files and means
+        # exactly what it says: draw nothing.
+        self.logo_path = str(self.spec.get('logoPath') or '')
+        self.credit = str(self.spec.get('credit') or '')
+        self.credit_lines = []
         self.count_up = self.spec.get('countUp') or None
         # The plan resolves the accent from the universe when it has one; the emotion
         # palette is the fallback, so a project with no brand colour still gets a colour
@@ -500,18 +585,86 @@ class OverlayLayer:
                                int(box_w * 0.72), int((gap + box_h) * 1.5))
 
     def _build_namecard(self, font_path: str):
-        """Lower third: name, optional descriptor, accent stripe, slides in and out."""
-        label = self.name if not self.descriptor else f'{self.name}  ·  {self.descriptor}'
+        """Lower third: name, optional descriptor, accent stripe, slides in and out.
+
+        When the plan sourced a real brand asset for this entity, the logo is baked into
+        the card and its required credit is rasterised as a separate corner sprite.
+        """
         box_h = int(self.H * 0.062)
+        logo = _load_logo(self.logo_path, int(box_h * 0.62), int(self.W * 0.24))
+        # A wordmark already says the name — the sourced Playwright asset IS the word
+        # "Playwright" next to its mark, and setting the name beside it produced a card
+        # reading "Playwright | Playwright · AIQA Engineer". Wide logos are wordmarks;
+        # square ones are symbols and still need the name spelled out.
+        wordmark = logo is not None and logo.shape[1] >= logo.shape[0] * 2.5
+        label = ' · '.join(p for p in
+                           ([] if wordmark else [self.name]) + [self.descriptor] if p)
         box_w = min(int(self.W * 0.78), int(self.W * 0.30) + len(label) * int(box_h * 0.30))
-        size = _fit_size(label, font_path, int(box_w * 0.84), max(14, int(box_h * 0.42)))
+        stripe = max(4, box_w // 60)
+        if logo is not None:
+            # With no label left to set — a wordmark and no universe descriptor — the
+            # card is just the logo, so it hugs it. Sizing for absent text left the
+            # first real render with a wide empty box beside the mark.
+            box_w = (stripe + max(6, box_h // 8) * 2 + logo.shape[1] if not label
+                     else min(int(self.W * 0.86), box_w + logo.shape[1] + box_h // 4))
+        # Size the type to the space it actually has — everything left of the text is
+        # stripe, inset and logo, and measuring against the whole card overflowed it.
+        text_x0 = _panel_text_x0(box_h, stripe, logo)
+        text_w = max(40, box_w - text_x0 - max(6, box_h // 8))
+        size = _fit_size(label, font_path, text_w, max(14, int(box_h * 0.42)))
+        # Kept so the geometry is checkable: the label must start right of the logo and
+        # finish inside the card, which is exactly what it did not do at first.
+        self.card_text_box = (text_x0, text_w)
         self.card = _panel_sprite(label, font_path, box_w, box_h, self.accent, size,
-                                  stripe=max(4, box_w // 60))
+                                  stripe=stripe, logo=logo)
         # Left-aligned in the lower third, above the burned-in captions.
         self.card_cx = int(self.W * 0.06) + box_w // 2
         self.card_cy = int(self.H * 0.78)
         self.card_w = box_w
         self.glow = None                             # a card carries its own background
+        self._build_credit(font_path)
+
+    # Attribution sizing. Deliberately the smallest legible thing on screen: 1.35% of
+    # frame height is about half the burned-in caption size, and 0.5 opacity puts it
+    # clearly below the card and the captions in the visual hierarchy. It is a credit,
+    # not a caption — the licence asks that it be present and findable, not that it
+    # compete with the content. A thin dark stroke keeps it readable over a bright
+    # background without making it louder.
+    CREDIT_SIZE = 0.0135
+    CREDIT_ALPHA = 0.5
+
+    def _build_credit(self, font_path: str):
+        """The licence's required credit, bottom-right, or nothing when none is required.
+
+        Wrapped to two lines because the full credit — file, author, licence, source —
+        is what CC BY asks for and does not fit across a 9:16 frame at a size that stays
+        out of the way.
+        """
+        self.credit_lines = []
+        text = str(self.credit or '').strip()
+        if not text:
+            return                                   # public domain / CC0: no clutter
+        size = max(10, int(self.H * self.CREDIT_SIZE))
+        stroke = max(1, size // 9)
+        parts = [p.strip() for p in text.split('·') if p.strip()]
+        half = (len(parts) + 1) // 2
+        rows = [' · '.join(parts[:half]), ' · '.join(parts[half:])] if len(parts) > 2 else [text]
+        sprites = [_sprite_fit(r, size, font_path, stroke, int(self.W * 0.62))
+                   for r in rows if r]
+        right = int(self.W * 0.96)
+        bottom = int(self.H * 0.982)
+        # Stacked upward from the bottom edge, right-aligned. Below the captions
+        # (Alignment 2, MarginV 120) and to the side of them, so neither crowds.
+        #
+        # Advance by the INK height, not the sprite height: every sprite carries
+        # _sprite's transparent margin on both sides, and stacking by the full height
+        # double-counts it — the same mistake that once spread a kinetic line over three
+        # ragged rows, and at this size it would leave the two rows visibly unrelated.
+        ink = max(1, sprites[0].shape[0] - (stroke * 2 + 6) * 2)
+        y = bottom - ink // 2
+        for sp in reversed(sprites):
+            self.credit_lines.insert(0, (sp, right - sp.shape[1] // 2, y))
+            y -= ink + 2
 
     # ── structured drawing (per frame, pure in t) ──────────────────────────
     NODE_IN = 0.42
@@ -583,6 +736,11 @@ class OverlayLayer:
             p, alpha = 1.0, 1.0
         travel = int((self.card_w + self.W * 0.1) * (1.0 - p))
         _blit(frame, self.card, self.card_cx - travel, self.card_cy, alpha=env * alpha)
+        # The credit fades with the card and does not slide with it — attribution is not
+        # a piece of choreography, it just has to be on screen while the image is. Same
+        # function of t as everything else here, so a parallel worker draws it the same.
+        for sprite, cx, cy in self.credit_lines:
+            _blit(frame, sprite, cx, cy, alpha=env * alpha * self.CREDIT_ALPHA)
 
     # ── per frame ──────────────────────────────────────────────────────────
     def draw(self, frame: np.ndarray, t: float) -> np.ndarray:

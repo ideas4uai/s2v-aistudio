@@ -46,6 +46,10 @@ export interface OverlaySpec {
   /** Lower-third card text for 'namecard'. */
   name?: string;
   descriptor?: string;
+  /** A real, safely-licensed brand asset for the named entity, baked into the card. */
+  logoPath?: string;
+  /** The credit its licence actually requires, or absent when it requires none. */
+  credit?: string;
   /** BGR accent, from the universe when it has one. */
   accent?: [number, number, number];
   start: number;
@@ -203,11 +207,22 @@ export function planOverlay(scene: any, project: any, clipDuration: number): Ove
   if (kind === 'namecard') {
     const n = detectName(text, String(project?.topic || ''))!;
     const start = words[Math.min(n.wordIndex, words.length - 1)].start;
+    // The sourced brand asset, if one was found for this same entity. It is resolved
+    // once per project before the render loop (resolveEntityImage), so this stays a
+    // synchronous read: planOverlay is called for a scene's neighbours as well as
+    // itself, and a network call in here would fire several times per scene.
+    const sourced = project?.entity_image?.image;
+    const logo = sourced && sourced.entity === n.name ? sourced : null;
     return {
       kind, accent, words: [], name: n.name,
       descriptor: String(project?.universe?.title || '').trim() || undefined,
+      logoPath: logo?.localPath || undefined,
+      // Empty string means "licence requires no credit" — the overlay draws nothing.
+      credit: logo ? (logo.credit || undefined) : undefined,
       start,
-      end: Math.min(clipDuration, start + 2.8),
+      // A card carrying a logo and a credit line is worth a moment longer than one
+      // carrying a word; the credit has to be readable if a viewer looks for it.
+      end: Math.min(clipDuration, start + (logo ? 3.4 : 2.8)),
     };
   }
 
@@ -265,6 +280,10 @@ export function overlayKey(spec: OverlaySpec | null): string {
     (list ?? []).map((w) => `${w.text}@${w.start.toFixed(2)}`).join(' ');
   const shape = [
     spec.kind, spec.figure || '', spec.name || '', spec.descriptor || '',
+    // The logo and its credit are both burned into the clip, and neither is a file the
+    // freshness check compares — swapping in a differently-licensed asset changes what
+    // the frame says, so it has to change the name too.
+    spec.logoPath || '', spec.credit || '',
     spec.countUp ? `${spec.countUp.to}${spec.countUp.suffix}` : '',
     parts(spec.words), parts(spec.steps), parts(spec.sides),
     (spec.accent || []).join(','),

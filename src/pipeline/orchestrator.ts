@@ -19,6 +19,7 @@ import { generateSceneAudio } from '../services/voiceService.js';
 import { generateAsset } from '../services/assetService.js';
 import { renderVisualClip, validateVisualClip, assembleSceneSegment, stitchScenes, getAudioDuration, visualClipPath, isShortsProject, prepareSceneAudio } from '../services/renderService.js';
 import { sceneVisualKey } from '../services/overlayPlan.js';
+import { resolveEntityImage } from '../services/entityImage.js';
 import { generateHash, generateAudioHash, generateVisualHash, generateSceneHash, generateAssetHash } from '../utils/hash.js';
 import { getScenesToRender, sceneRenderHash } from '../utils/diff.js';
 import { getFromCache } from '../services/cacheService.js';
@@ -1346,6 +1347,14 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
       console.log(`[TargetLength] Scene ${scene.scene_id}: holding still ${(holdDuration - audioDur).toFixed(2)}s past narration (${audioDur.toFixed(2)}s → ${holdDuration.toFixed(2)}s) toward the ${target}s target`);
     }
   }
+
+  // A real brand asset for the tool this episode is about, if the script names one and
+  // Commons has a safely-licensed image of it. Resolved once per project (the call is
+  // idempotent and de-duplicated, so the batch's other two scenes wait on the same
+  // lookup rather than making their own), before any overlay is planned — the name-card
+  // treatment reads the result synchronously. It never throws: no image just means the
+  // generated imagery renders exactly as it did before.
+  await resolveEntityImage(project, signal);
 
   // Measure the speech span before the clip is rendered, not after.
   //
