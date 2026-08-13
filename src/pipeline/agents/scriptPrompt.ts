@@ -244,12 +244,49 @@ Output ONLY valid JSON, no markdown fence:
  * that guess would be worse than the problem. It exists so an unsourced number
  * shows up in the log at generation time instead of in a human review afterwards.
  */
+// No trailing \b after `%`: it is a non-word character, so "40%." has no boundary
+// there and the match would silently never fire.
+export const PERCENT_RE = /\b\d+(?:\.\d+)?\s*(?:%|percent\b)/gi;
+export const MULTIPLIER_RE = /\b\d+(?:\.\d+)?\s*x\s+(?:faster|slower|more|less|better|cheaper)\b/gi;
+
+/**
+ * The figure shapes worth putting on screen, strongest first. Shares the percent and
+ * multiplier patterns with flagUnverifiedClaims above — the same numbers that need
+ * sourcing are the ones worth a call-out, so they are defined once.
+ *
+ * Ordered: a percentage beats a bare count in the same sentence, because "40%" reads
+ * as a claim and "3 steps" reads as structure.
+ */
+export const FIGURE_PATTERNS = [
+  PERCENT_RE,
+  MULTIPLIER_RE,
+  /\b\d+(?:\.\d+)?\s*(?:x|times)\b/gi,
+  /\b\d[\d,]*(?:\.\d+)?\s*(?:ms|s|seconds|minutes|hours|days|weeks|months|years|k|m|bn|billion|million|thousand)\b/gi,
+  /\b\d[\d,]*(?:\.\d+)?\b/g,
+];
+
+/** A bare four-digit year. "in 2025" is a date, not a statistic worth a call-out. */
+const YEAR_ONLY = /^(?:19|20)\d{2}$/;
+
+/** The single most call-out-worthy figure in a piece of text, or '' if there is none. */
+export function extractFigure(text: string): string {
+  for (const re of FIGURE_PATTERNS) {
+    const all = String(text || '').match(new RegExp(re.source, re.flags)) || [];
+    for (const hit of all) {
+      const value = hit.trim();
+      // Measured on real scripts: "Staying focused in 2025 feels harder" was being
+      // read as a figure and given a counting stat call-out.
+      if (YEAR_ONLY.test(value)) continue;
+      return value;
+    }
+  }
+  return '';
+}
+
 export function flagUnverifiedClaims(script: string, allowed = ''): string[] {
   const patterns = [
-    // No trailing \b after `%`: it is a non-word character, so "40%." has no
-    // boundary there and the match would silently never fire.
-    /\b\d+(?:\.\d+)?\s*(?:%|percent\b)/gi,
-    /\b\d+(?:\.\d+)?\s*x\s+(?:faster|slower|more|less|better|cheaper)\b/gi,
+    PERCENT_RE,
+    MULTIPLIER_RE,
     /\baccording to\b[^.!?]*/gi,
     /\b(?:a|the|one|recent)\s+(?:study|survey|report|benchmark)\b[^.!?]*/gi,
   ];

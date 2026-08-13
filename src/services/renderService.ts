@@ -5,6 +5,9 @@ import os from 'os';
 import path from 'path';
 import ffmpeg from 'ffmpeg-static';
 import { generateCaptions } from './captionService.js';
+import {
+  planOverlay, sceneVisualKey, transitionBetween, transitionColor, type OverlayWord,
+} from './overlayPlan.js';
 import { progressBus, ProgressStage } from '../server/progressBus.js';
 
 const execAsync = promisify(exec);
@@ -34,11 +37,15 @@ let rembgRunning = false;
  * in the name.
  */
 export function visualClipPath(
-  tmpDir: string, projectId: string, visualId: string, motion?: string,
+  tmpDir: string, projectId: string, visualId: string, motion?: string, overlay?: string,
 ): string {
   // Same default as the render body below, or the path and the content disagree.
   const m = String(motion || 'zoom_in').replace(/[^a-z0-9_-]/gi, '');
-  return path.join(tmpDir, `${projectId}_visual_${visualId}_${m}.mp4`);
+  // The overlay is not a file either, so the same rule applies to it: a scene whose
+  // kinetic text changed is not the clip already on disk. Empty when the scene has no
+  // overlay, which keeps every existing project's path exactly as it was.
+  const o = overlay ? `_${String(overlay).replace(/[^a-z0-9]/gi, '')}` : '';
+  return path.join(tmpDir, `${projectId}_visual_${visualId}_${m}${o}.mp4`);
 }
 
 /**
@@ -202,6 +209,12 @@ async function callSceneAnimatorV3(
     height?: number;
     /** Draft render: skip the depth-parallax pass, which is the engine's biggest cost. */
     draft?: boolean;
+    /** JSON motion-graphics spec. V4 only; absent means the clip renders as before. */
+    overlayPath?: string;
+    /** Transition overrides. Must be symmetric with the neighbouring clip's opposite half. */
+    inTransition?: string;
+    outTransition?: string;
+    transitionColor?: string;
   } = {}
 ): Promise<boolean> {
   return new Promise((resolve) => {
@@ -238,6 +251,15 @@ async function callSceneAnimatorV3(
       const nextT = V4_TRANSITION_TYPES.has(opts.nextSceneType || '') ? (opts.nextSceneType || '') : '';
       args.push('--prev_scene_type', prevT);
       args.push('--next_scene_type', nextT);
+    }
+    // V4 only: doraemon_engine.py and v3 have no --overlay and argparse would exit(2).
+    if (useV4 && !useDoraemon && opts.overlayPath && fs.existsSync(opts.overlayPath)) {
+      args.push('--overlay', opts.overlayPath);
+    }
+    if (useV4 && !useDoraemon) {
+      if (opts.inTransition) args.push('--in_transition', opts.inTransition);
+      if (opts.outTransition) args.push('--out_transition', opts.outTransition);
+      if (opts.transitionColor) args.push('--transition_color', opts.transitionColor);
     }
     if (useDoraemon) {
       const charName = (opts.characterName || 'veer').toLowerCase();
@@ -363,6 +385,40 @@ async function mergeVideoAudio(
   });
 }
 
+/**
+ * Draw the overlay onto a clip the Metro engine did not render.
+ *
+ * Metro composites its overlay inline during frame synthesis, for free. Everything else
+ * — the ffmpeg Ken Burns path, which is what a topic video with no character layer
+ * actually uses — has no frame loop to hook into, so the overlay is drawn in a second
+ * pass over the finished clip. That costs one decode/encode of a few seconds of video,
+ * and only on the two or three scenes a plan gives an overlay to.
+ *
+ * Best-effort: a failure leaves the original clip in place rather than failing the scene.
+ */
+async function compositeOverlay(clipPath: string, overlayPath: string, emotion: string): Promise<void> {
+  const script = path.join(process.cwd(), 'src/scripts/motion_overlay.py');
+  const withOverlay = clipPath.replace(/\.mp4$/, '.ovl.mp4');
+  await new Promise<void>((resolve) => {
+    const proc = spawn('py', [
+      script, '--input', clipPath, '--spec', overlayPath,
+      '--output', withOverlay, '--emotion', emotion || 'neutral',
+    ]);
+    proc.stdout.on('data', (d) => process.stdout.write(d));
+    let stderr = '';
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    const timer = setTimeout(() => { proc.kill(); resolve(); }, 300000);
+    proc.on('close', () => { clearTimeout(timer); if (stderr) console.warn('[Overlay]', stderr.slice(-300)); resolve(); });
+    proc.on('error', (e) => { clearTimeout(timer); console.warn('[Overlay] Spawn failed:', e.message); resolve(); });
+  });
+  if (fs.existsSync(withOverlay) && fs.statSync(withOverlay).size > 10000) {
+    moveInto(withOverlay, clipPath);
+  } else {
+    console.warn('[Overlay] Pass produced nothing usable — keeping the clip as rendered');
+    try { if (fs.existsSync(withOverlay)) fs.unlinkSync(withOverlay); } catch { /* non-fatal */ }
+  }
+}
+
 async function callRembg(inputPath: string, outputPath: string): Promise<boolean> {
   // Serialize rembg calls — concurrent processes compete for CPU and time out
   while (rembgRunning) {
@@ -483,8 +539,25 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
   const tmpDir = path.join(os.tmpdir(), 'ais-renderer');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
+  // The motion-graphics overlay for this scene, if the plan gives it one. Computed
+  // before the freshness check because it is part of the clip's identity: see
+  // visualClipPath. planOverlay returns null for most scenes, which is the point.
+  const overlaySpec = scene
+    ? planOverlay(scene, project, audioDuration || visual.duration_target || 5)
+    : null;
+  // The transitions on either side of this clip, decided from what the neighbouring
+  // beats are doing. Both halves of one cut are computed from the same pair, so clip N
+  // and clip N+1 agree without the engine having to check.
+  const sceneList: any[] = project?.scenes || [];
+  const sceneIdx = scene ? sceneList.findIndex((s: any) => s?.scene_id === scene.scene_id) : -1;
+  const neighbourSpec = (j: number) => (sceneList[j]
+    ? planOverlay(sceneList[j], project, audioDuration || visual.duration_target || 5) : null);
+  const inTransition = sceneIdx > 0 ? transitionBetween(neighbourSpec(sceneIdx - 1), overlaySpec) : '';
+  const outTransition = sceneIdx >= 0 ? transitionBetween(overlaySpec, neighbourSpec(sceneIdx + 1)) : '';
+  const clipSeconds = audioDuration || visual.duration_target || 5;
   const outputPath = visualClipPath(
     tmpDir, String(project.project_id), visual.visual_id, visual.motion_instruction,
+    scene ? sceneVisualKey(scene, project, clipSeconds) : '',
   );
   // Same staleness rule as the multi-frame path: a regenerated still must invalidate the
   // clip built from it, or an image edit never reaches the video. The motion lives in the
@@ -497,6 +570,28 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
 
   const duration = visual.duration_target || 5;
   let imagePath = visual.asset_path;
+
+  // Written next to the clip it belongs to, under the same key, so two scenes never
+  // share a spec file and a stale one can never be picked up by the wrong render.
+  let overlayPath = '';
+  // Metro composites the overlay during frame synthesis; the other paths need a second
+  // pass at the end. This tracks which of the two happened.
+  let engineDrewOverlay = false;
+  if (overlaySpec) {
+    overlayPath = path.join(tmpDir, `${project.project_id}_${visual.visual_id}_${sceneVisualKey(scene, project, clipSeconds)}.overlay.json`);
+    fs.writeFileSync(overlayPath, JSON.stringify(overlaySpec), 'utf8');
+    console.log(
+      `[Overlay] Scene ${scene?.scene_id ?? '?'}: ${overlaySpec.kind}`,
+      `${overlaySpec.start.toFixed(2)}s→${overlaySpec.end.toFixed(2)}s`,
+      // Whatever this treatment actually puts on screen — the words list is empty for
+      // the structured ones, and a log line reading `""` says nothing.
+      overlaySpec.figure ? `figure "${overlaySpec.figure}"`
+        : overlaySpec.steps ? `steps: ${overlaySpec.steps.map((s: OverlayWord) => s.text).join(' -> ')}`
+        : overlaySpec.sides ? `sides: ${overlaySpec.sides.map((s: OverlayWord) => s.text).join(' | ')}`
+        : overlaySpec.name ? `card "${overlaySpec.name}"`
+        : `"${overlaySpec.words.map((w: OverlayWord) => w.text).join(' ')}"`,
+    );
+  }
 
   if ((scene as any)?.background_path) {
     console.log('[RenderVisual] Background found — will composite in Stage 2:', (scene as any).background_path.slice(-40));
@@ -736,9 +831,14 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 width: engineW,
                 height: engineH,
                 draft: isPreview,
+                overlayPath,
+                inTransition,
+                outTransition,
+                transitionColor: transitionColor(project),
               }
             );
             if (unifiedSuccess) {
+              engineDrewOverlay = Boolean(overlayPath);
               moveInto(unifiedPath, outputPath);
               scene.rendered_path = outputPath;
               try {
@@ -773,9 +873,14 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 width: engineW,
                 height: engineH,
                 draft: isPreview,
+                overlayPath,
+                inTransition,
+                outTransition,
+                transitionColor: transitionColor(project),
               }
             );
             if (compositeSuccess) {
+              engineDrewOverlay = Boolean(overlayPath);
               console.log('[RenderVisual] Composite succeeded — writing to output');
               // renderVisualClip returns video-only; assembleSceneSegment adds audio downstream.
               // mergeVideoAudio is available for direct use if the caller needs a self-contained clip.
@@ -818,6 +923,10 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
         }
      } else {
          await guardedExec(`"${ffmpeg}" -f lavfi -i color=c=blue:s=${fallbackSize(project)}:d=${duration} -y -c:v libx264 -pix_fmt yuv420p "${outputPath}"`, signal);
+     }
+     // Metro draws its own overlay inline; every other path needs the second pass.
+     if (overlayPath && !engineDrewOverlay) {
+       await compositeOverlay(outputPath, overlayPath, (visual as any).emotion || scene?.emotion || 'neutral');
      }
      return outputPath;
   } catch(e: any) {
@@ -891,6 +1000,85 @@ const detectSpeechSpan = async (file: string, totalDuration: number): Promise<{ 
     return fallback;
   }
 };
+
+/**
+ * Produce the segment's audio track and measure its speech span.
+ *
+ * Split out of assembleSceneSegment so it can run BEFORE the visual clip is rendered.
+ * The motion-graphics overlay is drawn into the clip by the engine, so it needs to know
+ * when the words are actually spoken while there is still a frame to draw on — and the
+ * only honest source for that is this measurement, the same one the captions use.
+ * Deriving a second set of timings from the scene duration is precisely the bug
+ * speechWindow() exists to prevent.
+ *
+ * Idempotent and cached: the WAV is deterministic given the narration and the pad, so a
+ * second call with a fresh file re-reads the stored span instead of re-encoding.
+ */
+export async function prepareSceneAudio(
+  scene: any, audioPath: any, project?: any, signal?: AbortSignal,
+): Promise<{ processedAudio: string; segmentDuration: number } | null> {
+  const tmpDir = path.join(os.tmpdir(), 'ais-renderer', project?.project_id || 'test');
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  const processedAudio = path.join(tmpDir, `${scene.scene_id}_audio.wav`);
+
+  const audioValid = (() => {
+    try { return audioPath && fs.existsSync(audioPath) && fs.statSync(audioPath).size > 1000; }
+    catch { return false; }
+  })();
+
+  const padSeconds = Number(scene.pad_seconds) || 0;
+  let outputDuration = scene.duration_target || 5;
+  if (audioValid) {
+    const probed = await getAudioDuration(audioPath);
+    if (probed > 0) outputDuration = probed;
+  }
+
+  // Already built for this narration, and already measured — nothing to redo.
+  if (isFreshOutput(processedAudio, audioValid ? audioPath : undefined)
+      && Number(scene.speech_end) > Number(scene.speech_start)) {
+    const known = await getAudioDuration(processedAudio);
+    if (known > 0) return { processedAudio, segmentDuration: known };
+  }
+
+  const audioInputArg = audioValid ? `-i "${audioPath}"` : `-f lavfi -i anullsrc=r=44100:cl=stereo`;
+  const audioFilterChain = audioValid
+    ? `-af "asetpts=PTS-STARTPTS,silenceremove=stop_periods=-1:stop_duration=0.05:stop_threshold=-40dB,apad${padSeconds > 0 ? '' : '=pad_dur=0.1'}"`
+    : `-af asetpts=PTS-STARTPTS`;
+  // See the note at the original site: apad is unbounded whenever there is a hold to
+  // fill, so this command must carry its own limit or ffmpeg pads silence until the
+  // disk is full. It once wrote a 240 GB WAV in about twenty minutes.
+  const audioCapArg = `-t ${(
+    !audioValid ? outputDuration
+      : padSeconds > 0 ? outputDuration + padSeconds
+      : outputDuration + 0.1
+  ).toFixed(3)}`;
+
+  try {
+    await guardedExec(`"${ffmpeg}" ${audioInputArg} ${audioFilterChain} -c:a pcm_s16le -ar 44100 -ac 2 ${audioCapArg} -y "${processedAudio}"`, signal);
+    const segmentDuration = await getAudioDuration(processedAudio);
+    if (segmentDuration > outputDuration + padSeconds + 1) {
+      try { fs.unlinkSync(processedAudio); } catch { /* non-fatal */ }
+      throw new Error(
+        `processed audio ran to ${segmentDuration.toFixed(1)}s for a scene budgeted at ` +
+        `${(outputDuration + padSeconds).toFixed(1)}s — the audio pass lost its duration cap`);
+    }
+    if (segmentDuration > 0) {
+      scene.duration_actual = segmentDuration;
+      const span = await detectSpeechSpan(processedAudio, segmentDuration);
+      scene.speech_start = Number(span.start.toFixed(3));
+      scene.speech_end = Number(span.end.toFixed(3));
+      console.log(
+        `[RenderService] Scene ${scene.scene_id} segment ${segmentDuration.toFixed(3)}s, ` +
+        `speech ${span.start.toFixed(3)}→${span.end.toFixed(3)}s (captions anchored to the speech)`
+      );
+    }
+    return { processedAudio, segmentDuration };
+  } catch (e: any) {
+    if (e.message === 'PIPELINE_CANCELLED') throw e;
+    console.warn('[RenderService] Audio pass failed:', e?.message || e);
+    return null;
+  }
+}
 
 export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey: any, signal?: AbortSignal, project?: any) => {
   // Scoped by project, the same way stitchScenes scopes its own output. Scene ids are
@@ -1001,42 +1189,17 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
   }
 
   try {
-     // ── Pass 1 (audio only): apply the audio chain to a WAV.
+     // ── Pass 1 (audio only): the segment's audio track, and the speech span the
+     // captions are laid out across. Lives in prepareSceneAudio because the overlay
+     // needs the same measurement one step earlier in the render; it is cached, so
+     // when the orchestrator has already run it this is a probe, not an encode.
      //
-     // This exists so the whole tail can be ONE video encode. Caption timings come from
-     // detectSpeechSpan, which used to measure the assembled MP4 — forcing the video to be
-     // encoded before captions could be written, and then encoded a second time to burn
-     // them. silencedetect only ever looked at the audio, so measuring the processed WAV
-     // gives byte-identical spans for a fraction of a second of audio-only work.
-     const processedAudio = path.join(tmpDir, `${scene.scene_id}_audio.wav`);
-     await guardedExec(`"${ffmpeg}" ${audioInputArg} ${audioFilterChain} -c:a pcm_s16le -ar 44100 -ac 2 ${audioCapArg} -y "${processedAudio}"`, signal);
-
-     // Captions and drift correction must track the SEGMENT length, not the raw
-     // WAV: silenceremove strips pauses/tails, so segment audio runs shorter than
-     // the narration file. Anchoring to the raw duration made captions lag.
-     const segmentDuration = await getAudioDuration(processedAudio);
-     // Backstop for the bound above. If the cap is ever dropped from that command the
-     // failure is not a wrong number, it is ffmpeg padding silence until the volume is
-     // full — so notice here rather than at the next render.
-     if (segmentDuration > outputDuration + padSeconds + 1) {
-       try { fs.unlinkSync(processedAudio); } catch { /* non-fatal */ }
-       throw new Error(
-         `processed audio ran to ${segmentDuration.toFixed(1)}s for a scene budgeted at ` +
-         `${(outputDuration + padSeconds).toFixed(1)}s — the audio pass lost its duration cap`);
-     }
-     if (segmentDuration > 0) {
-       scene.duration_actual = segmentDuration;
-       // Captions anchor to the speech span, NOT to duration_actual: the segment also
-       // holds pad_seconds of deliberate silence, and spreading captions over that is
-       // what made them lag further and further behind the narration.
-       const span = await detectSpeechSpan(processedAudio, segmentDuration);
-       scene.speech_start = Number(span.start.toFixed(3));
-       scene.speech_end = Number(span.end.toFixed(3));
-       console.log(
-         `[RenderService] Scene ${scene.scene_id} segment ${segmentDuration.toFixed(3)}s, ` +
-         `speech ${span.start.toFixed(3)}→${span.end.toFixed(3)}s (captions anchored to the speech)`
-       );
-     }
+     // Captions anchor to that span, NOT to duration_actual: the segment also holds
+     // pad_seconds of deliberate silence, and spreading captions over that is what
+     // made them lag further and further behind the narration.
+     const prepared = await prepareSceneAudio(scene, audioPath, project, signal);
+     if (!prepared) throw new Error('audio pass produced nothing');
+     const { processedAudio, segmentDuration } = prepared;
 
      // ── Captions: chunks depend only on the speech span measured above, never on the
      // video, so they can be laid out before a single frame is encoded.
