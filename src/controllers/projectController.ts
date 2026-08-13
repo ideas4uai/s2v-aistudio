@@ -17,6 +17,7 @@ import { toUrl } from '../utils/path.js';
 import { storeSceneImage } from '../services/sceneImageStore.js';
 import { pipelineFieldsFromSettings } from '../server/routes/projects.js';
 import { loadKnowledgeDocuments } from '../content-studio/store.js';
+import { generateSeoMetadata } from '../pipeline/agents/seoAgent.js';
 
 export async function previewProject(req: Request, res: Response) {
   const { id } = req.params;
@@ -85,22 +86,7 @@ export async function generateScript(req: Request, res: Response) {
     );
     const entities = await WorldAgent.analyzeWorld(project, scriptResult.rawScript);
 
-    let seoMetadata = null;
-    try {
-      const seoPrompt = `Given this video script about "${project.topic}", generate:
-1. YouTube title (60 chars max, includes keyword, curiosity gap)
-2. Description (150 words, keyword-rich, includes timestamps)
-3. Tags (15 tags, mix of broad and specific)
-4. Thumbnail text overlay (5 words max, bold claim)
-Return as JSON: {title, description, tags, thumbnailText}`;
-      const seoRaw = await AIService.generateText(seoPrompt, { task: 'seo' });
-      const seoStr = seoRaw.replace(/```json\n?|```/g, '').trim();
-      const fb = seoStr.indexOf('{');
-      const lb = seoStr.lastIndexOf('}');
-      if (fb !== -1 && lb !== -1) seoMetadata = JSON.parse(seoStr.substring(fb, lb + 1));
-    } catch (seoErr) {
-      console.warn('[generateScript] SEO metadata generation failed (non-fatal):', seoErr);
-    }
+    const seoMetadata = await generateSeoMetadata({ ...project, script: scriptResult.rawScript } as any);
 
     project.script = scriptResult.rawScript;
     project.world_entities = entities;
@@ -152,21 +138,7 @@ export async function selectHook(req: Request, res: Response) {
     // World entities
     const entities = await WorldAgent.analyzeWorld(project, scriptResult.rawScript);
 
-    // SEO
-    let seoMetadata = null;
-    try {
-      const seoPrompt = `Given this video script about "${project.topic}", generate:
-1. YouTube title (60 chars max, includes keyword, curiosity gap)
-2. Description (150 words, keyword-rich, includes timestamps)
-3. Tags (15 tags, mix of broad and specific)
-4. Thumbnail text overlay (5 words max, bold claim)
-Return as JSON: {title, description, tags, thumbnailText}`;
-      const seoRaw = await AIService.generateText(seoPrompt, { task: 'seo' });
-      const seoStr = seoRaw.replace(/```json\n?|```/g, '').trim();
-      const fb = seoStr.indexOf('{');
-      const lb = seoStr.lastIndexOf('}');
-      if (fb !== -1 && lb !== -1) seoMetadata = JSON.parse(seoStr.substring(fb, lb + 1));
-    } catch { /* non-fatal */ }
+    const seoMetadata = await generateSeoMetadata({ ...project, script: scriptResult.rawScript } as any);
 
     // Persist
     (project as any).selectedHook = chosen.text;

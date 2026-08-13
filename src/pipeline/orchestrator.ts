@@ -32,6 +32,7 @@ import { storageMode } from '../services/sceneImageStore.js';
 import { DirectorAgent } from './agents/directorAgent.js';
 import { ScriptwriterAgent } from './agents/scriptwriterAgent.js';
 import { loadKnowledgeDocuments } from '../content-studio/store.js';
+import { generateSeoMetadata } from './agents/seoAgent.js';
 import { StoryboardAgent } from './agents/storyboardAgent.js';
 import { WorldAgent } from './agents/worldAgent.js';
 import { abortManager } from './abortManager.js';
@@ -1667,6 +1668,20 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
 
       for (const check of gate.checks) {
         console.log(`[QualityGate] ${check.status.toUpperCase().padEnd(7)} ${check.label} — ${check.detail}`);
+      }
+
+      // Publishing metadata, if nothing has produced any yet. Only the two manual
+      // "generate script" endpoints ever set this, so a project rendered by the
+      // pipeline or the scheduler reached YouTube as "Untitled" with an empty
+      // description and no tags — measured, on video ljNF9y-GHeU. Here rather than
+      // at publish time so it lands on the record where it can be reviewed and
+      // edited before anything goes out.
+      if (!activeProject.seo_metadata?.title) {
+        const seo = await generateSeoMetadata(activeProject);
+        if (seo) {
+          activeProject.seo_metadata = seo;
+          console.log(`[SeoAgent] Publishing metadata ready: "${seo.title}" (${seo.tags.length} tags)`);
+        }
       }
 
       const anyFailed = activeProject.scenes.some((s: Scene) => s.status === 'failed');

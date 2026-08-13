@@ -263,13 +263,25 @@ export type UploadMetadata = { title: string; description: string; tags: string[
 /**
  * Builds the video metadata from a project's seo_metadata.
  *
- * Falls back to the project title so a video without SEO metadata can still be
- * published, rather than being blocked on a field the generator may not have filled.
+ * The fallback chain ends at `topic`, and that matters: `title` is only set by the
+ * classic create form, while `topic` is the field every agent reads and every code
+ * path sets — a Content Studio handoff sets `topic` and no `title` at all. Ending
+ * the chain at `title` published a perfectly well-named project as "Untitled",
+ * which is exactly what happened to video ljNF9y-GHeU.
+ *
+ * A caller reaching the last fallback has a real problem — no metadata was ever
+ * generated for this project — so say so rather than quietly shipping a bare title.
  * `<` and `>` are stripped because YouTube rejects them outright in titles.
  */
 export function buildMetadata(project: any): UploadMetadata {
   const seo = project?.seo_metadata || {};
-  const rawTitle = String(seo.title || project?.title || 'Untitled').replace(/[<>]/g, '').trim();
+  if (!seo.title) {
+    console.warn(
+      `[YouTube] Project ${project?.project_id ?? '?'} has no seo_metadata — publishing with the topic as `
+      + 'the title and no description or tags. Re-render to generate publishing metadata.',
+    );
+  }
+  const rawTitle = String(seo.title || project?.title || project?.topic || 'Untitled').replace(/[<>]/g, '').trim();
   const title = rawTitle.slice(0, TITLE_MAX) || 'Untitled';
 
   const description = String(seo.description || project?.description || '')
