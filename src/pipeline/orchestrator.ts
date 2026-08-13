@@ -17,7 +17,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { fallbackHook, fallbackScript, fallbackSceneGraph } from './fallbacks.js';
 import { generateSceneAudio } from '../services/voiceService.js';
 import { generateAsset } from '../services/assetService.js';
-import { renderVisualClip, validateVisualClip, assembleSceneSegment, stitchScenes, getAudioDuration, visualClipPath, isShortsProject } from '../services/renderService.js';
+import { renderVisualClip, validateVisualClip, assembleSceneSegment, stitchScenes, getAudioDuration, visualClipPath, isShortsProject, prepareSceneAudio } from '../services/renderService.js';
+import { planOverlay, overlayKey } from '../services/overlayPlan.js';
 import { generateHash, generateAudioHash, generateVisualHash, generateSceneHash, generateAssetHash } from '../utils/hash.js';
 import { getScenesToRender, sceneRenderHash } from '../utils/diff.js';
 import { getFromCache } from '../services/cacheService.js';
@@ -1346,17 +1347,30 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
     }
   }
 
+  // Measure the speech span before the clip is rendered, not after.
+  //
+  // The motion-graphics overlay is drawn INTO the clip by the engine, so "when is this
+  // word actually spoken" has to be known while there are still frames to draw on. This
+  // is the same measurement assembleSceneSegment makes, moved one step earlier and
+  // cached — assembly reuses the WAV rather than re-encoding it.
+  if (scene.narration_path && fs.existsSync(scene.narration_path)) {
+    await prepareSceneAudio(scene, scene.narration_path, project, signal);
+  }
+
   for (const visual of scene.visuals) {
     let existingRendered = (visual as any).rendered_path as string | undefined;
     // A clip rendered with a different Cinematic Effect is not this scene's clip.
     // The motion is part of the clip's path, so a mismatch means the stored one was
     // built with the old movement — drop it rather than skip the render and ship it.
     if (existingRendered?.endsWith('.mp4')) {
+      // Same key renderVisualClip will compute, overlay included — a clip whose kinetic
+      // text belongs to an older version of this narration is not this scene's clip.
       const expected = visualClipPath(
         path.join(os.tmpdir(), 'ais-renderer'),
         String(project.project_id),
         visual.visual_id,
         (visual as any).motion_instruction,
+        overlayKey(planOverlay(scene, project, holdDuration > 0 ? holdDuration : (visual.duration_target || 5))),
       );
       if (path.resolve(existingRendered) !== path.resolve(expected)) {
         console.log(

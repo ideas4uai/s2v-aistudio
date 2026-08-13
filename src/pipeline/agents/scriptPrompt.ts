@@ -244,12 +244,40 @@ Output ONLY valid JSON, no markdown fence:
  * that guess would be worse than the problem. It exists so an unsourced number
  * shows up in the log at generation time instead of in a human review afterwards.
  */
+// No trailing \b after `%`: it is a non-word character, so "40%." has no boundary
+// there and the match would silently never fire.
+const PERCENT_RE = /\b\d+(?:\.\d+)?\s*(?:%|percent\b)/gi;
+const MULTIPLIER_RE = /\b\d+(?:\.\d+)?\s*x\s+(?:faster|slower|more|less|better|cheaper)\b/gi;
+
+/**
+ * The figure shapes worth putting on screen, strongest first. Shares the percent and
+ * multiplier patterns with flagUnverifiedClaims above — the same numbers that need
+ * sourcing are the ones worth a call-out, so they are defined once.
+ *
+ * Ordered: a percentage beats a bare count in the same sentence, because "40%" reads
+ * as a claim and "3 steps" reads as structure.
+ */
+export const FIGURE_PATTERNS = [
+  PERCENT_RE,
+  MULTIPLIER_RE,
+  /\b\d+(?:\.\d+)?\s*(?:x|times)\b/gi,
+  /\b\d[\d,]*(?:\.\d+)?\s*(?:ms|s|seconds|minutes|hours|days|weeks|months|years|k|m|bn|billion|million|thousand)\b/gi,
+  /\b\d[\d,]*(?:\.\d+)?\b/g,
+];
+
+/** The single most call-out-worthy figure in a piece of text, or '' if there is none. */
+export function extractFigure(text: string): string {
+  for (const re of FIGURE_PATTERNS) {
+    const m = String(text || '').match(new RegExp(re.source, re.flags));
+    if (m?.length) return m[0].trim();
+  }
+  return '';
+}
+
 export function flagUnverifiedClaims(script: string, allowed = ''): string[] {
   const patterns = [
-    // No trailing \b after `%`: it is a non-word character, so "40%." has no
-    // boundary there and the match would silently never fire.
-    /\b\d+(?:\.\d+)?\s*(?:%|percent\b)/gi,
-    /\b\d+(?:\.\d+)?\s*x\s+(?:faster|slower|more|less|better|cheaper)\b/gi,
+    PERCENT_RE,
+    MULTIPLIER_RE,
     /\baccording to\b[^.!?]*/gi,
     /\b(?:a|the|one|recent)\s+(?:study|survey|report|benchmark)\b[^.!?]*/gi,
   ];

@@ -81,6 +81,15 @@ try:
 except Exception as _depth_import_err:
     _DEPTH_AVAILABLE = False
 
+# Motion-graphics overlay (kinetic text / stat call-out / payoff hold). Optional in the
+# same way depth parallax is: a missing module or an unreadable spec renders the clip
+# exactly as it renders today rather than failing it.
+try:
+    from motion_overlay import load_overlay as _load_overlay
+    _OVERLAY_AVAILABLE = True
+except Exception:
+    _OVERLAY_AVAILABLE = False
+
 # ═══════════════════════════════════════════════════════════════════════════
 # CONFIG
 # ═══════════════════════════════════════════════════════════════════════════
@@ -853,7 +862,7 @@ class SceneRendererV4:
     def __init__(self, cfg: EngineConfig, background_path: str,
                  char_rgba, duration: float, emotion: str, scene_type: str,
                  prev_scene_type: str = '', next_scene_type: str = '',
-                 seed: int = 42, idle: bool = True):
+                 seed: int = 42, idle: bool = True, overlay_path: str = ''):
         self.cfg = cfg
         self.W, self.H, self.FPS = cfg.w, cfg.h, cfg.fps
         self.duration = duration
@@ -922,6 +931,10 @@ class SceneRendererV4:
                 print('[MetroV4] Depth parallax active — 2.5D pan enabled')
             except Exception as _de:
                 print(f'[MetroV4] Depth parallax unavailable ({_de}) — using Ken Burns')
+
+        # ── Motion-graphics overlay (stateless; see motion_overlay.py) ──
+        self.overlay = (_load_overlay(overlay_path, self.W, self.H, self.emotion)
+                        if overlay_path and _OVERLAY_AVAILABLE else None)
 
         # ── Transitions ──
         self.fx = TransitionFX(self.W, self.H)
@@ -1092,6 +1105,12 @@ class SceneRendererV4:
         # 6. Vignette + light flicker (one float pass) + grain
         frame = apply_vignette_flicker(frame, self.vignette_mask, t)
         frame = add_grain_from_bank(frame, self.grain_bank, fi)
+
+        # 7. Motion-graphics overlay. After the grade and grain so type stays legible
+        #    at its own colour, before the transitions so it fades out with the frame
+        #    rather than surviving on top of a black cut.
+        if self.overlay is not None:
+            frame = self.overlay.draw(frame, t)
 
         # 8. Transition halves at the clip edges
         if self.head_frames > 0 and fi < self.head_frames:
@@ -1264,7 +1283,7 @@ def _render_range(job):
     a second Depth-Anything inference — see _gen_depth.
     """
     (start, end, seg_path, background, char_path, duration, emotion, scene_type,
-     prev_t, next_t, seed, idle, w, h, fps) = job
+     prev_t, next_t, seed, idle, w, h, fps, overlay_path) = job
 
     char_rgba = None
     if char_path and os.path.exists(char_path):
@@ -1275,9 +1294,12 @@ def _render_range(job):
     cfg = EngineConfig(w=w, h=h, fps=fps)
     renderer = SceneRendererV4(
         cfg, background, char_rgba, duration, emotion, scene_type,
-        prev_scene_type=prev_t, next_scene_type=next_t, seed=seed, idle=idle)
+        prev_scene_type=prev_t, next_scene_type=next_t, seed=seed, idle=idle,
+        overlay_path=overlay_path)
 
     # Catch the particle system up to this range's first frame, or the seam shows.
+    # The overlay needs no equivalent: it is a pure function of t (motion_overlay.py),
+    # so a worker starting mid-clip draws the same thing a sequential render draws.
     renderer.particles.warm_to(start, 1.0 / cfg.fps, renderer.wind)
 
     writer, _ = open_writer(seg_path, fps, w, h)
@@ -1358,6 +1380,9 @@ def main():
     parser.add_argument('--next_scene_type', default='')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--no_idle', action='store_true')
+    parser.add_argument('--overlay', default='',
+                        help='JSON motion-graphics spec (see motion_overlay.py). '
+                             'Absent or unreadable = no overlay, same clip as before.')
     args = parser.parse_args()
 
     if not os.path.exists(args.background):
@@ -1397,7 +1422,7 @@ def main():
         emotion, scene_type,
         prev_scene_type=args.prev_scene_type,
         next_scene_type=args.next_scene_type,
-        seed=args.seed, idle=not args.no_idle)
+        seed=args.seed, idle=not args.no_idle, overlay_path=args.overlay)
 
     if char_rgba is not None:
         print(f'[MetroV4] Light dx: {renderer.light_dx:+.2f} | '
@@ -1416,7 +1441,7 @@ def main():
             (s, e, f'{args.output}.part{i:02d}.mp4', args.background, args.character,
              args.duration, emotion, scene_type, args.prev_scene_type,
              args.next_scene_type, args.seed, not args.no_idle,
-             args.width, args.height, args.fps)
+             args.width, args.height, args.fps, args.overlay)
             for i, (s, e) in enumerate(ranges)
         ]
         print(f'[MetroV4] Rendering {total} frames across {len(jobs)} processes '

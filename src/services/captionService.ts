@@ -18,6 +18,28 @@ export const speechWindow = (scene: any): { start: number; span: number } => {
   return { start: 0, span: fallback };
 };
 
+/**
+ * Per-word timings across the speech window.
+ *
+ * Even division inside the measured span — the same approximation the captions have
+ * always used. It is exported because the motion-graphics overlay needs the same
+ * numbers: two timing systems drifting apart is exactly the bug speechWindow() was
+ * introduced to fix, so kinetic text reads its words from here rather than deriving
+ * its own from the scene duration.
+ */
+export const wordTimings = (text: string, scene: any): WordTimestamp[] => {
+  const { start, span } = speechWindow(scene);
+  const words = String(text || '').split(' ').filter((w: string) => w.trim());
+  if (!words.length) return [];
+  const per = span / words.length;
+  return words.map((word: string, i: number) => ({
+    word,
+    start: start + i * per,
+    end: start + (i + 1) * per,
+    confidence: 0.9,
+  }));
+};
+
 export const captionService = {
   generateCaptions: async (scene: any, audioPath: string, mode: string): Promise<{ words: WordTimestamp[], chunks: CaptionChunk[] }> => {
     return generateCaptions(scene, audioPath, mode);
@@ -39,15 +61,6 @@ export const generateCaptions = async (scene: any, audioPath: string, mode: stri
 
   const blockDuration = span / blocks.length;
 
-  // WordTimestamp array for compatibility (per-word even distribution)
-  const timePerWord = span / words.length;
-  const wordsWithTiming: WordTimestamp[] = words.map((w: string, i: number) => ({
-    word: w,
-    start: speechStart + i * timePerWord,
-    end: speechStart + (i + 1) * timePerWord,
-    confidence: 0.9
-  }));
-
   const chunks: CaptionChunk[] = blocks.map((blockText, i) => {
     const colorTag = '{\\c&H00FFFFFF&}';
     return {
@@ -58,7 +71,7 @@ export const generateCaptions = async (scene: any, audioPath: string, mode: stri
     };
   });
 
-  return { words: wordsWithTiming, chunks };
+  return { words: wordTimings(text, scene), chunks };
 };
 
 export const fallbackCaptions = (scene: any, mode: string): { words: WordTimestamp[], chunks: CaptionChunk[] } => {
@@ -77,14 +90,6 @@ export const fallbackCaptions = (scene: any, mode: string): { words: WordTimesta
   }
   const blockDuration = span / blocks.length;
 
-  const timePerWord = span / words.length;
-  const wordsWithTiming: WordTimestamp[] = words.map((w: string, i: number) => ({
-    word: w,
-    start: speechStart + i * timePerWord,
-    end: speechStart + (i + 1) * timePerWord,
-    confidence: 0.9
-  }));
-
   const chunks: CaptionChunk[] = blocks.map((blockText, i) => {
     const colorTag = '{\\c&H00FFFFFF&}';
     return {
@@ -95,7 +100,7 @@ export const fallbackCaptions = (scene: any, mode: string): { words: WordTimesta
     };
   });
 
-  return { words: wordsWithTiming, chunks };
+  return { words: wordTimings(text, { ...scene, duration_actual: scene.duration_target || 5 }), chunks };
 };
 
 export const validateCaptionTiming = (scene: any, mode: string) => {
