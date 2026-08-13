@@ -134,14 +134,25 @@ export function buildScriptSections(brief: ScriptBrief): ScriptSections {
   );
 
   // ── INSTRUCTIONS: how it should be built. Structural, and true of any subject.
+  //
+  // Several of these encode short-form retention craft: front-load the payload, pay
+  // off the hook, cut anything that would not be missed, vary the rhythm. They make
+  // a script worth staying for, which is *correlated* with retention and is
+  // not a lever on reach. What an upload actually reaches is decided by topic choice,
+  // title, thumbnail, posting time and the recommendation system, none of which this
+  // agent writes or can see. It controls the words. Nothing here buys an audience.
   const instructions = [
-    `Lead with the tension. Open on the specific problem, contradiction or consequence the subject creates — not on background, not on how important the area is.`,
+    `Lead with the tension. Open on the specific problem, contradiction or consequence the subject creates — not on background, not on how important the area is. The first line must be one that could not be pasted onto a video about anything else.`,
     `Name the subject explicitly within the first two lines. Say what it actually is; do not talk around it in abstractions.`,
+    `Front-load the payload. The most surprising or most useful thing you have goes in the first quarter of the runtime, not saved for the end. Someone who leaves after a few seconds should already have got something.`,
     `Show the mechanism. If the subject has named parts, stages or moving pieces, name them and show each one doing its job — a reveal that is mentioned once and dropped is wasted.`,
-    `One idea per line, and every scene must move the argument forward. If a scene could be cut without loss, cut it and give its words to the others.`,
+    `Pay off the opening. Whatever the first line promises, asks or implies has to be answered in plain words by a later scene. An opening that is never returned to is bait, and the viewer feels it.`,
+    `One idea per line, and every scene must move the argument forward. If a scene could be cut without loss, cut it and give its words to the others. The same test applies sentence by sentence: delete any sentence that would not be missed.`,
     `Alternate between the concrete and the consequence: a specific example, then what it means.`,
-    `Close on a beat that lands — a reversal, a consequence, or a question the viewer will carry. Never a summary of what was just said.`,
-    `Write for the ear. Short sentences, contractions, active voice, no subordinate clause stacking.`,
+    `Vary sentence length on purpose. A long line followed by a short one is heard as emphasis; a run of same-length sentences flattens into a drone no matter how good the words are.`,
+    `Close on a beat that lands — a reversal, a consequence, or a question the viewer will carry. A closing question has to be about the specific thing this script just showed, the kind only someone who watched it would answer; a question that would sit equally well on any video is not a close. Never a summary of what was just said.`,
+    `Write for the ear. Contractions, active voice, no subordinate clause stacking. A sentence that needs a second reading has already lost a listener who cannot re-read.`,
+    `Adjectives are not content. At most one modifier per noun, and no adverb that is not doing work — "smart, autonomous tools that intelligently update your tests" says less than "tools that update your tests", in twice the runtime.`,
     `Each scene's visual field describes what is on screen: subject, expression, environment, light. Never written text, numbers, labels, charts, signage or UI — rendered text is clipped by the crop and fights the burned-in captions.`,
   ];
   if (cast.length) {
@@ -157,6 +168,8 @@ export function buildScriptSections(brief: ScriptBrief): ScriptSections {
     `No scene's narration may be under ${perSceneFloor} words${cast.length ? ', except at most one wordless reaction beat' : ''}.`,
     `No statistics, percentages, benchmark figures, dates, study citations or named research unless they appear verbatim in the material above. If you want to reach for a number, use a concrete example instead. An invented figure is worse than no figure.`,
     `Do not claim anything about the subject you were not given. No capability, no adoption, no comparison you cannot point at in the brief.`,
+    `Match every claim to the strength the material supports. Words that promise a guaranteed outcome — fixes, solves, eliminates, guarantees, always, automatically, never fails — are for outcomes the material above states are guaranteed. Everywhere else, describe the capability as it is: attempts to, proposes, is designed to, helps. "It repairs your tests" and "it proposes a repair you review" are different products; write the one you were actually given.`,
+    `No generic dramatic opener. A first line that is a bare intensifier — "Shocking." "Insane." "You won't believe this." "This changes everything." — would fit any video on any subject, and a viewer reads it as bait before hearing the second line. Open hard, but let the force come from the specific thing at stake rather than from adjectives about it.`,
     `One core concept for the whole script. Covering three ideas shallowly is the failure mode; depth on one is the goal.`,
     `No generic pain-point preamble — "developers everywhere struggle with…", "we've all been there" — unless that struggle is literally the subject.`,
     `Plain speakable prose only: no emoji, no hashtags, no markdown, no bracketed stage directions, no URLs, no spelled-out symbols.`,
@@ -249,4 +262,63 @@ export function flagUnverifiedClaims(script: string, allowed = ''): string[] {
     }
   }
   return [...found];
+}
+
+/** A first line that is nothing but an intensifier. Checked against the sentence stripped of punctuation. */
+const BARE_INTENSIFIER = /^(shocking|insane|crazy|unbelievable|wild|terrifying|mind-?blowing|wow|whoa|huge)$/i;
+const CLICKBAIT_PHRASE = /you won'?t believe|this changes everything|nobody is talking about|stop scrolling|the truth about|here'?s why you/i;
+/**
+ * Words that promise an outcome rather than describe a capability. "fix" needs its
+ * object attached: "manual fixes after every release" is the noun naming the problem,
+ * not a claim about what anything does.
+ */
+const GUARANTEE = /\b(?:solves?|solved|eliminat(?:es|ed|ing)|guarantees?|guaranteed|never fails?|always works?|fix(?:es|ed|ing)?\s+(?:your|the|their|its|it|them|themselves|itself|these|those|broken|failing|every\w+|anything))\b/i;
+const HEDGE = /\b(attempts?|tries|trying|proposes?|proposed|suggests?|designed to|meant to|may|might|aims? to)\b/i;
+/** Words too common to prove a closing question is about anything in particular. */
+const GENERIC_CLOSE_WORDS = new Set([
+  'what', 'when', 'where', 'which', 'would', 'could', 'should', 'your', 'you', 'that', 'this', 'with',
+  'will', 'next', 'have', 'they', 'them', 'their', 'from', 'into', 'than', 'then', 'more', 'most',
+  'just', 'only', 'ever', 'still', 'about', 'after', 'before', 'because', 'going', 'make', 'made',
+  'something', 'anything', 'everything', 'build', 'ship', 'create', 'try', 'think', 'know', 'else',
+]);
+
+/**
+ * Flags the three weaknesses that survived human review of real scripts: a generic
+ * dramatic opener, a guarantee where the tool only attempts, and a closing question
+ * that would fit any video. Each maps to a constraint above, so this is the constraint
+ * failing loudly in the render log at generation time rather than in a review later.
+ *
+ * Warn-only, like flagUnverifiedClaims and for the same reason: the material may
+ * genuinely support the strong claim and no regex can read the material.
+ */
+export function flagCraftIssues(script: string, topic = ''): string[] {
+  const sentences = (script.match(/[^.!?]+[.!?]*/g) ?? []).map((s) => s.trim()).filter(Boolean);
+  if (!sentences.length) return [];
+  const issues: string[] = [];
+  const short = (s: string) => (s.length > 60 ? `${s.slice(0, 57)}…` : s);
+
+  const first = sentences[0];
+  if (BARE_INTENSIFIER.test(first.replace(/[.!?,]+$/, '').trim()) || CLICKBAIT_PHRASE.test(first)) {
+    issues.push(`generic opener: "${short(first)}"`);
+  }
+
+  for (const s of sentences) {
+    const hit = GUARANTEE.exec(s);
+    if (hit && !HEDGE.test(s)) issues.push(`overclaim "${hit[0]}": "${short(s)}"`);
+  }
+
+  const last = sentences[sentences.length - 1];
+  if (last.endsWith('?')) {
+    // A closing question that shares no vocabulary with the topic or with the script
+    // it closes is not a question about this video.
+    const said = `${topic} ${sentences.slice(0, -1).join(' ')}`.toLowerCase();
+    const content = (last.toLowerCase().match(/[a-z']{4,}/g) ?? []).filter((w) => !GENERIC_CLOSE_WORDS.has(w));
+    // Singular stem too: a close asking about "resources" is about the script that
+    // spent its runtime on resource pressure.
+    if (!content.some((w) => said.includes(w.replace(/s$/, '')))) {
+      issues.push(`off-topic close: "${short(last)}"`);
+    }
+  }
+
+  return issues;
 }

@@ -5,6 +5,7 @@ import {
   buildScriptSections,
   buildScriptPrompt,
   flagUnverifiedClaims,
+  flagCraftIssues,
   type ScriptBrief,
 } from '../src/pipeline/agents/scriptPrompt.js';
 import { buildKnowledgeContext } from '../src/content-studio/knowledgeContext.js';
@@ -160,6 +161,102 @@ describe('script prompt — constraints', () => {
   });
 });
 
+describe('script prompt — the weaknesses human review kept catching', () => {
+  // Three recurring findings on real generated scripts: a bare dramatic opener, a
+  // guaranteed-outcome claim where the tool only attempts one, and a closing question
+  // that could sit on any video. Each is a constraint now, and each must apply to
+  // every brief — they are craft rules, not series rules.
+  const both = [generic, withUniverse()];
+
+  it('bans guaranteed-outcome wording where the material only supports a capability', () => {
+    for (const brief of both) {
+      const c = buildScriptSections(brief).constraints.join('\n');
+      expect(c).toMatch(/guaranteed outcome/i);
+      expect(c).toMatch(/attempts to/);
+      // The distinction has to be stated as two kinds of word, not as one example.
+      expect(c).toMatch(/fixes, solves, eliminates/);
+    }
+  });
+
+  it('bans the generic dramatic opener without asking for a weak one', () => {
+    for (const brief of both) {
+      const s = buildScriptSections(brief);
+      const c = s.constraints.join('\n');
+      expect(c).toMatch(/No generic dramatic opener/);
+      expect(c).toContain('Shocking');
+      // The overcorrection guard: still explicitly told to open hard.
+      expect(c).toMatch(/Open hard/);
+      expect(s.instructions.join('\n')).toMatch(/Lead with the tension/);
+    }
+  });
+
+  it('requires the closing question to be about this script specifically', () => {
+    for (const brief of both) {
+      const i = buildScriptSections(brief).instructions.join('\n');
+      expect(i).toMatch(/closing question has to be about the specific thing/);
+      expect(i).toMatch(/would sit equally well on any video is not a close/);
+    }
+  });
+
+  it('carries the retention principles into every brief', () => {
+    for (const brief of both) {
+      const i = buildScriptSections(brief).instructions.join('\n');
+      expect(i).toMatch(/Front-load the payload/);       // value before setup
+      expect(i).toMatch(/Pay off the opening/);           // no bait-and-switch
+      expect(i).toMatch(/Vary sentence length/);          // spoken rhythm
+      expect(i).toMatch(/would not be missed/);           // information density
+    }
+  });
+
+  it('says plainly that these are craft rules, not a reach lever', () => {
+    // The claim this file is not allowed to make, asserted so it cannot creep in.
+    const src = fs.readFileSync(
+      path.join(process.cwd(), 'src/pipeline/agents/scriptPrompt.ts'), 'utf8');
+    expect(src).toMatch(/correlated\* with retention/);
+    expect(src).toMatch(/not a lever on reach/);
+  });
+});
+
+describe('flagCraftIssues', () => {
+  it('catches a bare dramatic opener but not a specific hard one', () => {
+    expect(flagCraftIssues('Shocking. Your software tests are failing.')[0])
+      .toMatch(/^generic opener/);
+    expect(flagCraftIssues("You won't believe what this does.")[0]).toMatch(/^generic opener/);
+    // The reviewer's own preferred opening: strong, specific, must stay clean.
+    expect(flagCraftIssues('Your software tests are failing. Again. What if they could fix themselves?'))
+      .not.toContainEqual(expect.stringMatching(/generic opener/));
+  });
+
+  it('catches a guarantee, and stays quiet on the hedged version of the same claim', () => {
+    expect(flagCraftIssues('Playwright fixes your existing broken tests.')[0])
+      .toMatch(/^overclaim "fixes your"/);
+    expect(flagCraftIssues('The healer attempts a repair and proposes the fix for review.'))
+      .toEqual([]);
+    // Not tuned to one topic or one verb.
+    expect(flagCraftIssues('This framework eliminates deployment downtime.')[0])
+      .toMatch(/^overclaim "eliminates"/);
+    // "fixes" as a noun names the problem; it claims nothing.
+    expect(flagCraftIssues('Broken selectors mean endless manual fixes after every release.'))
+      .toEqual([]);
+  });
+
+  it('catches a closing question that shares no vocabulary with the video', () => {
+    const script = 'Playwright ships three agents. The planner drafts, the generator writes, the healer '
+      + 'looks at what broke. What groundbreaking features will you ship next?';
+    expect(flagCraftIssues(script, 'Playwright AI agents')[0]).toMatch(/^off-topic close/);
+
+    const onTopic = script.replace(
+      'What groundbreaking features will you ship next?', 'Would you let the healer touch your tests?');
+    expect(flagCraftIssues(onTopic, 'Playwright AI agents')).toEqual([]);
+  });
+
+  it('stays quiet on a clean script and on one with no closing question', () => {
+    expect(flagCraftIssues('The agent reads the page, then decides what to click.', 'browser agents'))
+      .toEqual([]);
+    expect(flagCraftIssues('')).toEqual([]);
+  });
+});
+
 describe('flagUnverifiedClaims', () => {
   it('catches the shapes of claim a script was told not to invent', () => {
     expect(flagUnverifiedClaims('It cuts flake rates by 40%.')).toContain('40%');
@@ -176,5 +273,23 @@ describe('flagUnverifiedClaims', () => {
   it('does not flag a figure that came from the source material', () => {
     // Warn-only and source-aware: a stat quoted from the brief is sourced.
     expect(flagUnverifiedClaims('Coverage sat at 40%.', 'The bible states coverage sat at 40%.')).toEqual([]);
+  });
+});
+
+describe('flagCraftIssues — matching real generated closes', () => {
+  it('accepts a close that reuses the script\'s vocabulary in another number', () => {
+    // Real output: the script talks about "resource pressure", the close asks about
+    // "resources". Same subject, different inflection — not an off-topic close.
+    const script = 'Kubernetes evicts under resource pressure. The kubelet watches memory. '
+      + 'Are your essential services protected when resources run thin?';
+    expect(flagCraftIssues(script, 'Why Kubernetes evicts your pod at 3am')).toEqual([]);
+  });
+});
+
+describe('flagCraftIssues — the control script the old prompt produced', () => {
+  it('flags the self-repair guarantee the pre-change prompt reached for', () => {
+    // Verbatim first line of a control generation on the prompt as it was.
+    expect(flagCraftIssues('Ever wish your complex web tests could practically fix themselves?')[0])
+      .toMatch(/^overclaim "fix themselves"/);
   });
 });

@@ -5,7 +5,9 @@ import { StoryArc } from './storyAgent.js';
 import { targetLengthSeconds, targetWordCount, TARGET_TOLERANCE } from '../../utils/targetLength.js';
 import { buildKnowledgeContext, normalizeUniverse } from '../../content-studio/knowledgeContext.js';
 import type { KnowledgeDocument } from '../../content-studio/domain/types.js';
-import { buildScriptPrompt, flagUnverifiedClaims, type ScriptBrief } from './scriptPrompt.js';
+import {
+  buildScriptPrompt, buildScriptSections, flagUnverifiedClaims, flagCraftIssues, type ScriptBrief,
+} from './scriptPrompt.js';
 
 /**
  * The Script Agent: turns approved story beats into the actual spoken words.
@@ -131,15 +133,19 @@ export const ScriptwriterAgent = {
       // One expansion retry, and only when the script is short enough that padding
       // could not close the gap without the stills reading as dead air.
       if (totalWords < targetWords * (1 - TARGET_TOLERANCE)) {
-        scenes = await expand(scenes, totalWords, targetWords);
+        scenes = await expand(scenes, totalWords, targetWords, buildScriptSections(brief).constraints);
         totalWords = countWords(scenes);
       }
 
       // The prompt is the source material: a figure the brief supplied is sourced,
       // one the model reached for on its own is not.
-      const claims = flagUnverifiedClaims(scenes.map((s) => s.narration || '').join(' '), prompt);
-      if (claims.length) {
-        console.warn(`[ScriptAgent] Unsourced claims in the script — verify before publishing: ${claims.join(' | ')}`);
+      const spoken = scenes.map((s) => s.narration || '').join(' ');
+      const issues = [
+        ...flagUnverifiedClaims(spoken, prompt).map((c) => `unsourced: ${c}`),
+        ...flagCraftIssues(spoken, project.topic),
+      ];
+      if (issues.length) {
+        console.warn(`[ScriptAgent] Check before publishing — ${issues.join(' | ')}`);
       }
 
       return { rawScript: parsed.rawScript || scenes.map((s) => s.narration).filter(Boolean).join(' '), scenes };
@@ -178,14 +184,23 @@ function appendNullTease(project: Project, scenes: any[]): any[] {
   }];
 }
 
-async function expand(scenes: any[], have: number, want: number): Promise<any[]> {
+/**
+ * @param constraints The same constraints the script was written under. Without them
+ *   this call was a free pass: it reached the word count by stacking adjectives and
+ *   swapping specific closes for generic ones, undoing the rules one call earlier.
+ */
+async function expand(scenes: any[], have: number, want: number, constraints: string[] = []): Promise<any[]> {
   console.warn(`[ScriptAgent] Only ${have} words, target ${want}. Requesting expansion...`);
   try {
     const raw = await AIService.generateText(
       `This video script is ${have} words; it needs about ${want}.
 Deepen each scene's narration to reach that total — more specific detail, a concrete example, a consequence.
+Reach the count with substance only. Adding adjectives and adverbs to existing sentences is not expansion;
+if a scene has nothing more to say, leave it alone and give the words to a scene that does.
 Keep the same number of scenes, the same order, and the same visual prompts. Change narration only.
 Do not add statistics, percentages or citations that are not already present.
+The original rules still apply:
+${constraints.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 Script: ${JSON.stringify(scenes)}
 Return ONLY a valid JSON array of scenes in the same shape, no markdown.`,
       { task: 'script' },
