@@ -5,7 +5,9 @@ import os from 'os';
 import path from 'path';
 import ffmpeg from 'ffmpeg-static';
 import { generateCaptions } from './captionService.js';
-import { planOverlay, overlayKey, type OverlayWord } from './overlayPlan.js';
+import {
+  planOverlay, sceneVisualKey, transitionBetween, transitionColor, type OverlayWord,
+} from './overlayPlan.js';
 import { progressBus, ProgressStage } from '../server/progressBus.js';
 
 const execAsync = promisify(exec);
@@ -209,6 +211,10 @@ async function callSceneAnimatorV3(
     draft?: boolean;
     /** JSON motion-graphics spec. V4 only; absent means the clip renders as before. */
     overlayPath?: string;
+    /** Transition overrides. Must be symmetric with the neighbouring clip's opposite half. */
+    inTransition?: string;
+    outTransition?: string;
+    transitionColor?: string;
   } = {}
 ): Promise<boolean> {
   return new Promise((resolve) => {
@@ -249,6 +255,11 @@ async function callSceneAnimatorV3(
     // V4 only: doraemon_engine.py and v3 have no --overlay and argparse would exit(2).
     if (useV4 && !useDoraemon && opts.overlayPath && fs.existsSync(opts.overlayPath)) {
       args.push('--overlay', opts.overlayPath);
+    }
+    if (useV4 && !useDoraemon) {
+      if (opts.inTransition) args.push('--in_transition', opts.inTransition);
+      if (opts.outTransition) args.push('--out_transition', opts.outTransition);
+      if (opts.transitionColor) args.push('--transition_color', opts.transitionColor);
     }
     if (useDoraemon) {
       const charName = (opts.characterName || 'veer').toLowerCase();
@@ -534,9 +545,19 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
   const overlaySpec = scene
     ? planOverlay(scene, project, audioDuration || visual.duration_target || 5)
     : null;
+  // The transitions on either side of this clip, decided from what the neighbouring
+  // beats are doing. Both halves of one cut are computed from the same pair, so clip N
+  // and clip N+1 agree without the engine having to check.
+  const sceneList: any[] = project?.scenes || [];
+  const sceneIdx = scene ? sceneList.findIndex((s: any) => s?.scene_id === scene.scene_id) : -1;
+  const neighbourSpec = (j: number) => (sceneList[j]
+    ? planOverlay(sceneList[j], project, audioDuration || visual.duration_target || 5) : null);
+  const inTransition = sceneIdx > 0 ? transitionBetween(neighbourSpec(sceneIdx - 1), overlaySpec) : '';
+  const outTransition = sceneIdx >= 0 ? transitionBetween(overlaySpec, neighbourSpec(sceneIdx + 1)) : '';
+  const clipSeconds = audioDuration || visual.duration_target || 5;
   const outputPath = visualClipPath(
     tmpDir, String(project.project_id), visual.visual_id, visual.motion_instruction,
-    overlayKey(overlaySpec),
+    scene ? sceneVisualKey(scene, project, clipSeconds) : '',
   );
   // Same staleness rule as the multi-frame path: a regenerated still must invalidate the
   // clip built from it, or an image edit never reaches the video. The motion lives in the
@@ -557,12 +578,18 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
   // pass at the end. This tracks which of the two happened.
   let engineDrewOverlay = false;
   if (overlaySpec) {
-    overlayPath = path.join(tmpDir, `${project.project_id}_${visual.visual_id}_${overlayKey(overlaySpec)}.overlay.json`);
+    overlayPath = path.join(tmpDir, `${project.project_id}_${visual.visual_id}_${sceneVisualKey(scene, project, clipSeconds)}.overlay.json`);
     fs.writeFileSync(overlayPath, JSON.stringify(overlaySpec), 'utf8');
     console.log(
       `[Overlay] Scene ${scene?.scene_id ?? '?'}: ${overlaySpec.kind}`,
       `${overlaySpec.start.toFixed(2)}s→${overlaySpec.end.toFixed(2)}s`,
-      overlaySpec.figure ? `figure "${overlaySpec.figure}"` : `"${overlaySpec.words.map((w: OverlayWord) => w.text).join(' ')}"`,
+      // Whatever this treatment actually puts on screen — the words list is empty for
+      // the structured ones, and a log line reading `""` says nothing.
+      overlaySpec.figure ? `figure "${overlaySpec.figure}"`
+        : overlaySpec.steps ? `steps: ${overlaySpec.steps.map((s: OverlayWord) => s.text).join(' -> ')}`
+        : overlaySpec.sides ? `sides: ${overlaySpec.sides.map((s: OverlayWord) => s.text).join(' | ')}`
+        : overlaySpec.name ? `card "${overlaySpec.name}"`
+        : `"${overlaySpec.words.map((w: OverlayWord) => w.text).join(' ')}"`,
     );
   }
 
@@ -805,6 +832,9 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 height: engineH,
                 draft: isPreview,
                 overlayPath,
+                inTransition,
+                outTransition,
+                transitionColor: transitionColor(project),
               }
             );
             if (unifiedSuccess) {
@@ -844,6 +874,9 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 height: engineH,
                 draft: isPreview,
                 overlayPath,
+                inTransition,
+                outTransition,
+                transitionColor: transitionColor(project),
               }
             );
             if (compositeSuccess) {

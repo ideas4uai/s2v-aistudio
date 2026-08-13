@@ -18,7 +18,7 @@ import { fallbackHook, fallbackScript, fallbackSceneGraph } from './fallbacks.js
 import { generateSceneAudio } from '../services/voiceService.js';
 import { generateAsset } from '../services/assetService.js';
 import { renderVisualClip, validateVisualClip, assembleSceneSegment, stitchScenes, getAudioDuration, visualClipPath, isShortsProject, prepareSceneAudio } from '../services/renderService.js';
-import { planOverlay, overlayKey } from '../services/overlayPlan.js';
+import { sceneVisualKey } from '../services/overlayPlan.js';
 import { generateHash, generateAudioHash, generateVisualHash, generateSceneHash, generateAssetHash } from '../utils/hash.js';
 import { getScenesToRender, sceneRenderHash } from '../utils/diff.js';
 import { getFromCache } from '../services/cacheService.js';
@@ -1370,7 +1370,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
         String(project.project_id),
         visual.visual_id,
         (visual as any).motion_instruction,
-        overlayKey(planOverlay(scene, project, holdDuration > 0 ? holdDuration : (visual.duration_target || 5))),
+        sceneVisualKey(scene, project, holdDuration > 0 ? holdDuration : (visual.duration_target || 5)),
       );
       if (path.resolve(existingRendered) !== path.resolve(expected)) {
         console.log(

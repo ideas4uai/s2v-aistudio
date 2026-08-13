@@ -112,6 +112,13 @@ RED_TERMINAL = (10, 6, 88)
 # separate processes.
 CURTAIN_SEED = 777
 
+# Terminal colour for the two transitions added alongside the originals. Both halves
+# of a transition converge here, so this value MUST be identical in the process
+# rendering clip N and the one rendering clip N+1 — it is passed on the command line
+# from one project-level accent rather than guessed per clip. BGR.
+FLASH_DEFAULT = (250, 250, 255)
+TRANSITION_COLOR = FLASH_DEFAULT
+
 
 # ── Scene type maps (same keys as scene_animator_v3) ───────────────────────
 PARTICLE_MAP = {
@@ -695,6 +702,17 @@ class ParticleSystemV4:
 # TRANSITIONS — split halves converging to content-independent terminals
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _set_transition_color(value: str):
+    """Parse 'B,G,R' into the module-level terminal colour. Ignores anything else."""
+    global TRANSITION_COLOR
+    try:
+        parts = [int(v) for v in str(value or '').split(',')]
+        if len(parts) == 3 and all(0 <= v <= 255 for v in parts):
+            TRANSITION_COLOR = tuple(parts)
+    except (TypeError, ValueError):
+        pass
+
+
 def choose_transition(from_type: str, to_type: str):
     a = (from_type or '').lower()
     b = (to_type or '').lower()
@@ -785,6 +803,28 @@ class TransitionFX:
             k = int(q * 80)
             shoved = np.roll(frame, int(q * 60), axis=1) if q > 0.05 else frame
             return motion_blur_h(shoved, k)
+        if kind == 'whip_flash':
+            # A whip pan that ends on a single colour rather than on a smear. The last
+            # fifth is the flash, which is also the terminal state the IN half starts
+            # from — that is what makes the concat cut invisible, exactly as the red
+            # fade and the data curtain do it.
+            q = ease_in(p)
+            shoved = np.roll(frame, int(q * 110), axis=1) if q > 0.05 else frame
+            out = motion_blur_h(shoved, int(q * 120))
+            if p > 0.8:
+                flash = np.full_like(out, TRANSITION_COLOR, dtype=np.uint8)
+                return cv2.addWeighted(out, 1 - ease_in((p - 0.8) / 0.2),
+                                       flash, ease_in((p - 0.8) / 0.2), 0)
+            return out
+        if kind == 'shape_wipe':
+            # A filled circle grows from the centre until it owns the frame. Terminal
+            # state is the solid colour, same contract as above.
+            out = frame.copy()
+            r = int(ease_in_out(p) * math.hypot(self.w, self.h) * 0.55)
+            if r > 0:
+                cv2.circle(out, (self.w // 2, self.h // 2), r,
+                           tuple(int(c) for c in TRANSITION_COLOR), -1, cv2.LINE_AA)
+            return out
         if kind == 'data_wipe':
             curtain = self.curtain()
             edge = int(ease_in_out(p) * (self.h + 60))
@@ -833,6 +873,26 @@ class TransitionFX:
             k = int((1 - q) * 80)
             shoved = np.roll(frame, -int((1 - q) * 60), axis=1) if q < 0.95 else frame
             return motion_blur_h(shoved, k)
+        if kind == 'whip_flash':
+            # Starts on the flash the OUT half ended on, resolves out of it with the
+            # opposite shove so the motion reads as continuous across the cut.
+            q = ease_out(p)
+            shoved = np.roll(frame, -int((1 - q) * 110), axis=1) if q < 0.95 else frame
+            out = motion_blur_h(shoved, int((1 - q) * 120))
+            if p < 0.2:
+                flash = np.full_like(out, TRANSITION_COLOR, dtype=np.uint8)
+                return cv2.addWeighted(out, ease_out(p / 0.2),
+                                       flash, 1 - ease_out(p / 0.2), 0)
+            return out
+        if kind == 'shape_wipe':
+            # The circle shrinks away, revealing the new scene through it.
+            out = np.full_like(frame, TRANSITION_COLOR, dtype=np.uint8)
+            r = int(ease_in_out(p) * math.hypot(self.w, self.h) * 0.55)
+            if r > 0:
+                mask = np.zeros((self.h, self.w), dtype=np.uint8)
+                cv2.circle(mask, (self.w // 2, self.h // 2), r, 255, -1, cv2.LINE_AA)
+                np.copyto(out, frame, where=mask[:, :, None].astype(bool))
+            return out
         if kind == 'data_wipe':
             curtain = self.curtain()
             edge = int(ease_in_out(p) * (self.h + 60))
@@ -862,7 +922,8 @@ class SceneRendererV4:
     def __init__(self, cfg: EngineConfig, background_path: str,
                  char_rgba, duration: float, emotion: str, scene_type: str,
                  prev_scene_type: str = '', next_scene_type: str = '',
-                 seed: int = 42, idle: bool = True, overlay_path: str = ''):
+                 seed: int = 42, idle: bool = True, overlay_path: str = '',
+                 in_transition: str = '', out_transition: str = ''):
         self.cfg = cfg
         self.W, self.H, self.FPS = cfg.w, cfg.h, cfg.fps
         self.duration = duration
@@ -939,8 +1000,11 @@ class SceneRendererV4:
         # ── Transitions ──
         self.fx = TransitionFX(self.W, self.H)
         half = min(0.5, duration * 0.15)
-        self.in_kind  = choose_transition(prev_scene_type, self.scene_type)
-        self.out_kind = choose_transition(self.scene_type, next_scene_type)
+        # An explicit override wins over the scene-type table. The two sides of one cut
+        # must agree, so the caller sets clip N's out and clip N+1's in from the same
+        # decision; see transitionBetween() in overlayPlan.ts.
+        self.in_kind  = in_transition or choose_transition(prev_scene_type, self.scene_type)
+        self.out_kind = out_transition or choose_transition(self.scene_type, next_scene_type)
         self.head_frames = int(half * cfg.fps) if self.in_kind else 0
         self.tail_frames = int(half * cfg.fps) if self.out_kind else 0
 
@@ -1283,7 +1347,12 @@ def _render_range(job):
     a second Depth-Anything inference — see _gen_depth.
     """
     (start, end, seg_path, background, char_path, duration, emotion, scene_type,
-     prev_t, next_t, seed, idle, w, h, fps, overlay_path) = job
+     prev_t, next_t, seed, idle, w, h, fps, overlay_path, in_tr, out_tr, tr_color) = job
+
+    # Module-level in the worker process: spawn (Windows) re-imports the module, so a
+    # colour set only in the parent would silently revert to the default here and the
+    # two halves of a cut would land on different terminal frames.
+    _set_transition_color(tr_color)
 
     char_rgba = None
     if char_path and os.path.exists(char_path):
@@ -1295,7 +1364,7 @@ def _render_range(job):
     renderer = SceneRendererV4(
         cfg, background, char_rgba, duration, emotion, scene_type,
         prev_scene_type=prev_t, next_scene_type=next_t, seed=seed, idle=idle,
-        overlay_path=overlay_path)
+        overlay_path=overlay_path, in_transition=in_tr, out_transition=out_tr)
 
     # Catch the particle system up to this range's first frame, or the seam shows.
     # The overlay needs no equivalent: it is a pure function of t (motion_overlay.py),
@@ -1380,6 +1449,13 @@ def main():
     parser.add_argument('--next_scene_type', default='')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--no_idle', action='store_true')
+    parser.add_argument('--in_transition', default='',
+                        help='Override the transition chosen from scene types. Must '
+                             'match the previous clip --out_transition.')
+    parser.add_argument('--out_transition', default='')
+    parser.add_argument('--transition_color', default='',
+                        help='B,G,R for whip_flash/shape_wipe. Identical on both sides '
+                             'of a cut or the terminal frames will not match.')
     parser.add_argument('--overlay', default='',
                         help='JSON motion-graphics spec (see motion_overlay.py). '
                              'Absent or unreadable = no overlay, same clip as before.')
@@ -1393,6 +1469,7 @@ def main():
         print('[MetroV4] ERROR: duration must be > 0', file=sys.stderr)
         sys.exit(1)
 
+    _set_transition_color(args.transition_color)
     emotion = args.emotion if args.emotion in EMOTION_PALETTES else 'neutral'
     scene_type = args.scene_type if args.scene_type in PARTICLE_MAP else 'default'
 
@@ -1422,7 +1499,8 @@ def main():
         emotion, scene_type,
         prev_scene_type=args.prev_scene_type,
         next_scene_type=args.next_scene_type,
-        seed=args.seed, idle=not args.no_idle, overlay_path=args.overlay)
+        seed=args.seed, idle=not args.no_idle, overlay_path=args.overlay,
+        in_transition=args.in_transition, out_transition=args.out_transition)
 
     if char_rgba is not None:
         print(f'[MetroV4] Light dx: {renderer.light_dx:+.2f} | '
@@ -1441,7 +1519,8 @@ def main():
             (s, e, f'{args.output}.part{i:02d}.mp4', args.background, args.character,
              args.duration, emotion, scene_type, args.prev_scene_type,
              args.next_scene_type, args.seed, not args.no_idle,
-             args.width, args.height, args.fps, args.overlay)
+             args.width, args.height, args.fps, args.overlay,
+             args.in_transition, args.out_transition, args.transition_color)
             for i, (s, e) in enumerate(ranges)
         ]
         print(f'[MetroV4] Rendering {total} frames across {len(jobs)} processes '

@@ -1,4 +1,5 @@
 import { extractFigure } from '../pipeline/agents/scriptPrompt.js';
+import { detectSteps, detectComparison, detectName, countUpParts } from './overlayTreatments.js';
 import { wordTimings } from './captionService.js';
 
 /**
@@ -21,7 +22,8 @@ import { wordTimings } from './captionService.js';
  * the caption carrying that word appears — by construction, not by coincidence.
  */
 
-export type OverlayKind = 'kinetic' | 'stat' | 'payoff';
+export type OverlayKind =
+  | 'kinetic' | 'stat' | 'payoff' | 'diagram' | 'comparison' | 'namecard';
 
 export interface OverlayWord {
   text: string;
@@ -35,9 +37,55 @@ export interface OverlaySpec {
   words: OverlayWord[];
   /** The figure itself, for 'stat'. */
   figure?: string;
+  /** Count-up target and trailing unit, when the figure is a whole number. */
+  countUp?: { to: number; suffix: string };
+  /** Ordered nodes for 'diagram', each timed to when it is named. */
+  steps?: OverlayWord[];
+  /** Exactly two sides for 'comparison': the rejected state, then the kept one. */
+  sides?: OverlayWord[];
+  /** Lower-third card text for 'namecard'. */
+  name?: string;
+  descriptor?: string;
+  /** BGR accent, from the universe when it has one. */
+  accent?: [number, number, number];
   start: number;
   end: number;
 }
+
+/**
+ * The generic accent, BGR. Warm amber, matching motion_overlay.py's default.
+ */
+const DEFAULT_ACCENT: [number, number, number] = [60, 190, 250];
+
+/**
+ * A universe's accent colour, if it declares one anywhere the pipeline already stores
+ * colour. Same priority idea as resolveArtStyle(): the universe wins, then the
+ * project's own palette, then a sensible generic default. Parsing is deliberately
+ * narrow — a hex code is unambiguous, and "vibrant and contrasting" is not a colour.
+ */
+export function universeAccent(project: any): [number, number, number] {
+  const sources = [
+    project?.universe?.colorPalette, project?.universe?.artStyle,
+    project?.settings?.colorPalette, project?.color_palette,
+  ];
+  for (const src of sources) {
+    const hex = /#([0-9a-f]{6})\b/i.exec(String(src || ''));
+    if (!hex) continue;
+    const n = parseInt(hex[1], 16);
+    // BGR: the engine's frames are OpenCV order, not RGB.
+    return [n & 255, (n >> 8) & 255, (n >> 16) & 255];
+  }
+  return DEFAULT_ACCENT;
+}
+
+/**
+ * How much each treatment is worth when two land next to each other. A diagram shows
+ * something the narration cannot; kinetic text restates words the captions already
+ * carry. When only one can survive, that ordering is the answer.
+ */
+const WEIGHT: Record<OverlayKind, number> = {
+  payoff: 6, diagram: 5, comparison: 4, stat: 3, namecard: 2, kinetic: 1,
+};
 
 /** Kinetic text is a phrase, not a paragraph — past this it stops reading as a graphic. */
 const MAX_KINETIC_WORDS = 7;
@@ -59,7 +107,7 @@ const sentences = (text: string): string[] =>
  * runtime"): the first beat states the problem, and the one after it is where the subject
  * is named and the claim lands.
  */
-function candidateKinds(scenes: any[]): (OverlayKind | null)[] {
+function candidateKinds(scenes: any[], topic = ''): (OverlayKind | null)[] {
   const spoken = scenes
     .map((s, i) => ({ i, text: String(s?.narration_text || '').trim() }))
     .filter((s) => s.text);
@@ -68,10 +116,20 @@ function candidateKinds(scenes: any[]): (OverlayKind | null)[] {
   const closing = spoken[spoken.length - 1].i;
   const payload = spoken.length >= 3 ? spoken[1].i : -1;
 
+  // A tool is introduced once. Naming it again in beat four is the script repeating
+  // itself, not a second introduction, so only the first beat that names it can card.
+  let named = false;
+
   return scenes.map((s, i) => {
-    if (!String(s?.narration_text || '').trim()) return null;
+    const text = String(s?.narration_text || '').trim();
+    if (!text) return null;
+    // Order is precedence. A beat that walks through steps AND states a figure is a
+    // process beat: the diagram is what the viewer cannot get from the narration alone.
     if (i === closing) return 'payoff';
-    if (extractFigure(s.narration_text)) return 'stat';
+    if (detectSteps(text)) return 'diagram';
+    if (detectComparison(text)) return 'comparison';
+    if (extractFigure(text)) return 'stat';
+    if (!named && detectName(text, topic)) { named = true; return 'namecard'; }
     return i === payload ? 'kinetic' : null;
   });
 }
@@ -87,11 +145,23 @@ export function planOverlay(scene: any, project: any, clipDuration: number): Ove
   const index = scenes.findIndex((s) => s?.scene_id === scene?.scene_id);
   if (index < 0) return null;
 
-  const kinds = candidateKinds(scenes);
-  // Never two in a row. Back-to-back overlays read as a style rather than emphasis,
-  // and this is the whole difference between a call-out and decoration.
+  const kinds = candidateKinds(scenes, String(project?.topic || ''));
+  // Never two in a row — now across the whole treatment set, not just the original two
+  // kinds. Back-to-back overlays read as a style rather than emphasis, and that is the
+  // difference between a call-out and decoration. The payoff is exempt: it is the last
+  // beat and there is nothing after it to crowd.
+  //
+  // When two do collide the heavier one survives, rather than whichever happened to be
+  // earlier. The first version dropped the later beat unconditionally, which meant a
+  // real process diagram was silently deleted because the beat before it had picked up
+  // kinetic text by position — the least informative treatment starving the most
+  // informative one.
   for (let i = 1; i < kinds.length; i++) {
-    if (kinds[i] && kinds[i - 1] && kinds[i] !== 'payoff') kinds[i] = null;
+    const here = kinds[i];
+    const prev = kinds[i - 1];
+    if (!here || !prev || here === 'payoff') continue;
+    if (WEIGHT[here] > WEIGHT[prev]) kinds[i - 1] = null;
+    else kinds[i] = null;
   }
   const kind = kinds[index];
   if (!kind) return null;
@@ -99,20 +169,59 @@ export function planOverlay(scene: any, project: any, clipDuration: number): Ove
   const text = String(scene.narration_text || '');
   const words = wordTimings(text, scene);
   if (!words.length) return null;
+  const accent = universeAccent(project);
 
   const pick = (from: number, count: number): OverlayWord[] =>
     words.slice(from, from + count).map((w) => ({ text: w.word, start: w.start, end: w.end }));
+  /** A label the script named, timed to the word that named it. */
+  const at = (label: string, wordIndex: number, hold: number): OverlayWord => {
+    const w = words[Math.min(wordIndex, words.length - 1)];
+    return { text: label, start: w.start, end: Math.min(clipDuration, w.start + hold) };
+  };
+
+  if (kind === 'diagram') {
+    const steps = detectSteps(text)!.map((s) => at(s.label, s.wordIndex, 2.4));
+    return {
+      kind, accent, words: [], steps,
+      start: steps[0].start,
+      // Holds past the last node so the finished diagram is readable as a whole, which
+      // is the only moment it says anything a caption could not.
+      end: Math.min(clipDuration, steps[steps.length - 1].start + 2.6),
+    };
+  }
+
+  if (kind === 'comparison') {
+    const c = detectComparison(text)!;
+    const sides = [at(c.before, c.beforeIndex, 2.0), at(c.after, c.afterIndex, 2.0)];
+    return {
+      kind, accent, words: [], sides,
+      start: sides[0].start,
+      end: Math.min(clipDuration, sides[1].start + 2.4),
+    };
+  }
+
+  if (kind === 'namecard') {
+    const n = detectName(text, String(project?.topic || ''))!;
+    const start = words[Math.min(n.wordIndex, words.length - 1)].start;
+    return {
+      kind, accent, words: [], name: n.name,
+      descriptor: String(project?.universe?.title || '').trim() || undefined,
+      start,
+      end: Math.min(clipDuration, start + 2.8),
+    };
+  }
 
   if (kind === 'stat') {
     const figure = extractFigure(text);
     // Anchor on the word that actually carries the number, so the figure lands when it
     // is spoken rather than at some fixed offset into the scene.
-    const at = words.findIndex((w) => w.word.includes(figure.split(/\s+/)[0]));
-    const from = at >= 0 ? at : 0;
+    const idx = words.findIndex((w) => w.word.includes(figure.split(/\s+/)[0]));
+    const from = idx >= 0 ? idx : 0;
     const label = pick(from + 1, MAX_STAT_LABEL_WORDS);
     const start = words[from].start;
     return {
-      kind, figure, words: label,
+      kind, figure, accent, words: label,
+      countUp: countUpParts(text) || undefined,
       start,
       // Long enough to read a number and its label; never past the clip.
       end: Math.min(clipDuration, Math.max(start + 1.8, label.length ? label[label.length - 1].end : start + 1.8)),
@@ -149,12 +258,64 @@ export function planOverlay(scene: any, project: any, clipDuration: number): Ove
  */
 export function overlayKey(spec: OverlaySpec | null): string {
   if (!spec) return '';
+  // Every field that reaches the screen. The first version hashed only `words`, which
+  // is empty for the structured treatments — so a diagram whose node labels had been
+  // rewritten produced the same key and was served from cache with the old labels.
+  const parts = (list?: OverlayWord[]) =>
+    (list ?? []).map((w) => `${w.text}@${w.start.toFixed(2)}`).join(' ');
   const shape = [
-    spec.kind, spec.figure || '',
-    spec.words.map((w) => w.text).join(' '),
+    spec.kind, spec.figure || '', spec.name || '', spec.descriptor || '',
+    spec.countUp ? `${spec.countUp.to}${spec.countUp.suffix}` : '',
+    parts(spec.words), parts(spec.steps), parts(spec.sides),
+    (spec.accent || []).join(','),
     spec.start.toFixed(2), spec.end.toFixed(2),
   ].join('|');
   let h = 0;
   for (let i = 0; i < shape.length; i++) h = (Math.imul(31, h) + shape.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36);
+}
+
+/** Treatments heavy enough that the cut out of them wants to be felt. */
+const HEAVY: OverlayKind[] = ['diagram', 'comparison', 'stat', 'namecard'];
+
+/**
+ * The transition between two consecutive beats, or '' to leave the engine's own
+ * scene-type table alone.
+ *
+ * This is how the two new transitions are selected: not as a dropdown the operator has
+ * to think about per scene, but as a consequence of what the beats are doing. A
+ * comparison beat is entered through a shape wipe because a shape sweeping the frame
+ * is the visual grammar of "here is a different state"; a beat that just landed a
+ * diagram or a figure exits on a whip-flash because a hard cut off a made point reads
+ * as punctuation. Everything else keeps the transition it has today.
+ *
+ * Both sides of one cut must agree or the concat seam shows, so this is computed from
+ * the pair, and the caller sets clip N's out-kind and clip N+1's in-kind from the same
+ * call. The engine asserts nothing about that; the symmetry is this function's job.
+ */
+export function transitionBetween(from: OverlaySpec | null, to: OverlaySpec | null): string {
+  if (to?.kind === 'comparison') return 'shape_wipe';
+  if (from && HEAVY.includes(from.kind)) return 'whip_flash';
+  return '';
+}
+
+/** BGR accent as the engine's --transition_color expects it. */
+export const transitionColor = (project: any): string => universeAccent(project).join(',');
+
+/**
+ * Everything about a scene's clip that is not a file: its overlay, and the transitions
+ * on either side. All of it belongs in the clip's name for the same reason the
+ * Cinematic Effect already is — a timestamp comparison cannot see any of it change.
+ */
+export function sceneVisualKey(scene: any, project: any, clipDuration: number): string {
+  const scenes: any[] = project?.scenes || [];
+  const i = scenes.findIndex((s) => s?.scene_id === scene?.scene_id);
+  if (i < 0) return '';
+  const spec = planOverlay(scene, project, clipDuration);
+  const at = (j: number) => (scenes[j] ? planOverlay(scenes[j], project, clipDuration) : null);
+  const tr = [transitionBetween(at(i - 1), spec), transitionBetween(spec, at(i + 1))]
+    .filter(Boolean).join('');
+  const key = overlayKey(spec);
+  if (!key && !tr) return '';
+  return `${key}${tr ? `t${tr.replace(/[^a-z]/g, '').slice(0, 6)}` : ''}`;
 }

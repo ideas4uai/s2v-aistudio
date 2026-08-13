@@ -226,7 +226,7 @@ describe('motion_overlay.py', () => {
     expect(src).toContain("parser.add_argument('--overlay'");
     // The job tuple is what reaches a worker process; an overlay missing from it would
     // render the first range with kinetic text and the rest without.
-    expect(src).toContain('args.fps, args.overlay)');
+    expect(src).toContain('args.fps, args.overlay,');
     expect(src).toContain('overlay_path=overlay_path');
   });
 });

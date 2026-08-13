@@ -246,8 +246,8 @@ Output ONLY valid JSON, no markdown fence:
  */
 // No trailing \b after `%`: it is a non-word character, so "40%." has no boundary
 // there and the match would silently never fire.
-const PERCENT_RE = /\b\d+(?:\.\d+)?\s*(?:%|percent\b)/gi;
-const MULTIPLIER_RE = /\b\d+(?:\.\d+)?\s*x\s+(?:faster|slower|more|less|better|cheaper)\b/gi;
+export const PERCENT_RE = /\b\d+(?:\.\d+)?\s*(?:%|percent\b)/gi;
+export const MULTIPLIER_RE = /\b\d+(?:\.\d+)?\s*x\s+(?:faster|slower|more|less|better|cheaper)\b/gi;
 
 /**
  * The figure shapes worth putting on screen, strongest first. Shares the percent and
@@ -265,11 +265,20 @@ export const FIGURE_PATTERNS = [
   /\b\d[\d,]*(?:\.\d+)?\b/g,
 ];
 
+/** A bare four-digit year. "in 2025" is a date, not a statistic worth a call-out. */
+const YEAR_ONLY = /^(?:19|20)\d{2}$/;
+
 /** The single most call-out-worthy figure in a piece of text, or '' if there is none. */
 export function extractFigure(text: string): string {
   for (const re of FIGURE_PATTERNS) {
-    const m = String(text || '').match(new RegExp(re.source, re.flags));
-    if (m?.length) return m[0].trim();
+    const all = String(text || '').match(new RegExp(re.source, re.flags)) || [];
+    for (const hit of all) {
+      const value = hit.trim();
+      // Measured on real scripts: "Staying focused in 2025 feels harder" was being
+      // read as a figure and given a counting stat call-out.
+      if (YEAR_ONLY.test(value)) continue;
+      return value;
+    }
   }
   return '';
 }
