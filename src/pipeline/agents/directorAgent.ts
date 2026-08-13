@@ -1,6 +1,6 @@
 import { Project } from '../../models/project.js';
 import { AIService } from '../../services/aiService.js';
-import { targetLengthSeconds } from '../../utils/targetLength.js';
+import { targetLengthSeconds, sceneCountRange } from '../../utils/targetLength.js';
 
 export interface DirectorPlan {
   visual_style: string;
@@ -14,19 +14,12 @@ export interface DirectorPlan {
 export class DirectorAgent {
   static async planVideo(project: Project): Promise<DirectorPlan> {
     console.log(`[DirectorAgent] Planning video for topic: ${project.topic}`);
-    const targetLength = project.settings?.targetLength || '60s';
-    const sceneCountGuide: Record<string, string> = {
-      '30s': '4-6 scenes',
-      '60s': '7-9 scenes',
-      '3m':  '14-18 scenes',
-      '5m':  '24-30 scenes',
-      '10m': '50-60 scenes',
-    };
-    // Unknown lengths derive ~10-12s per scene instead of collapsing to 60s
-    // (matches the table: 300s -> 25-30, 600s -> 50-60).
-    const secs = targetLengthSeconds(targetLength);
-    const sceneCountHint = sceneCountGuide[targetLength]
-      || `${Math.round(secs / 12)}-${Math.round(secs / 10)} scenes`;
+    // Any length, not five presets. The lookup table this replaces had nothing to
+    // say about a custom target, and sceneCountRange reproduces its shape.
+    const secs = targetLengthSeconds(project.settings?.targetLength);
+    const targetLength = `${secs}s`;
+    const [sceneLo, sceneHi] = sceneCountRange(secs);
+    const sceneCountHint = `${sceneLo}-${sceneHi} scenes`;
 
     const featuredCharacters = project.universe && project.featuredCharacterIds?.length
       ? project.universe.characters.filter((c: any) => project.featuredCharacterIds!.includes(c.id))

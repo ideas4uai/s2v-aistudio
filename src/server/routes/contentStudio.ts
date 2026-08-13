@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { StudioStore } from '../../content-studio/store.js';
+import { StudioStore, KNOWLEDGE_COLLECTION } from '../../content-studio/store.js';
 import { createProductionPackage, createStudioEpisode, validateProductionPackage, WORKFLOW_STAGES } from '../../content-studio/domain/productionPackage.js';
 import type { KnowledgeDocument, ProductionPackage, StudioEpisode, WorkflowStageName } from '../../content-studio/domain/types.js';
 import { contentStudioWorkflowCoordinator } from '../../content-studio/workflow/workflowCoordinator.js';
@@ -10,7 +10,7 @@ import '../../content-studio/agents/index.js';
 
 const EPISODES_COLLECTION = 'contentStudioEpisodes';
 const PACKAGES_COLLECTION = 'contentStudioProductionPackages';
-const KNOWLEDGE_COLLECTION = 'contentStudioKnowledge';
+
 const LOGS_COLLECTION = 'contentStudioAgentLogs';
 const KNOWLEDGE_VERSIONS_COLLECTION = 'contentStudioKnowledgeVersions';
 

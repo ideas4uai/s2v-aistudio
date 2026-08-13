@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { StudioStore } from '../store.js';
+import { StudioStore, KNOWLEDGE_COLLECTION } from '../store.js';
 import type { ProductionPackage, StudioEpisode, WorkflowStageName } from '../domain/types.js';
 import { createWorkflowState, validateProductionPackage } from '../domain/productionPackage.js';
 import { normalizeUniverse } from '../knowledgeContext.js';
@@ -11,7 +11,7 @@ const RUNS_COLLECTION = 'contentStudioWorkflowRuns';
 const LOGS_COLLECTION = 'contentStudioAgentLogs';
 const PACKAGES_COLLECTION = 'contentStudioProductionPackages';
 const EPISODES_COLLECTION = 'contentStudioEpisodes';
-const KNOWLEDGE_COLLECTION = 'contentStudioKnowledge';
+
 
 export class WorkflowCoordinator {
   constructor(private readonly registry: AgentRegistry = contentStudioAgentRegistry) {}

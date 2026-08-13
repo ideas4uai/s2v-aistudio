@@ -75,3 +75,23 @@ export const StudioStore = {
     fs.rmSync(docPath(collection, id), { force: true });
   },
 };
+
+export const KNOWLEDGE_COLLECTION = 'contentStudioKnowledge';
+
+/**
+ * The owner's knowledge documents, for agents outside the studio workflow.
+ *
+ * The render pipeline reaches the same bibles the studio agents read, so a
+ * project rendered straight from the dashboard writes in the same voice as one
+ * handed off from an episode. Never throws: no knowledge base is a supported
+ * state, not an error, and a script must still be written without one.
+ */
+export async function loadKnowledgeDocuments(userId?: string): Promise<any[]> {
+  if (!userId) return [];
+  try {
+    return await StudioStore.list(KNOWLEDGE_COLLECTION, userId);
+  } catch (error) {
+    console.warn('[ContentStudio] Knowledge base unavailable — writing without it:', error);
+    return [];
+  }
+}

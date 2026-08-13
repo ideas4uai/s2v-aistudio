@@ -1,9 +1,57 @@
+/**
+ * Bounds for a target length. Both come off what the rest of the pipeline was
+ * already built to handle, not from taste:
+ *
+ * - 5s floor: at ~2.5 words/sec that is twelve words, which is one hook and
+ *   nothing else. Under it there is no script left to pace.
+ * - 600s ceiling: DirectorAgent's scene-count guidance tops out at 10m, and one
+ *   image plus one TTS call per scene means past that a single render outlives
+ *   the sitting that started it.
+ */
+export const MIN_TARGET_SECONDS = 5;
+export const MAX_TARGET_SECONDS = 600;
+
+/**
+ * Spoken words per second. 2.5 was already the figure three call sites had each
+ * hardcoded; it lives here now so the script prompt, the padding plan and the UI
+ * word-count hint cannot drift apart.
+ *
+ * Not to be confused with Kokoro's ~1.18x realtime, which is how fast the
+ * synthesiser produces audio, not how fast the audio speaks.
+ */
+export const WORDS_PER_SECOND = 2.5;
+
+/** Words a `seconds`-long narration needs at the rate above. */
+export const targetWordCount = (seconds: number): number => Math.round(seconds * WORDS_PER_SECOND);
+
+/**
+ * How many scenes a `seconds`-long video should be cut into.
+ *
+ * Replaces the preset lookup table DirectorAgent carried, which had nothing to
+ * say about a length that was not one of its five keys. The two rates are the
+ * shape that table already had: shorts ran ~7s per scene, long-form ~11s.
+ */
+export const sceneCountRange = (seconds: number): [number, number] => {
+  const perScene = seconds <= 60 ? 7 : 11;
+  return [
+    Math.max(2, Math.round(seconds / (perScene * 1.2))),
+    Math.max(3, Math.round(seconds / (perScene * 0.85))),
+  ];
+};
+
 // Parses a targetLength setting into seconds. Accepts '30s', '60s', '3m',
 // '5m', '10m', bare numbers ('300' or 300 = seconds) — scales linearly for
 // any length instead of silently falling back to 60s for unknown values.
+//
+// The clamp is the single gate every consumer passes through (orchestrator,
+// DirectorAgent, the script prompt), so an out-of-range value saved by an older
+// client or a hand-edited project file renders something sane rather than
+// planning a 60-scene episode nobody asked for.
 export const targetLengthSeconds = (t: unknown): number => {
   const m = /^(\d+(?:\.\d+)?)\s*(s|m)?$/.exec(String(t ?? '').trim());
-  return m ? parseFloat(m[1]) * (m[2] === 'm' ? 60 : 1) : 60;
+  if (!m) return 60;
+  const secs = parseFloat(m[1]) * (m[2] === 'm' ? 60 : 1);
+  return Math.min(Math.max(secs, MIN_TARGET_SECONDS), MAX_TARGET_SECONDS);
 };
 
 // Landing within ±15% of the requested length counts as on target — no point

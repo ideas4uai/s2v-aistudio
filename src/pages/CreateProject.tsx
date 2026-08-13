@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, Sparkles, Layout, BookOpen } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
+import { TargetLengthField } from '../components/TargetLengthField';
+import { targetLengthSeconds, targetWordCount } from '../utils/targetLength';
 import { VoicePicker } from '../components/VoicePicker';
 
 export function CreateProject() {
@@ -319,11 +321,8 @@ export function CreateProject() {
               <div>
                 <label className="block text-sm font-bold text-neutral-700 mb-2">Script (Optional)</label>
                 <p className="text-xs text-neutral-500 mb-2">
-                  Tip: For a {formData.settings.targetLength} video, aim for approximately {
-                    (formData.settings.targetLength === '30s' ? 75 :
-                     formData.settings.targetLength === '60s' ? 150 :
-                     formData.settings.targetLength === '3m' ? 450 : 750)
-                  } words.
+                  Tip: For a {targetLengthSeconds(formData.settings.targetLength)}s video, aim for
+                  approximately {targetWordCount(targetLengthSeconds(formData.settings.targetLength))} words.
                 </p>
                 <textarea
                   className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all h-48 font-mono text-sm"
@@ -487,20 +486,13 @@ export function CreateProject() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-neutral-700 mb-2">Target Length</label>
-                <select
-                  className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
+              <div className="md:col-span-2">
+                <TargetLengthField
                   value={formData.settings.targetLength}
-                  onChange={(e) =>
-                    setFormData({ ...formData, settings: { ...formData.settings, targetLength: e.target.value } })
+                  onChange={(targetLength) =>
+                    setFormData({ ...formData, settings: { ...formData.settings, targetLength } })
                   }
-                >
-                  <option value="30s">~30 seconds</option>
-                  <option value="60s">~60 seconds</option>
-                  <option value="3m">~3 minutes</option>
-                  <option value="5m">~5 minutes</option>
-                </select>
+                />
               </div>
 
               {projectType !== 'story_episode' && (

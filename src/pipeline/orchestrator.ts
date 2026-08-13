@@ -31,6 +31,7 @@ import { FirestoreService } from '../server/db/firestore.js';
 import { storageMode } from '../services/sceneImageStore.js';
 import { DirectorAgent } from './agents/directorAgent.js';
 import { ScriptwriterAgent } from './agents/scriptwriterAgent.js';
+import { loadKnowledgeDocuments } from '../content-studio/store.js';
 import { StoryboardAgent } from './agents/storyboardAgent.js';
 import { WorldAgent } from './agents/worldAgent.js';
 import { abortManager } from './abortManager.js';
@@ -781,7 +782,13 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
       console.log(`[Orchestrator] DirectorAgent.planVideo complete`);
       console.log(`[Orchestrator] Phase: scripting — calling ScriptwriterAgent.writeScript`);
       await updateProgress(project, 'Refining narrative structure...', 15, signal);
-      const { rawScript, scenes: drafts } = await withRetry(() => ScriptwriterAgent.writeScript(project!, directorPlan), { retries: 2 });
+      // The renderer reads the same bibles the studio agents do, so a project
+      // started from the dashboard writes in the same voice as a handed-off one.
+      const knowledgeDocs = await loadKnowledgeDocuments(project!.userId);
+      const { rawScript, scenes: drafts } = await withRetry(
+        () => ScriptwriterAgent.writeScript(project!, directorPlan, project!.storyArc, knowledgeDocs),
+        { retries: 2 },
+      );
       console.log(`[Orchestrator] ScriptwriterAgent.writeScript complete, ${drafts.length} draft scenes`);
       project.script = rawScript;
       

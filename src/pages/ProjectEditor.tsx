@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 import { projectVideoFileName } from '../utils/filename';
+import { TargetLengthField } from '../components/TargetLengthField';
 
 /** Stage names the user sees, keyed by the server's stage ids. */
 const STAGE_LABELS: Record<string, string> = {
@@ -1140,6 +1141,13 @@ export function ProjectEditor() {
                       <option value="Telugu">Telugu (తెలుగు)</option>
                       <option value="Hindi">Hindi (हिन्दी)</option>
                     </select>
+                  </div>
+
+                  <div className="pt-2">
+                    <TargetLengthField
+                      value={settings.targetLength}
+                      onChange={(targetLength) => saveSettings({ ...settings, targetLength })}
+                    />
                   </div>
 
                   <div className="pt-2">

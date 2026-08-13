@@ -16,6 +16,7 @@ import path from 'path';
 import { toUrl } from '../utils/path.js';
 import { storeSceneImage } from '../services/sceneImageStore.js';
 import { pipelineFieldsFromSettings } from '../server/routes/projects.js';
+import { loadKnowledgeDocuments } from '../content-studio/store.js';
 
 export async function previewProject(req: Request, res: Response) {
   const { id } = req.params;
@@ -79,7 +80,9 @@ export async function generateScript(req: Request, res: Response) {
     }
 
     // Story/universe projects — use existing ScriptwriterAgent directly
-    const scriptResult = await ScriptwriterAgent.writeScript(project, plan);
+    const scriptResult = await ScriptwriterAgent.writeScript(
+      project, plan, project.storyArc, await loadKnowledgeDocuments(project.userId),
+    );
     const entities = await WorldAgent.analyzeWorld(project, scriptResult.rawScript);
 
     let seoMetadata = null;
@@ -141,8 +144,10 @@ export async function selectHook(req: Request, res: Response) {
     // StoryAgent: build 5-beat arc from chosen hook
     const storyArc = await StoryAgent.buildArc(project.topic, chosen.text, directorPlan);
 
-    // ScriptAgent: write conversational script from arc
-    const scriptResult = await ScriptwriterAgent.writeScript(project, directorPlan, storyArc);
+    // ScriptAgent: turn the approved beats into the spoken script
+    const scriptResult = await ScriptwriterAgent.writeScript(
+      project, directorPlan, storyArc, await loadKnowledgeDocuments(project.userId),
+    );
 
     // World entities
     const entities = await WorldAgent.analyzeWorld(project, scriptResult.rawScript);

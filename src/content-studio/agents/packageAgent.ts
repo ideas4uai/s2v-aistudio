@@ -57,7 +57,9 @@ export const packageAgent: StudioAgent = {
     if (!universe && pkg.universe) console.warn(`[PackageAgent] No universe record matched "${pkg.universe}" — scenes will be generic.`);
     const project = packageToProjectPayload(pkg, pkg.ownerId, universe);
     const plan = await DirectorAgent.planVideo(project);
-    const { scenes: drafts } = await ScriptwriterAgent.writeScript(project, plan, project.storyArc);
+    const { scenes: drafts } = await ScriptwriterAgent.writeScript(
+      project, plan, project.storyArc, context.knowledge as unknown as KnowledgeDocument[],
+    );
     if (!drafts?.length) throw new Error('Scriptwriter produced no scenes.');
     const scenes = await StoryboardAgent.expandVisuals(project, plan, drafts);
 
