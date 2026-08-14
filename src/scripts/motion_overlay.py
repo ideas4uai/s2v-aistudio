@@ -629,14 +629,15 @@ class OverlayLayer:
     # it compete with the content. A thin dark stroke keeps it readable over a bright
     # background without making it louder.
     #
-    # 0.95% of frame height (18px at 1080x1920) at 0.32 opacity is the floor found by
-    # rendering 1.35/0.50, 1.05/0.36, 0.95/0.32 and 0.85/0.28 onto a real frame and onto
-    # a deliberately bright, busy one: at 0.85/0.28 the first row starts dissolving into
-    # a light background, so 0.95/0.32 is the quietest setting still legible on the worst
-    # background this pipeline produces. Both numbers had to drop — smaller type alone
-    # stays sharp and still catches the eye, lower opacity alone stays the same size.
-    CREDIT_SIZE = 0.0095
-    CREDIT_ALPHA = 0.32
+    # 0.85% of frame height (16px at 1080x1920) at 0.28 opacity, chosen from a render of
+    # 1.35/0.50, 1.05/0.36, 0.95/0.32 and 0.85/0.28 on a real frame and on a deliberately
+    # bright, busy one. This is the quietest of the four and the cleanest to watch; the
+    # known cost, decided deliberately, is that on a light busy background the first row
+    # softens and takes a closer look to read. Both numbers are low on purpose — smaller
+    # type alone stays sharp and still catches the eye, lower opacity alone stays the
+    # same size.
+    CREDIT_SIZE = 0.0085
+    CREDIT_ALPHA = 0.28
 
     def _build_credit(self, font_path: str):
         """The licence's required credit, bottom-right, or nothing when none is required.

@@ -410,9 +410,10 @@ describe('attribution overlay', () => {
 
   it('stays at the quiet weight chosen against a real frame', () => {
     // Pinned because these two numbers were picked by looking at renders, not derived:
-    // 0.85%/0.28 was visibly dissolving on a light background, so this is the floor.
-    // The measurement is what actually matters — the credit must lay down markedly less
-    // ink than the card it belongs to, at any resolution.
+    // the quietest of four candidates, chosen deliberately over the slightly louder
+    // 0.95/0.32 that held up better on a light busy background. The measurement is what
+    // actually matters — the credit must lay down markedly less ink than the card it
+    // belongs to, at any resolution.
     const out = py([HEAD,
       'print(mo.OverlayLayer.CREDIT_SIZE, mo.OverlayLayer.CREDIT_ALPHA)',
       `lay = mo.OverlayLayer(${spec('"logoPath":"temp/_t_logo.png","credit":"\\"P\\" · Microsoft · Apache License 2.0 · via Wikimedia Commons"')}, 1080, 1920)`,
@@ -425,7 +426,7 @@ describe('attribution overlay', () => {
       // which is what fails if the opacity is put back up.
       '      c.max() * 2 < card.max(), c.mean() < card.mean())',
     ].join('\n')).trim().split('\n').map((l) => l.trim());
-    expect(out[out.length - 2]).toBe('0.0095 0.32');
+    expect(out[out.length - 2]).toBe('0.0085 0.28');
     expect(out[out.length - 1]).toBe('True True True');
   });
 
