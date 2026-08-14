@@ -311,6 +311,41 @@ describe('the name card carries the sourced asset', () => {
   });
 });
 
+describe('AI-generated imagery is never attributed', () => {
+  // There is no third-party licence behind a generated background, so there is nothing
+  // to credit. Asserted rather than assumed: `credit` is set in exactly one place, and
+  // only from a sourced file, so an unsourced project must reach the frame untouched.
+  it('leaves every scene of an unsourced project without a logo or a credit', () => {
+    // Both shapes a real project takes: never looked up, and looked up and found nothing
+    // (the REST episode — a capitalised concept with no brand asset).
+    for (const ei of [undefined, { image: null, rejected: [], reason: 'no Commons file', entity: 'REST' }]) {
+      const p = proj({ entity_image: ei });
+      for (let i = 0; i < p.scenes.length; i++) {
+        const spec = planOverlay(p.scenes[i], p, 7);
+        expect(spec?.logoPath).toBeUndefined();
+        expect(spec?.credit).toBeUndefined();
+      }
+    }
+  });
+
+  it('leaves the attribution corner of the frame untouched', () => {
+    const out = py([HEAD,
+      // Exactly what planOverlay emits for an unsourced project: no logoPath, no credit.
+      `lay = mo.OverlayLayer(json.loads(r'''{"kind":"namecard","start":0.2,"end":3.4,`
+      + `"words":[],"name":"Playwright","descriptor":"AIQA Engineer"}'''), 540, 960)`,
+      'assert lay.ok and len(lay.credit_lines) == 0',
+      'bg = np.full((960, 540, 3), 90, np.uint8)',
+      // Across the whole life of the overlay, the credit corner never changes by a bit.
+      'frames = [lay.draw(bg.copy(), i / 10.0) for i in range(0, 40)]',
+      'corner = lambda f: f[int(960 * 0.92):, int(540 * 0.4):]',
+      'print(int(all(np.array_equal(corner(f), corner(bg)) for f in frames)),',
+      // and the card itself is still drawn, so this is not a dead overlay.
+      '      int(any(not np.array_equal(f, bg) for f in frames)))',
+    ].join('\n'));
+    expect(out.trim().endsWith('1 1')).toBe(true);
+  });
+});
+
 describe('staleness', () => {
   it('gives a scene with a sourced image a different clip key', () => {
     const bare = proj();
@@ -371,6 +406,27 @@ describe('attribution overlay', () => {
       '      int(cv2.absdiff(f, bg)[int(960*0.92):, :].max() < cv2.absdiff(f, bg)[:int(960*0.9), :].max()))',
     ].join('\n'));
     expect(out.trim().endsWith('1 1 1 1')).toBe(true);
+  });
+
+  it('stays at the quiet weight chosen against a real frame', () => {
+    // Pinned because these two numbers were picked by looking at renders, not derived:
+    // 0.85%/0.28 was visibly dissolving on a light background, so this is the floor.
+    // The measurement is what actually matters — the credit must lay down markedly less
+    // ink than the card it belongs to, at any resolution.
+    const out = py([HEAD,
+      'print(mo.OverlayLayer.CREDIT_SIZE, mo.OverlayLayer.CREDIT_ALPHA)',
+      `lay = mo.OverlayLayer(${spec('"logoPath":"temp/_t_logo.png","credit":"\\"P\\" · Microsoft · Apache License 2.0 · via Wikimedia Commons"')}, 1080, 1920)`,
+      'bg = np.full((1920, 1080, 3), 90, np.uint8)',
+      'd = cv2.absdiff(lay.draw(bg.copy(), 1.6), bg)',
+      'c = d[int(1920*0.93):, int(1080*0.35):]; card = d[:int(1920*0.9), :]',
+      // Legible: two stacked rows of real type, not a smear.
+      'print(lay.credit_lines[0][0].shape[0] > 20,',
+      // Quiet: its loudest pixel moves the frame less than half as far as the card's,
+      // which is what fails if the opacity is put back up.
+      '      c.max() * 2 < card.max(), c.mean() < card.mean())',
+    ].join('\n')).trim().split('\n').map((l) => l.trim());
+    expect(out[out.length - 2]).toBe('0.0095 0.32');
+    expect(out[out.length - 1]).toBe('True True True');
   });
 
   it('is a pure function of t, like every other overlay', () => {

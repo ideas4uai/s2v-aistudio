@@ -624,14 +624,19 @@ class OverlayLayer:
         self.glow = None                             # a card carries its own background
         self._build_credit(font_path)
 
-    # Attribution sizing. Deliberately the smallest legible thing on screen: 1.35% of
-    # frame height is about half the burned-in caption size, and 0.5 opacity puts it
-    # clearly below the card and the captions in the visual hierarchy. It is a credit,
-    # not a caption — the licence asks that it be present and findable, not that it
-    # compete with the content. A thin dark stroke keeps it readable over a bright
+    # Attribution sizing. Deliberately the smallest legible thing on screen. It is a
+    # credit, not a caption — the licence asks that it be present and findable, not that
+    # it compete with the content. A thin dark stroke keeps it readable over a bright
     # background without making it louder.
-    CREDIT_SIZE = 0.0135
-    CREDIT_ALPHA = 0.5
+    #
+    # 0.95% of frame height (18px at 1080x1920) at 0.32 opacity is the floor found by
+    # rendering 1.35/0.50, 1.05/0.36, 0.95/0.32 and 0.85/0.28 onto a real frame and onto
+    # a deliberately bright, busy one: at 0.85/0.28 the first row starts dissolving into
+    # a light background, so 0.95/0.32 is the quietest setting still legible on the worst
+    # background this pipeline produces. Both numbers had to drop — smaller type alone
+    # stays sharp and still catches the eye, lower opacity alone stays the same size.
+    CREDIT_SIZE = 0.0095
+    CREDIT_ALPHA = 0.32
 
     def _build_credit(self, font_path: str):
         """The licence's required credit, bottom-right, or nothing when none is required.
@@ -644,7 +649,7 @@ class OverlayLayer:
         text = str(self.credit or '').strip()
         if not text:
             return                                   # public domain / CC0: no clutter
-        size = max(10, int(self.H * self.CREDIT_SIZE))
+        size = max(12, int(self.H * self.CREDIT_SIZE))   # floor: draft renders are short
         stroke = max(1, size // 9)
         parts = [p.strip() for p in text.split('·') if p.strip()]
         half = (len(parts) + 1) // 2
