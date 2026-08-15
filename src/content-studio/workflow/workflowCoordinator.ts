@@ -216,6 +216,14 @@ export class WorkflowCoordinator {
 
   async approve(userId: string, runId: string, stage: WorkflowStageName): Promise<WorkflowRun> {
     const run = await this.requireRun(userId, runId);
+    // Approval is an answer to a question the stage asked. Without this, approving a
+    // stage that never paused marked it complete anyway — so a stage that had failed,
+    // or one that had not run at all, could be signed off with output nobody wrote,
+    // and the stage after it would then read that empty output as its input.
+    const current = run.stages.find((state) => state.stage === stage);
+    if (current?.status !== 'awaiting_approval') {
+      throw new Error(`The ${stage} stage is ${current?.status ?? 'not part of this run'}, not awaiting approval — there is nothing to approve.`);
+    }
     const stages = updateStage(run.stages, stage, { status: 'completed', completedAt: new Date().toISOString() });
     const updated = await this.saveRun({ ...run, stages, status: deriveWorkflowStatus(stages), updatedAt: new Date().toISOString() });
     await this.log(updated, stage, 'completed', 'Stage approved by user.');
