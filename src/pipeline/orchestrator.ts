@@ -1414,7 +1414,15 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
       (visual as any).asset_path = existingRendered;
       (visual as any).rendered_path = undefined;
     }
-    if (!isLocalMp4 && (visual as any).asset_path) {
+    // A multi-frame visual keeps its images on the frames, never on the visual — the
+    // generation branch above sets frame.asset_path and nothing else. Gating the clip
+    // render on visual.asset_path alone therefore skipped every frame-based scene
+    // silently: renderVisualClip is the function that knows how to concat frames, and
+    // it was never called, so the scene reached assembly with no clip and failed as
+    // "no image was generated" while its images sat on disk.
+    const frames = (visual as any).frames as Array<{ asset_path?: string }> | undefined;
+    const hasFrameAssets = Array.isArray(frames) && frames.length > 1 && frames.some((f) => f?.asset_path);
+    if (!isLocalMp4 && ((visual as any).asset_path || hasFrameAssets)) {
       if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
       // Ken Burns reads duration_target, the engines read the passed duration —
       // both must cover the hold or assembleSceneSegment would loop the clip.
@@ -1439,8 +1447,9 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
        scene.status = 'failed';
        // Without a reason here, project.error_log falls back to the generic "Asset
        // generation phase failed for some scenes" and the UI shows nothing actionable.
-       scene.error_log = visual?.asset_path
-         ? `Scene visual was never rendered to video (image exists at ${path.basename(String(visual.asset_path))}). The clip render step did not produce a file.`
+       const anyImage = visual?.asset_path || (visual?.frames || []).find((f: any) => f?.asset_path)?.asset_path;
+       scene.error_log = anyImage
+         ? `Scene visual was never rendered to video (image exists at ${path.basename(String(anyImage))}). The clip render step did not produce a file.`
          : `No image was generated for this scene, so there was nothing to render. Check the image provider logs — the Visual Style and prompt are set, but no asset was produced.`;
        return;
      }

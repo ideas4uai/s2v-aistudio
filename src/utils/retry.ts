@@ -1,5 +1,3 @@
-import { geminiRateLimiter } from './rateLimiter.js';
-
 export interface RetryOptions {
   retries?: number;
   delayMs?: number;
@@ -8,8 +6,14 @@ export interface RetryOptions {
 }
 
 /**
- * Executes an async function with exponential backoff retry logic and rate limiting.
- * 
+ * Executes an async function with exponential backoff retry logic.
+ *
+ * Rate limiting used to be claimed here too, via a `geminiRateLimiter.acquire()`
+ * that was a no-op stub — so every caller looked rate limited and none was. The
+ * limiter is real now and lives at the one call site it is named for, because
+ * this wrapper also guards ffmpeg and TTS work that has nothing to do with the
+ * Gemini image pool and must not queue behind it.
+ *
  * @param fn The async function to execute.
  * @param options Configuration for retries, initial delay, and backoff multiplier.
  * @returns The result of the async function if successful.
@@ -27,8 +31,6 @@ export async function withRetry<T>(
 
   while (true) {
     try {
-      // Acquire rate limiter slot before each attempt
-      await geminiRateLimiter.acquire();
       return await fn();
     } catch (error: any) {
       attempt++;
@@ -55,8 +57,13 @@ export async function withRetry<T>(
         throw error;
       }
 
-      // If it's a rate limit, try to parse the retryDelay from the error message
-      let currentDelay = isRateLimit ? Math.max(delayMs, 10000) : delayMs;
+      // If it's a rate limit, try to parse the retryDelay from the error message.
+      //
+      // The floor grows with the attempt. It used to be a flat Math.max(delayMs, 10000),
+      // which clamped the first three waits to 10s each — so "exponential backoff" was
+      // 10s, 10s, 10s against a capacity pool that needed longer, and the caller gave up
+      // while still inside the burst.
+      let currentDelay = isRateLimit ? Math.max(delayMs, 10000 * attempt) : delayMs;
       
       if (isRateLimit) {
         if (errorMessage.includes('limit: 0')) {

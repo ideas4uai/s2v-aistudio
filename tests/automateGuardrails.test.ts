@@ -191,6 +191,18 @@ describe('storyboard → voice: image-prompt relevance', () => {
     expect(checkImagePromptRelevance(cast, TOPIC)).toHaveLength(4);
   });
 
+  it('exempts a wordless beat, which has no narration to illustrate', () => {
+    // Both silent scenes of a real six-scene storyboard were flagged for this: the
+    // reaction beats carry no dialogue, so only the episode title was left to match
+    // against, and a picture of a character matches almost no title.
+    const silent = scenes(4, { characters: ['NARRATOR'], dialogue: [], imagePrompt: { positive: 'Wide over-shoulder shot of Arjun, messy hair, black hoodie' } });
+    expect(checkImagePromptRelevance(silent, TOPIC)).toEqual([]);
+
+    // A silent scene with no prompt at all is still a problem — nothing to render.
+    const blank = scenes(4, { dialogue: [], imagePrompt: undefined });
+    expect(checkImagePromptRelevance(blank, TOPIC)).toHaveLength(4);
+  });
+
   it('does not fire on the real Playwright storyboard, which named its subject', () => {
     // Honest calibration against the actual prompts from that episode: they DID say
     // tests, dashboards and Playwright — they rendered stock illustration anyway.

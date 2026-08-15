@@ -184,7 +184,13 @@ export function checkImagePromptRelevance(scenes: ProductionScene[], topic: stri
       reasons.push(`scene ${scene.order} has no image prompt`);
       continue;
     }
-    const narration = scene.dialogue.map((line) => line.text).join(' ');
+    const narration = scene.dialogue.map((line) => line.text).join(' ').trim();
+    // A wordless beat says nothing, so there is nothing for its prompt to be about.
+    // Judged against the episode title alone this fired on both silent scenes of a
+    // real six-scene storyboard — the reaction beats, which are supposed to be pure
+    // picture. The check's question is "does this illustrate what the scene says";
+    // a scene that says nothing does not get asked.
+    if (!narration) continue;
     const anchor = new Set([...contentWords(narration), ...topicWords]);
     // Names are matched whole rather than as content words: plenty of them are three
     // letters, which is below the threshold that keeps filler out of the sets above.

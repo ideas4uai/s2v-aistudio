@@ -44,7 +44,13 @@ afterEach(() => {
 });
 
 describe('agent registration', () => {
-  it('registers an agent for every workflow stage', async () => {
+  // 30s, not the default 5s. This one line pulls in the whole render pipeline —
+  // agents/index imports the handoff agent, which imports the orchestrator — and
+  // transforming that graph cold, while the rest of the suite runs in parallel,
+  // has always been able to outlast 5s on a laptop. The assertion is about the
+  // registry, never about how fast the import is, so the timeout was only ever
+  // measuring the machine.
+  it('registers an agent for every workflow stage', { timeout: 30_000 }, async () => {
     // The module registers on import; the original failure mode was an empty
     // registry, which made every run fail on its first stage.
     await import('../src/content-studio/agents/index.js');
