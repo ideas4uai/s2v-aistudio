@@ -44,7 +44,13 @@ afterEach(() => {
 });
 
 describe('agent registration', () => {
-  it('registers an agent for every workflow stage', async () => {
+  // 30s, not the default 5s. This one line pulls in the whole render pipeline —
+  // agents/index imports the handoff agent, which imports the orchestrator — and
+  // transforming that graph cold, while the rest of the suite runs in parallel,
+  // has always been able to outlast 5s on a laptop. The assertion is about the
+  // registry, never about how fast the import is, so the timeout was only ever
+  // measuring the machine.
+  it('registers an agent for every workflow stage', { timeout: 30_000 }, async () => {
     // The module registers on import; the original failure mode was an empty
     // registry, which made every run fail on its first stage.
     await import('../src/content-studio/agents/index.js');
@@ -122,6 +128,35 @@ describe('WorkflowCoordinator', () => {
 
     const approved = await coordinator.approve(USER, run.id, 'idea');
     expect(approved.stages.find((s) => s.stage === 'idea')?.status).toBe('completed');
+  });
+
+  it('refuses to approve a stage that never asked to be approved', async () => {
+    const registry = new AgentRegistry();
+    registry.register(fakeAgent());
+    const coordinator = new WorkflowCoordinator(registry);
+    const run = await coordinator.start(USER, await seedEpisode());
+
+    // Pending: the agent has not run, so there is no output to sign off. Approving
+    // it anyway used to mark it complete and let the next stage read the emptiness
+    // as its input — which is exactly how a halted run was walked past its halt.
+    await expect(coordinator.approve(USER, run.id, 'story')).rejects.toThrow(/is pending, not awaiting approval/);
+
+    // Completed: already signed off, nothing left to answer.
+    await coordinator.runNext(USER, run.id);
+    await expect(coordinator.approve(USER, run.id, 'idea')).rejects.toThrow(/is completed, not awaiting approval/);
+    expect((await coordinator.get(USER, run.id))!.stages.find((s) => s.stage === 'story')?.status).toBe('pending');
+  });
+
+  it('refuses to approve a failed stage instead of signing off the failure', async () => {
+    const registry = new AgentRegistry();
+    registry.register(fakeAgent({ execute: async () => { throw new Error('boom'); } }));
+    const coordinator = new WorkflowCoordinator(registry);
+    const run = await coordinator.start(USER, await seedEpisode());
+    await coordinator.runNext(USER, run.id);
+
+    await expect(coordinator.approve(USER, run.id, 'idea')).rejects.toThrow(/is failed, not awaiting approval/);
+    // Retry is the way out, and it still is.
+    expect((await coordinator.retry(USER, run.id, 'idea')).stages.find((s) => s.stage === 'idea')?.status).toBe('pending');
   });
 
   it('refuses to mutate a run belonging to another user', async () => {

@@ -4,11 +4,17 @@ import { Visual } from '../models/scene.js';
 import { getFromCache, saveToCache } from './cacheService.js';
 import { AIService } from './aiService.js';
 import { hashCode } from '../utils/hash.js';
+import { withRetry } from '../utils/retry.js';
+import { geminiRateLimiter } from '../utils/rateLimiter.js';
 
 async function generateImageFromGemini(prompt: string, outputPath: string, project?: any, referenceImageUrl?: string, loraModelUrl?: string, loraTriggerWord?: string): Promise<string> {
   const isStoryEpisode = !!project?.universe || project?.projectType === 'story_episode';
   const aspectRatio = project?.settings?.aspectRatio === '16:9' ? '16:9' : '9:16';
-  const base64Data = await AIService.generateImageBase64(prompt, { task: 'image', aspectRatio, isStoryEpisode, referenceImageUrl, loraModelUrl, loraTriggerWord });
+  // The one place image requests are counted. Scenes are processed three at a time
+  // and a scene can hold more than one visual, so without this the fan-out is
+  // whatever the batch happens to be — which is how a whole batch got refused at once.
+  const base64Data = await geminiRateLimiter.schedule(() =>
+    AIService.generateImageBase64(prompt, { task: 'image', aspectRatio, isStoryEpisode, referenceImageUrl, loraModelUrl, loraTriggerWord }));
 
   const buffer = Buffer.from(base64Data, 'base64');
   const dir = path.dirname(outputPath);
@@ -82,7 +88,15 @@ export async function generateAsset(visual: Visual, assetHash: string, mode: str
   if (isAiImage) {
     try {
       console.log(`[Asset Engine] Attempting Gemini image generation for: ${visual.visual_id}`);
-      await generateImageFromGemini(visual.prompt, tempFile, project, visual.referenceImageUrl, (visual as any).loraModelUrl, (visual as any).loraTriggerWord);
+      // Retry here, not further out. The orchestrator already wraps generateAsset in
+      // withRetry, but the catch below turns every failure into a stock photo and
+      // returns successfully — so the retry above never saw a 429 and never ran.
+      // "Resource exhausted" on this model is shared-capacity backpressure, not a
+      // refusal, and waiting is the documented answer to it.
+      await withRetry(
+        () => generateImageFromGemini(visual.prompt, tempFile, project, visual.referenceImageUrl, (visual as any).loraModelUrl, (visual as any).loraTriggerWord),
+        { retries: 3 },
+      );
       console.log(`[Asset Engine] Gemini image generation successful for: ${visual.visual_id}`);
     } catch (error) {
       console.warn(`[Asset Engine] Gemini image generation failed for ${visual.visual_id}, falling back to simulation: ${error instanceof Error ? error.message : String(error)}`);

@@ -576,7 +576,16 @@ async function guardedSaveProjectState(project: Project, signal?: AbortSignal) {
 // Global map to track running pipelines per project
 const runningPipelines = new Set<string>();
 
-export async function runPipeline(project_id: string, options?: { preview?: boolean, mode?: 'test' | 'production' }): Promise<void> {
+export async function runPipeline(project_id: string, options?: {
+  preview?: boolean,
+  mode?: 'test' | 'production',
+  /**
+   * Last chance to stop before the stitch. Returns halt reasons, empty to proceed.
+   * Optional and unset on every existing caller, so a manually started render is
+   * byte-for-byte the render it was before this existed.
+   */
+  beforeStitch?: (project: Project) => Promise<string[]>,
+}): Promise<void> {
   const characterAnchors = new Map<string, string>();
   console.log('[Orchestrator] runPipeline called for:', project_id);
   if (runningPipelines.has(project_id)) {
@@ -937,6 +946,13 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
              : "Asset generation phase failed for some scenes."
          );
       }
+    }
+
+    if (project.status === 'stitching_video' && options?.beforeStitch) {
+       // Everything above is per-scene work already paid for; everything below is the
+       // full-length encode. This is the last point where stopping costs nothing more.
+       const reasons = await options.beforeStitch(project);
+       if (reasons.length) throw new Error(`Pre-render check failed: ${reasons.join('; ')}`);
     }
 
     if (project.status === 'stitching_video') {
@@ -1398,7 +1414,15 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
       (visual as any).asset_path = existingRendered;
       (visual as any).rendered_path = undefined;
     }
-    if (!isLocalMp4 && (visual as any).asset_path) {
+    // A multi-frame visual keeps its images on the frames, never on the visual — the
+    // generation branch above sets frame.asset_path and nothing else. Gating the clip
+    // render on visual.asset_path alone therefore skipped every frame-based scene
+    // silently: renderVisualClip is the function that knows how to concat frames, and
+    // it was never called, so the scene reached assembly with no clip and failed as
+    // "no image was generated" while its images sat on disk.
+    const frames = (visual as any).frames as Array<{ asset_path?: string }> | undefined;
+    const hasFrameAssets = Array.isArray(frames) && frames.length > 1 && frames.some((f) => f?.asset_path);
+    if (!isLocalMp4 && ((visual as any).asset_path || hasFrameAssets)) {
       if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
       // Ken Burns reads duration_target, the engines read the passed duration —
       // both must cover the hold or assembleSceneSegment would loop the clip.
@@ -1423,8 +1447,9 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
        scene.status = 'failed';
        // Without a reason here, project.error_log falls back to the generic "Asset
        // generation phase failed for some scenes" and the UI shows nothing actionable.
-       scene.error_log = visual?.asset_path
-         ? `Scene visual was never rendered to video (image exists at ${path.basename(String(visual.asset_path))}). The clip render step did not produce a file.`
+       const anyImage = visual?.asset_path || (visual?.frames || []).find((f: any) => f?.asset_path)?.asset_path;
+       scene.error_log = anyImage
+         ? `Scene visual was never rendered to video (image exists at ${path.basename(String(anyImage))}). The clip render step did not produce a file.`
          : `No image was generated for this scene, so there was nothing to render. Check the image provider logs — the Visual Style and prompt are set, but no asset was produced.`;
        return;
      }

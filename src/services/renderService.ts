@@ -122,7 +122,12 @@ async function guardedExec(command: string, signal?: AbortSignal) {
   if (signal?.aborted) throw new Error('ABORTED');
   
   return new Promise((resolve, reject) => {
-    const process = exec(command, { signal }, (error, stdout, stderr) => {
+    // 64MB of room for output nobody reads. ffmpeg writes a progress line to stderr
+    // for every frame, and Node's default 1MB cap does not truncate — it KILLS the
+    // child and rejects with ERR_CHILD_PROCESS_STDIO_MAXBUFFER. So a segment encode
+    // died purely for being long enough to be chatty, which made the failure look
+    // like a codec problem and made it depend on scene duration.
+    const process = exec(command, { signal, maxBuffer: 1 << 26 }, (error, stdout, stderr) => {
       if (error) {
         if (error.name === 'AbortError') {
           reject(new Error('PIPELINE_CANCELLED'));
@@ -1223,13 +1228,26 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
      const isPreview = project?.quality === 'draft' || project?.preview_mode || false;
      const preset = isPreview ? 'ultrafast' : 'fast';
      const lengthArg = segmentDuration > 0 ? `-t ${segmentDuration.toFixed(3)}` : durationArg;
+     // Loop the clip only when it is actually too short to cover the segment.
+     //
+     // `-stream_loop -1` restarts the input's timestamps on every pass while
+     // `setpts=PTS-STARTPTS` keeps rebasing them to zero, so once a loop happens the
+     // output timestamps stop moving forward, the muxer drops the frames, and `-t`
+     // never arrives. Observed on a multi-frame scene: a 7.0s clip being cut to 4.2s
+     // — no loop needed at all — sat at 524KB of output and 40 minutes of CPU without
+     // finishing. Looping something already long enough was never useful; not asking
+     // for it is what stops the spin.
+     const clipDuration = await getAudioDuration(visualPath).catch(() => 0);
+     const needed = segmentDuration > 0 ? segmentDuration : outputDuration + padSeconds;
+     const loopArg = clipDuration > 0 && clipDuration >= needed - 0.05 ? '' : '-stream_loop -1';
+     if (!loopArg) console.log(`[RenderService] Clip already covers the segment (${clipDuration.toFixed(2)}s ≥ ${needed.toFixed(2)}s) — no loop`);
      // crf 20, not the 18 the old caption burn used. The old chain's real quality ceiling
      // was its FIRST pass at crf 20; re-encoding that at 18 could only add generation
      // loss while inflating the file. Measured against a lossless reference of the same
      // scene: old two-pass 7.15 MB / SSIM 0.96902, this 7.24 MB / SSIM 0.97018 — better
      // picture at the same size. crf 18 here doubles the file for no visible gain
      // (15.6 MB), and crf 22 drops below the old quality.
-     await guardedExec(`"${ffmpeg}" -stream_loop -1 -i "${visualPath}" -i "${processedAudio}" -vf "setpts=PTS-STARTPTS${sizeFilter}${assFilter}" -c:v libx264 -preset ${preset} -crf 20 -c:a aac -ar 44100 -ac 2 -b:a 192k ${lengthArg} -y "${finalPath}"`, signal);
+     await guardedExec(`"${ffmpeg}" ${loopArg} -i "${visualPath}" -i "${processedAudio}" -vf "setpts=PTS-STARTPTS${sizeFilter}${assFilter}" -c:v libx264 -preset ${preset} -crf 20 -c:a aac -ar 44100 -ac 2 -b:a 192k ${lengthArg} -y "${finalPath}"`, signal);
 
      // A truncated encode that ffmpeg still exited 0 on would be cached as valid by the
      // freshness check above and shipped. Cheap to rule out; expensive to miss.

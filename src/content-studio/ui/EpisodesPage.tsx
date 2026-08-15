@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, CircleDashed, Clock, Play, RefreshCw, Rocket, SkipForward } from 'lucide-react';
+import { AlertCircle, CheckCircle2, CircleDashed, Clock, Play, RefreshCw, Rocket, SkipForward, Zap } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { authenticatedFetch } from '../../utils/api';
@@ -6,7 +6,7 @@ import { authenticatedFetch } from '../../utils/api';
 type StageStatus = 'pending' | 'running' | 'completed' | 'skipped' | 'failed' | 'awaiting_approval';
 interface StageState { stage: string; status: StageStatus; attempts: number; error?: string }
 interface Episode { id: string; title: string; topic: string; status: string; productionPackageId: string; workflowRunId?: string; updatedAt: string }
-interface Run { id: string; status: string; stages: StageState[] }
+interface Run { id: string; status: string; mode?: 'manual' | 'automate'; stages: StageState[] }
 interface ProductionPackage { story: { title: string; hook: string }; scenes: unknown[]; qualityScores: { overall?: number }; render: { script2VideoProjectId?: string } }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -77,16 +77,23 @@ export function EpisodesPage() {
     }
   }
 
-  const startRun = () => act(async () => {
+  const automate = (runId: string) => call(`/api/content-studio/workflows/${runId}/automate`, { method: 'POST' });
+
+  const startRun = (mode: 'manual' | 'automate') => act(async () => {
     const created = await call(`/api/content-studio/episodes/${selected!.id}/workflows`, { method: 'POST' });
     setSelected({ ...selected!, workflowRunId: created.id });
-    return created;
+    return mode === 'automate' ? await automate(created.id) : created;
   });
 
   const stageAction = (action: string, stage: string) =>
-    act(() => call(`/api/content-studio/workflows/${run!.id}/${action}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage }),
-    }));
+    act(async () => {
+      const updated = await call(`/api/content-studio/workflows/${run!.id}/${action}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage }),
+      });
+      // Approving is the one human checkpoint an automated run stops at, so clearing
+      // it resumes the run rather than handing the user back a Run-next button.
+      return action === 'approve' && run!.mode === 'automate' ? await automate(run!.id) : updated;
+    });
 
   return (
     <div className="space-y-6">
@@ -94,7 +101,8 @@ export function EpisodesPage() {
         <p className="text-sm font-semibold text-indigo-600">Production</p>
         <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">Episodes</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-          Advance an episode one agent at a time. The final stage creates a draft Script2Video project — rendering stays yours to trigger.
+          Advance an episode one agent at a time, or hand the whole run to Automate — it runs every stage
+          through to the render, stopping at the story approval and at anything that drifts.
         </p>
       </header>
 
@@ -134,16 +142,25 @@ export function EpisodesPage() {
                     {pkg?.scenes.length ?? 0} scenes{pkg?.qualityScores.overall ? ` · scored ${pkg.qualityScores.overall}/10` : ''}
                   </p>
                 </div>
-                {!run && (
-                  <button onClick={startRun} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-indigo-700 disabled:opacity-60">
-                    <Play className="h-4 w-4" /> Start workflow
+                {/* Two paths, same workflow. Manual advances one stage per click and is
+                    unchanged; Automate runs the rest back to back, checking for drift
+                    between each stage and stopping at the story approval gate. */}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => (run ? act(() => call(`/api/content-studio/workflows/${run.id}/run-next`, { method: 'POST' })) : startRun('manual'))}
+                    disabled={busy}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    <Play className="h-4 w-4" /> {run ? 'Run next stage' : 'Start manually'}
                   </button>
-                )}
-                {run && (
-                  <button onClick={() => act(() => call(`/api/content-studio/workflows/${run.id}/run-next`, { method: 'POST' }))} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-indigo-700 disabled:opacity-60">
-                    <Play className="h-4 w-4" /> {busy ? 'Running…' : 'Run next stage'}
+                  <button
+                    onClick={() => (run ? act(() => automate(run.id)) : startRun('automate'))}
+                    disabled={busy}
+                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                  >
+                    <Zap className="h-4 w-4" /> {busy ? 'Running…' : run ? 'Automate the rest' : 'Automate'}
                   </button>
-                )}
+                </div>
               </div>
 
               {run && (

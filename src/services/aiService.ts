@@ -51,6 +51,31 @@ const TASK_MODELS: Record<string, string> = {
 // for the project but still 404s on request, so it is not used.
 const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
 
+/**
+ * Regions to try for an image, in order, starting with whatever is configured.
+ * Verified in one sweep: us-central1, us-east4, us-east1, us-west1, europe-west4,
+ * europe-west1 and global all returned an image for this project; the asia regions
+ * 404 (the model is not published there), so they are not in the list.
+ */
+const IMAGE_REGION_POOL = (process.env.GEMINI_IMAGE_REGIONS
+  || 'us-east4,us-east1,us-west1,europe-west4,global').split(',').map((r) => r.trim()).filter(Boolean);
+
+/** Whichever region last served an image. Tried first, so a run that has moved stays moved. */
+let preferredImageRegion = gcpLocation;
+
+const imageRegions = (): string[] => {
+  const ordered = [preferredImageRegion, gcpLocation, ...IMAGE_REGION_POOL];
+  return [...new Set(ordered)];
+};
+
+/** True for the "no capacity right now" answer, which is worth moving or waiting for. */
+const isBackpressure = (e: any): boolean => {
+  const status = e?.status ?? e?.response?.status ?? e?.httpError?.statusCode;
+  if (status === 429 || status === 503) return true;
+  const message = String(e?.message ?? e);
+  return message.includes('429') || message.includes('RESOURCE_EXHAUSTED') || message.includes('UNAVAILABLE');
+};
+
 const TASK_KEY_MAP: Record<string, KeyTask> = {
   'planning':         'script',
   'script':           'script',
@@ -450,6 +475,15 @@ export const AIService = {
     }
   },
   generateImageBase64: async (prompt: string, options?: any): Promise<string> => {
+    // The reason the last provider gave, so the sentence thrown at the end of the
+    // chain can say whether this was a refusal or a queue. Function-scoped on
+    // purpose: several images are generated at once and a module-level slot would
+    // hand one call's error to another.
+    let lastProviderError = '';
+    const noteFail = (provider: string, e: any, nextProvider: string) => {
+      lastProviderError = `${provider}: ${String(e?.message ?? e).slice(0, 200)}`;
+      dbgFail(provider, e, nextProvider);
+    };
     const isStoryEpisode = options?.isStoryEpisode;
     const isLandscape = !isStoryEpisode && options?.aspectRatio === '16:9';
     const aspectRatio = isLandscape ? '16:9' : '9:16';
@@ -508,7 +542,7 @@ export const AIService = {
       });
       const loraResult = await generateImageWithLoRA(prompt, options.loraModelUrl as string, triggerWord, aspectRatio);
       if (loraResult) { dbgOk('0:ReplicateLoRA', String(options.loraModelUrl), loraResult); return loraResult; }
-      dbgFail('0:ReplicateLoRA', new Error('generateImageWithLoRA returned null (see [LoRA] logs above)'), '1:GoogleImage');
+      noteFail('0:ReplicateLoRA', new Error('generateImageWithLoRA returned null (see [LoRA] logs above)'), '1:GoogleImage');
       console.log('[ImageGen] LoRA failed, falling back to Gemini 3.1 Flash Image');
     }
 
@@ -535,9 +569,6 @@ export const AIService = {
       try {
         console.log('[ImageGen] Trying Gemini Flash Image...');
         const { GoogleGenAI } = await import('@google/genai');
-        const geminiImageAI = isAdcMode
-          ? new GoogleGenAI({ vertexai: true, project: gcpProject, location: gcpLocation } as any)
-          : new GoogleGenAI({ apiKey: imagenApiKey });
 
         const imgParts: any[] = [];
         if (referenceImage) {
@@ -559,19 +590,44 @@ export const AIService = {
           },
         });
 
-        const geminiImgResponse = await geminiImageAI.models.generateContent({
-          model: GEMINI_IMAGE_MODEL,
-          contents: [{ role: 'user', parts: imgParts }],
-          config: {
-            responseModalities: ['IMAGE', 'TEXT'],
-            // Without this every image comes back 1024x1024 and is cropped ~44% to
-            // reach 16:9. The "16:9 landscape" text in the prompt does nothing — this
-            // is the only thing that sets the shape.
-            ...(aspectRatio && SUPPORTED_IMAGE_ASPECTS.has(aspectRatio)
-              ? { imageConfig: { aspectRatio } }
-              : {}),
-          } as any,
-        });
+        // Regions are tried in turn on backpressure, not just the configured one.
+        // This model runs on dynamic shared quota, which is allocated per region: a
+        // burst that RESOURCE_EXHAUSTEDs us-central1 leaves us-east4 answering
+        // normally, so moving is seconds where waiting is a minute. Measured across
+        // one sweep during a us-central1 refusal, every region below returned an
+        // image. Only used in ADC mode — an API key has no region to move to.
+        let geminiImgResponse: any;
+        let lastRegionError: any;
+        for (const region of (isAdcMode ? imageRegions() : ['n/a'])) {
+          const geminiImageAI = isAdcMode
+            ? new GoogleGenAI({ vertexai: true, project: gcpProject, location: region } as any)
+            : new GoogleGenAI({ apiKey: imagenApiKey });
+          try {
+            geminiImgResponse = await geminiImageAI.models.generateContent({
+              model: GEMINI_IMAGE_MODEL,
+              contents: [{ role: 'user', parts: imgParts }],
+              config: {
+                responseModalities: ['IMAGE', 'TEXT'],
+                // Without this every image comes back 1024x1024 and is cropped ~44% to
+                // reach 16:9. The "16:9 landscape" text in the prompt does nothing — this
+                // is the only thing that sets the shape.
+                ...(aspectRatio && SUPPORTED_IMAGE_ASPECTS.has(aspectRatio)
+                  ? { imageConfig: { aspectRatio } }
+                  : {}),
+              } as any,
+            });
+            if (region !== gcpLocation) console.log(`[ImageGen] Served from ${region} (${gcpLocation} was busy)`);
+            preferredImageRegion = region;
+            break;
+          } catch (regionError: any) {
+            lastRegionError = regionError;
+            // Anything that is not backpressure means the next region will say the
+            // same thing — a bad prompt is bad everywhere.
+            if (!isBackpressure(regionError)) throw regionError;
+            console.warn(`[ImageGen] ${region} is at capacity, trying the next region`);
+          }
+        }
+        if (!geminiImgResponse) throw lastRegionError;
 
         const responseParts = geminiImgResponse.candidates?.[0]?.content?.parts || [];
         const imgPart = responseParts.find((p: any) => p.inlineData?.mimeType?.startsWith('image/'));
@@ -582,7 +638,7 @@ export const AIService = {
         return base64;
       } catch (e: any) {
         console.warn('[ImageGen] Gemini Flash Image failed:', e.message, 'status:', e.status);
-        dbgFail('1.5:GeminiImage', e, options?.referenceImageUrl ? '1.75:GeminiNative' : '2:Fal');
+        noteFail('1.5:GeminiImage', e, options?.referenceImageUrl ? '1.75:GeminiNative' : '2:Fal');
         tripBreakerIfDead('1.5:GeminiImage', e);
       }
     }
@@ -599,7 +655,7 @@ export const AIService = {
       });
       const nativeResult = await generateImageWithGeminiNative(styledPrompt, options.referenceImageUrl, aspectRatio);
       if (nativeResult) { dbgOk('1.75:GeminiNative', GEMINI_IMAGE_MODEL, nativeResult); return nativeResult; }
-      dbgFail('1.75:GeminiNative', new Error('returned null (see [Gemini Native] warn above)'), '2:Fal');
+      noteFail('1.75:GeminiNative', new Error('returned null (see [Gemini Native] warn above)'), '2:Fal');
     }
 
     // Provider 2: Fal.ai FLUX.1 schnell
@@ -638,7 +694,7 @@ export const AIService = {
         return base64;
       } catch (e: any) {
         console.warn('[ImageGen] Fal.ai failed:', e.message, 'status:', e.status, 'body:', JSON.stringify(e.body || e.response || {}));
-        dbgFail('2:Fal', e, '3:Together');
+        noteFail('2:Fal', e, '3:Together');
         tripBreakerIfDead('2:Fal', e);
       }
     }
@@ -687,7 +743,7 @@ export const AIService = {
         return base64;
       } catch (e: any) {
         console.warn('[ImageGen] Together AI failed:', e.message);
-        dbgFail('3:Together', e, '4:Gemini2.5');
+        noteFail('3:Together', e, '4:Gemini2.5');
       }
     }
 
@@ -719,14 +775,18 @@ export const AIService = {
         return imagePart.inlineData.data as string;
       } catch (e: any) {
         console.warn('[ImageGen] Gemini failed:', e.message);
-        dbgFail('4:Gemini2.5', e, '5:PicsumThrow');
+        noteFail('4:Gemini2.5', e, '5:PicsumThrow');
         tripBreakerIfDead('4:Gemini2.5', e);
       }
     }
 
     // Provider 5: Picsum (always works)
     if (DEBUG_IMAGEGEN) console.log('[ImageGen:DEBUG] ── EXHAUSTED — all providers failed, throwing to Picsum fallback in assetService');
-    throw new Error('All AI providers failed - use Picsum fallback');
+    // Carry the last provider's reason. Without it every failure arrived at
+    // assetService as the same sentence, so a 429 — which is a "try again in a
+    // moment", not a refusal — was indistinguishable from a dead provider and
+    // went straight to a stock photo. withRetry reads this string to decide.
+    throw new Error(`All AI providers failed - use Picsum fallback${lastProviderError ? ` (last: ${lastProviderError})` : ''}`);
   },
   generateImageWithNative: generateImageWithGeminiNative,
   clearQuotaFlags: () => {}

@@ -20,7 +20,12 @@ function py(snippet: string): string {
   return execFileSync('py', ['-c', snippet], { encoding: 'utf-8', timeout: 60_000 }).trim();
 }
 
-describe('parallel frame synthesis', () => {
+// 60s a test, not the default 5s. Every case here shells out to Python, imports numpy
+// and the engine, and in one case spawns ffmpeg — cold, that is seconds of work before
+// the assertion is even reached, and it competes with whatever else the machine is
+// doing. The assertions are about particle state and file cleanup; none of them is
+// about how fast the interpreter starts.
+describe('parallel frame synthesis', { timeout: 60_000 }, () => {
   it('the engine module exposes the pieces parallelisation depends on', () => {
     const src = fs.readFileSync(ENGINE, 'utf-8');
     expect(src).toContain('def warm_to');

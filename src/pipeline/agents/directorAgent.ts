@@ -11,6 +11,59 @@ export interface DirectorPlan {
   narrative_arc: string;
 }
 
+export const PLAN_FIELDS: Array<keyof DirectorPlan> = [
+  'visual_style', 'color_palette', 'camera_language', 'pacing_notes', 'overall_mood', 'narrative_arc',
+];
+
+/**
+ * Flattens whatever JSON the model answered with into the prose these fields
+ * promise. Lists keep their separators so a palette still reads as a palette and
+ * a per-beat pacing note still reads as one note per beat.
+ */
+function asText(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.map(asText).filter(Boolean).join(value.every((v) => typeof v === 'string') ? ', ' : '; ');
+  if (typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, v]) => {
+        const text = asText(v);
+        return text && `${key.replace(/_/g, ' ')}: ${text}`;
+      })
+      .filter(Boolean)
+      .join('; ');
+  }
+  return '';
+}
+
+/**
+ * Every field of a plan as the string the interface says it is.
+ *
+ * The model does not answer in the shape the prompt asks for, and measured on
+ * eight real runs of the same project it never did for one field: `color_palette`
+ * came back as an array of hex codes 6 times and an object 2 times, `pacing_notes`
+ * as a per-beat object once, and `narrative_arc` as an array of beat objects once.
+ * That is the prompt's own doing — it asks for "3-4 hex codes" and for pacing to
+ * "reflect this variety" across four labelled categories, both of which describe a
+ * list, not a sentence.
+ *
+ * Until this existed, `planVideo` returned `parsed as DirectorPlan`: a compile-time
+ * assertion over untyped JSON, which told every consumer downstream that six strings
+ * were waiting for them. Two of them called `.trim()` on it and threw — the script
+ * prompt's `clean()` and the storyboard's `visual_style` — and two more interpolated
+ * it into a prompt as "[object Object]" without saying anything at all.
+ */
+export function normalizePlan(parsed: unknown, fallback: DirectorPlan): DirectorPlan {
+  const source = (parsed && typeof parsed === 'object' ? parsed : {}) as Record<string, unknown>;
+  const plan = { ...fallback };
+  for (const field of PLAN_FIELDS) {
+    const text = asText(source[field]);
+    if (text) plan[field] = text;
+  }
+  return plan;
+}
+
 export class DirectorAgent {
   static async planVideo(project: Project): Promise<DirectorPlan> {
     console.log(`[DirectorAgent] Planning video for topic: ${project.topic}`);
@@ -68,6 +121,17 @@ Provide a JSON response with:
 
 Output ONLY valid JSON.`;
 
+    // Also the per-field fallback: a plan that answers five of six fields keeps the
+    // five and borrows the sixth, rather than the whole plan being all-or-nothing.
+    const fallback: DirectorPlan = {
+      visual_style: project.style_profile === 'cinematic' ? 'Cinematic, high quality, 4k resolution' : 'Clean, well-lit, professional',
+      color_palette: 'Vibrant and contrasting colors',
+      camera_language: 'Smooth pans and stable shots',
+      pacing_notes: project.pacing_intensity === 'fast' ? 'Quick cuts, fast moving parts' : 'Moderate pacing, give time to read',
+      overall_mood: 'Engaging and informative',
+      narrative_arc: 'Hook the viewer, explain the concept, end with a call to action.',
+    };
+
     try {
       const rawResult = await AIService.generateText(prompt, { task: 'planning' });
       let parsed: any;
@@ -84,17 +148,10 @@ Output ONLY valid JSON.`;
           throw new Error('No valid JSON found in AI response');
         }
       }
-      return parsed as DirectorPlan;
+      return normalizePlan(parsed, fallback);
     } catch (e) {
       console.warn(`[DirectorAgent] Failed to generate plan, returning default. Error: ${e}`);
-      return {
-        visual_style: project.style_profile === 'cinematic' ? 'Cinematic, high quality, 4k resolution' : 'Clean, well-lit, professional',
-        color_palette: 'Vibrant and contrasting colors',
-        camera_language: 'Smooth pans and stable shots',
-        pacing_notes: project.pacing_intensity === 'fast' ? 'Quick cuts, fast moving parts' : 'Moderate pacing, give time to read',
-        overall_mood: 'Engaging and informative',
-        narrative_arc: 'Hook the viewer, explain the concept, end with a call to action.',
-      };
+      return fallback;
     }
   }
 }

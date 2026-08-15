@@ -39,9 +39,17 @@ export const generateSceneAudio = async (scene: Scene, preset: any, hash: string
     hash
   );
   if (audioPath) {
-    if (audioPath.endsWith('-silence.wav')) {
+    // A scene with no lines is silent on purpose — the wordless reaction beat the
+    // story agents write after a punchline. Every engine correctly produces nothing
+    // for it, which used to be recorded as a TTS failure: the scene came out
+    // `degraded`, and one deliberate beat was enough to fail the quality gate's
+    // "no scene failed to render" check on an otherwise clean video.
+    const intentionallySilent = !String(scene.narration_text ?? '').trim();
+    if (audioPath.endsWith('-silence.wav') && !intentionallySilent) {
       scene.fallback_used = true;
       console.warn(`[VoiceService] Scene ${scene.scene_id}: TTS failed — silent audio fallback active`);
+    } else if (intentionallySilent) {
+      console.log(`[VoiceService] Scene ${scene.scene_id}: no narration written — silent by design, not a fallback`);
     }
     await saveToCache(hash, audioPath);
     const actualDuration = await getAudioDuration(audioPath);

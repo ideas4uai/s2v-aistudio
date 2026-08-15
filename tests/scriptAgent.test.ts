@@ -8,6 +8,7 @@ import {
   flagCraftIssues,
   type ScriptBrief,
 } from '../src/pipeline/agents/scriptPrompt.js';
+import { normalizePlan, PLAN_FIELDS } from '../src/pipeline/agents/directorAgent.js';
 import { buildKnowledgeContext } from '../src/content-studio/knowledgeContext.js';
 import { targetWordCount } from '../src/utils/targetLength.js';
 
@@ -291,5 +292,90 @@ describe('flagCraftIssues — the control script the old prompt produced', () =>
     // Verbatim first line of a control generation on the prompt as it was.
     expect(flagCraftIssues('Ever wish your complex web tests could practically fix themselves?')[0])
       .toMatch(/^overclaim "fix themselves"/);
+  });
+});
+
+describe('director plan — the shapes the model actually returns', () => {
+  // Captured from eight consecutive real DirectorAgent runs on one project. The
+  // model answered `color_palette` as a list every single time (6 arrays, 2 objects),
+  // and once each returned `pacing_notes` and `narrative_arc` as structures. The old
+  // code returned `parsed as DirectorPlan` and handed those straight to `.trim()`.
+  const fallback = {
+    visual_style: 'Cinematic, high quality, 4k resolution',
+    color_palette: 'Vibrant and contrasting colors',
+    camera_language: 'Smooth pans and stable shots',
+    pacing_notes: 'Moderate pacing, give time to read',
+    overall_mood: 'Engaging and informative',
+    narrative_arc: 'Hook the viewer, explain the concept, end with a call to action.',
+  };
+
+  it('flattens a palette answered as an array of hex codes', () => {
+    const plan = normalizePlan({ color_palette: ['#FFD700', '#007FFF', '#FF4500', '#DC143C'] }, fallback);
+    expect(plan.color_palette).toBe('#FFD700, #007FFF, #FF4500, #DC143C');
+  });
+
+  it('flattens a palette answered as a named object, keeping the names', () => {
+    const plan = normalizePlan({
+      color_palette: { warm_office_light: '#F8E7D1', monitor_blue_glow: '#87CEEB', emergency_red_alert: '#FF3333' },
+    }, fallback);
+    expect(plan.color_palette).toBe('warm office light: #F8E7D1; monitor blue glow: #87CEEB; emergency red alert: #FF3333');
+  });
+
+  it('flattens per-beat pacing notes, which is what the prompt asks for', () => {
+    const plan = normalizePlan({
+      pacing_notes: { 'hook_0-3s': 'Steady, medium-paced shot.', 'conflict_3-8s': 'Pacing accelerates with rapid cuts.' },
+    }, fallback);
+    expect(plan.pacing_notes).toBe('hook 0-3s: Steady, medium-paced shot.; conflict 3-8s: Pacing accelerates with rapid cuts.');
+  });
+
+  it('flattens a narrative arc answered as a list of beat objects', () => {
+    const plan = normalizePlan({
+      narrative_arc: [{ beat_description: 'A bright office.', scene_type_variety: 'Real world -> Character' }],
+    }, fallback);
+    expect(plan.narrative_arc).toContain('beat description: A bright office.');
+    expect(typeof plan.narrative_arc).toBe('string');
+  });
+
+  it('gives every field back as a string, whatever it was handed', () => {
+    // Including the shapes nobody has seen yet: a number, a null, a missing key, and
+    // a response that is not an object at all.
+    for (const parsed of [
+      { visual_style: 42, color_palette: null, camera_language: [], pacing_notes: {}, overall_mood: true },
+      'not json at all', null, [], undefined,
+    ]) {
+      const plan = normalizePlan(parsed, fallback);
+      for (const field of PLAN_FIELDS) expect(typeof plan[field]).toBe('string');
+    }
+  });
+
+  it('borrows the fallback per field, not all or nothing', () => {
+    const plan = normalizePlan({ overall_mood: 'Wry and tense' }, fallback);
+    expect(plan.overall_mood).toBe('Wry and tense');
+    expect(plan.visual_style).toBe(fallback.visual_style);
+  });
+
+  it('survives the trip the crashing plan took, all the way into the prompt', () => {
+    // This is the exact path that threw "(v ?? '').trim is not a function": the plan
+    // goes into ScriptBrief.direction, and buildScriptSections calls clean() on it.
+    const plan = normalizePlan({
+      pacing_notes: { 'hook_0-3s': 'Steady shot.' },
+      narrative_arc: [{ beat_description: 'A bright office.' }],
+      overall_mood: 'Wry and tense',
+    }, fallback);
+    const brief: ScriptBrief = {
+      ...generic,
+      direction: { mood: plan.overall_mood, narrativeArc: plan.narrative_arc, pacing: plan.pacing_notes },
+    };
+    const objective = buildScriptSections(brief).objective;
+    expect(objective).toContain('Wry and tense');
+    expect(objective).toContain('hook 0-3s: Steady shot.');
+    expect(objective).not.toContain('[object Object]');
+  });
+
+  it('still throws if a raw plan is ever handed straight to the prompt again', () => {
+    // The guard is the boundary, not clean(). If someone reintroduces a bare cast,
+    // this is the failure they will see — pinned so it stays a loud one.
+    const raw = { direction: { mood: { vibe: 'wry' } } } as any;
+    expect(() => buildScriptSections({ ...generic, ...raw })).toThrow(/trim is not a function/);
   });
 });
