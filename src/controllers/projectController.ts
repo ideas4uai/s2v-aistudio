@@ -371,7 +371,11 @@ export async function generateScenes(req: Request, res: Response) {
         visuals: [
           {
             visual_id: uuidv4(),
-            prompt: s.visuals?.[0]?.prompt || '',
+            // Same fallback chain `background_prompt` above already uses. Without it a
+            // scene whose prompt the agent returned under another key stored '', which
+            // the render used to read as "this project has no approved script" and
+            // rewrite the lot. Never let this land empty when the scene knows its shot.
+            prompt: s.visuals?.[0]?.prompt || s.visual_prompt || s.background_prompt || s.backgroundPrompt || '',
             asset_type: 'image',
             status: 'pending',
             // Dropping these rebuilt the visual without the Cinematic Effect the
@@ -563,6 +567,10 @@ export async function generateSceneImage(req: Request, res: Response) {
     } else {
       scene.visuals[0].rendered_path = url;
       scene.visuals[0].status = 'completed';
+      // Write the prompt back. The image was generated from `prompt`, which may have
+      // come from the request body while the stored one was empty — leaving a scene
+      // that owns a real image and, as far as the renderer could tell, no shot at all.
+      if (!String(scene.visuals[0].prompt || '').trim()) scene.visuals[0].prompt = prompt;
     }
 
     await saveProjectState(project);

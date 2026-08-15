@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, Sparkles, Layout, BookOpen } from 'lucide-react';
+import { ArrowLeft, Loader2, Sparkles, Layout, BookOpen, Zap } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 import { TargetLengthField } from '../components/TargetLengthField';
 import { targetLengthSeconds, targetWordCount } from '../utils/targetLength';
@@ -110,6 +110,8 @@ export function CreateProject() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    // `automate` is set by the second button below, which submits the same form.
+    const automate = ((e.nativeEvent as SubmitEvent)?.submitter as HTMLButtonElement | null)?.value === 'automate';
     try {
       const payload: any = { ...formData, projectType };
       if (projectType === 'story_episode') {
@@ -141,6 +143,18 @@ export function CreateProject() {
       }
       const data = await res.json();
       if (data.id) {
+        if (automate) {
+          // Cut the scenes, then render. These are the two clicks the classic flow
+          // otherwise asks for, in the order it asks for them — nothing is skipped
+          // except the pause between them. Both are fire-and-forget: the editor the
+          // user lands on streams the progress they would have watched anyway.
+          const scenes = await authenticatedFetch(`/api/projects/${data.id}/generate-scenes`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+          });
+          if (scenes.ok) {
+            await authenticatedFetch(`/api/projects/${data.id}/pipeline/run`, { method: 'POST' });
+          }
+        }
         navigate(`/projects/${data.id}/edit`);
       }
     } catch (error) {
@@ -532,13 +546,30 @@ export function CreateProject() {
             </div>
           </div>
 
-          <div className="pt-6 flex justify-end">
+          {/* Two ways out of this screen. "Create Project" leaves you in the editor to
+              cut the scenes and look at them before spending anything, which is the
+              flow as it was. "Create & Render" does those same two steps for you and
+              starts the render — the same work, without the pause to review the scenes
+              first. Nothing is skipped but that review. */}
+          <div className="pt-6 flex flex-wrap justify-end gap-3">
             <button
               type="submit"
+              name="intent"
+              value="create"
               disabled={loading}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="border border-neutral-300 hover:bg-neutral-50 text-neutral-800 px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Create Project'}
+            </button>
+            <button
+              type="submit"
+              name="intent"
+              value="automate"
+              disabled={loading}
+              title="Creates the project, cuts the scenes, and starts the render — without stopping for you to review the scenes first."
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Zap className="w-5 h-5" /> Create &amp; Render</>}
             </button>
           </div>
         </form>

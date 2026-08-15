@@ -100,6 +100,50 @@ const sentences = (text: string): string[] =>
   (String(text || '').match(/[^.!?]+[.!?]*/g) ?? []).map((s) => s.trim()).filter(Boolean);
 
 /**
+ * Longest a line can be and still read as something worth revealing word by word.
+ *
+ * Measured over the closing beat of all 44 real renders on disk: median 8 words, 75th
+ * percentile 13, and then nothing at all until 17. That gap is where a payoff stops and
+ * an explanation starts — "What groundbreaking features will you ship next?" on one side,
+ * "The tradeoff is that every write must also update the index, so more indexes make
+ * reads faster and writes slower" on the other. 14 keeps the whole observed payoff
+ * population and drops the tail.
+ */
+const MAX_REVEAL_WORDS = 14;
+
+/** A line the overlay font cannot draw. Devanagari and Telugu narration came out `?????`. */
+const isRenderable = (text: string): boolean => {
+  const letters = (String(text).match(/\p{L}/gu) ?? []).length;
+  if (!letters) return false;
+  return (String(text).match(/[A-Za-z]/g) ?? []).length / letters >= 0.5;
+};
+
+/** `RAJ: ...` — a character speaking, not narration making a point. */
+const isDialogue = (text: string): boolean => /^[A-Z][A-Z' ]{1,20}:/.test(String(text).trim());
+
+/**
+ * Whether a beat earns the word-by-word reveal — the one treatment that was chosen by
+ * position alone rather than by what the beat says.
+ *
+ * Measured across 251 real narrated scenes, 64 of the 95 treatments came from the two
+ * positional rules and only 31 from content. Among the 44 payoffs that produced: two
+ * were non-Latin narration the font drew as question marks, five were character dialogue
+ * with a speaker prefix, and eight were long explanatory sentences that got shown as a
+ * nine-word tail fragment revealed one word at a time. None of those is emphasis.
+ *
+ * The other treatments are left alone: a diagram, a comparison, a figure and a name are
+ * each already conditional on the beat actually containing one.
+ */
+function deservesWordReveal(text: string): boolean {
+  const full = String(text || '').trim();
+  if (!full || !isRenderable(full) || isDialogue(full)) return false;
+  const all = sentences(full);
+  const line = all.length ? all[all.length - 1] : full;
+  const words = line.split(/\s+/).filter(Boolean).length;
+  return words >= 2 && words <= MAX_REVEAL_WORDS;
+}
+
+/**
  * Which kind each scene would take on its own merits, before any spacing rule.
  *
  * Beats are counted over the scenes that actually speak. An episode can end on a silent
@@ -129,12 +173,15 @@ function candidateKinds(scenes: any[], topic = ''): (OverlayKind | null)[] {
     if (!text) return null;
     // Order is precedence. A beat that walks through steps AND states a figure is a
     // process beat: the diagram is what the viewer cannot get from the narration alone.
-    if (i === closing) return 'payoff';
+    // Position says WHERE a reveal could go; the beat itself says whether it should.
+    // Both word-reveal kinds now ask, and a closing beat that does not earn one falls
+    // through to the content checks below rather than taking the treatment by default.
+    if (i === closing && deservesWordReveal(text)) return 'payoff';
     if (detectSteps(text)) return 'diagram';
     if (detectComparison(text)) return 'comparison';
     if (extractFigure(text)) return 'stat';
     if (!named && detectName(text, topic)) { named = true; return 'namecard'; }
-    return i === payload ? 'kinetic' : null;
+    return i === payload && deservesWordReveal(text) ? 'kinetic' : null;
   });
 }
 

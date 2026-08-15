@@ -367,8 +367,17 @@ describe('staleness', () => {
 });
 
 // ── Python side ────────────────────────────────────────────────────────────
-const py = (snippet: string): string =>
-  execFileSync('py', ['-c', snippet], { encoding: 'utf-8', timeout: 120_000 }).trim();
+// One retry. Four test files spawn Python, each importing numpy and cv2, and the full
+// suite runs them in parallel on a four-core laptop — under that load an interpreter
+// occasionally fails to come up at all. The retry is for the spawn, not the assertion:
+// a snippet that genuinely fails, fails identically the second time.
+const py = (snippet: string): string => {
+  try {
+    return execFileSync('py', ['-c', snippet], { encoding: 'utf-8', timeout: 120_000 }).trim();
+  } catch {
+    return execFileSync('py', ['-c', snippet], { encoding: 'utf-8', timeout: 120_000 }).trim();
+  }
+};
 
 const HEAD = [
   'import sys; sys.path.insert(0, "src/scripts")',

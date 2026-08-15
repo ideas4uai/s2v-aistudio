@@ -256,15 +256,28 @@ describe('cache keys cover the new treatments', () => {
 });
 
 // ── Python side ────────────────────────────────────────────────────────────
-const py = (snippet: string): string =>
-  execFileSync('py', ['-c', snippet], { encoding: 'utf-8', timeout: 120_000 }).trim();
+// One retry. Four test files spawn Python, each importing numpy and cv2, and the full
+// suite runs them in parallel on a four-core laptop — under that load an interpreter
+// occasionally fails to come up at all. The retry is for the spawn, not the assertion:
+// a snippet that genuinely fails, fails identically the second time.
+const py = (snippet: string): string => {
+  try {
+    return execFileSync('py', ['-c', snippet], { encoding: 'utf-8', timeout: 120_000 }).trim();
+  } catch {
+    return execFileSync('py', ['-c', snippet], { encoding: 'utf-8', timeout: 120_000 }).trim();
+  }
+};
 
 const HEAD = [
   'import sys; sys.path.insert(0, "src/scripts")',
   'import numpy as np, motion_overlay as mo',
 ].join('\n');
 
-describe('easing functions', () => {
+// 60s a test, not the default 5s. Everything below `py` shells out to Python and
+// renders frames with numpy and cv2; cold, that is seconds of interpreter and import
+// time before the assertion is reached, and it competes with whatever else the
+// machine is running. The assertions are about pixels, never about start-up speed.
+describe('easing functions', { timeout: 60_000 }, () => {
   it('start at 0, end at 1, and overshoot only where they should', () => {
     const out = py([HEAD,
       'ts = np.linspace(0, 1, 101)',
@@ -305,7 +318,11 @@ describe('easing functions', () => {
   });
 });
 
-describe('every new treatment is a pure function of t', () => {
+// 60s a test, not the default 5s. Everything below `py` shells out to Python and
+// renders frames with numpy and cv2; cold, that is seconds of interpreter and import
+// time before the assertion is reached, and it competes with whatever else the
+// machine is running. The assertions are about pixels, never about start-up speed.
+describe('every new treatment is a pure function of t', { timeout: 60_000 }, () => {
   const specs: Record<string, string> = {
     diagram: '{"kind":"diagram","start":0.2,"end":4.0,"words":[],"steps":['
       + '{"text":"planner drafts","start":0.2,"end":2.6},'
@@ -351,7 +368,11 @@ describe('every new treatment is a pure function of t', () => {
   }
 });
 
-describe('the two new transitions', () => {
+// 60s a test, not the default 5s. Everything below `py` shells out to Python and
+// renders frames with numpy and cv2; cold, that is seconds of interpreter and import
+// time before the assertion is reached, and it competes with whatever else the
+// machine is running. The assertions are about pixels, never about start-up speed.
+describe('the two new transitions', { timeout: 60_000 }, () => {
   it('converge on an identical terminal frame, which is what hides the concat cut', () => {
     const out = py([
       'import sys; sys.path.insert(0, "src/scripts")',
@@ -377,5 +398,64 @@ describe('the two new transitions', () => {
     // different terminal frame.
     expect(src).toContain('in_tr, out_tr, tr_color) = job');
     expect(src).toContain('_set_transition_color(tr_color)');
+  });
+});
+
+describe('the word reveal is earned, not positional', () => {
+  // Measured across the 251 narrated scenes on disk before this rule existed: 95 beats
+  // were treated, and 64 of those came from the two position-only rules — the last
+  // spoken beat always took a payoff reveal and the second always took kinetic text,
+  // whatever they said. Afterwards: 67 treated, 35 from position. Content-driven
+  // treatments (diagram, comparison, stat, namecard) were untouched by the change.
+  const closing = (text: string) => planOverlay(
+    project(['A problem is stated here.', 'A middle beat that explains things.', text]).scenes[2],
+    project(['A problem is stated here.', 'A middle beat that explains things.', text]),
+    7,
+  );
+
+  it('fires on a closing line that is an actual payoff', () => {
+    // Real closing beat, from a real render.
+    expect(closing('What groundbreaking features will you ship next?')?.kind).toBe('payoff');
+    expect(closing('That balance is still being settled.')?.kind).toBe('payoff');
+  });
+
+  it('does not fire on a closing line that is still explaining', () => {
+    // Real closing beat, from a real render: 20 words. The old code showed the last
+    // nine of them — a mid-sentence fragment, revealed one word at a time.
+    expect(closing('The tradeoff is that every write must also update the index, so more indexes make reads faster and writes slower.')).toBeNull();
+    // This one is also 20 words, and now takes the treatment its content actually
+    // supports — "instantly instead of asking the slow original source" is a
+    // before/after. That is the point of the change: position no longer outranks
+    // content, so a beat gets what it says it is, or nothing.
+    expect(closing('When the same data is requested again, the cache answers instantly instead of asking the slow original source for it.')?.kind).toBe('comparison');
+  });
+
+  it('does not fire on narration the overlay font cannot draw', () => {
+    // Both of these rendered as rows of question marks on real videos.
+    expect(closing('मशीनें अब इंसानों की तरह सीख सकती हैं।')).toBeNull();
+    expect(closing('ఈ సాంకేతికత మన ప్రపంచాన్ని వేగంగా మారుస్తోంది.')).toBeNull();
+  });
+
+  it('still fires on other Latin-script languages', () => {
+    // Renderable is the test, not English. This is a real French closing beat.
+    expect(closing('Cette technologie change le monde rapidement.')?.kind).toBe('payoff');
+  });
+
+  it('does not fire on character dialogue', () => {
+    // A speaker prefix means someone is talking, not that the script is making a point.
+    expect(closing("RAJ: That 'temporary' workaround triggered an old bug.")).toBeNull();
+    expect(closing('CTA: Follow @aiqaengineer for more tech team drama.')).toBeNull();
+  });
+
+  it('judges the closing sentence, not the whole beat', () => {
+    // A long beat that lands on a short line is still a payoff.
+    expect(closing('Your system executes tasks without a single prompt. You are free to focus on bigger visions.')?.kind).toBe('payoff');
+  });
+
+  it('leaves the content-driven treatments alone', () => {
+    // A beat that names a figure still gets its stat call-out even though it is long,
+    // because that treatment was never chosen by position in the first place.
+    const p = project(['Intro beat here.', 'Teams cut their debugging time by 40% and shipped more, which changed how the whole department planned its week.', 'A closing line.']);
+    expect(planOverlay(p.scenes[1], p, 7)?.kind).toBe('stat');
   });
 });

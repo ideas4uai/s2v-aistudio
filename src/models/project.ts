@@ -95,6 +95,13 @@ export interface Project {
    */
   cloud_backup?: CloudBackup;
   character_description?: string;
+  /**
+   * Region, era and cultural setting the imagery should depict, read once from the
+   * project's own script. Only set for projects with no universe — a universe states
+   * this in its character bible and art style already. Empty string means the script
+   * named no particular place or period, which is a real answer and not a missing one.
+   */
+  visual_context?: string;
   world_entities?: {
     characters: { name: string; description: string; prompt: string }[];
     locations: { name: string; description: string; prompt: string }[];
