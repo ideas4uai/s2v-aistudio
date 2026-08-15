@@ -4,7 +4,9 @@ import { StudioStore, KNOWLEDGE_COLLECTION } from '../../content-studio/store.js
 import { createProductionPackage, createStudioEpisode, validateProductionPackage, WORKFLOW_STAGES } from '../../content-studio/domain/productionPackage.js';
 import type { KnowledgeDocument, ProductionPackage, StudioEpisode, WorkflowStageName } from '../../content-studio/domain/types.js';
 import { contentStudioWorkflowCoordinator } from '../../content-studio/workflow/workflowCoordinator.js';
+import { checkSceneAudio } from '../../content-studio/workflow/guardrails.js';
 import { normalizeUniverse } from '../../content-studio/knowledgeContext.js';
+import { runPipeline } from '../../pipeline/orchestrator.js';
 // Side-effect import: registers the stage agents with the coordinator's registry.
 import '../../content-studio/agents/index.js';
 
@@ -198,6 +200,29 @@ contentStudioRouter.post('/workflows/:id/run-next', async (req, res) => {
     res.json(run);
   } catch (error) {
     res.status(422).json({ error: error instanceof Error ? error.message : 'Unable to run workflow stage.' });
+  }
+});
+
+/**
+ * Automate mode. Runs the remaining stages back to back, halting on the story
+ * approval gate or on the first guardrail that fires, then starts the render.
+ *
+ * Registered above the :action route because that one would otherwise swallow it.
+ */
+contentStudioRouter.post('/workflows/:id/automate', async (req, res) => {
+  const userId = currentUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const run = await contentStudioWorkflowCoordinator.runAutomated(userId, req.params.id, (projectId) => {
+      // Fire and forget: a render runs for minutes and reports itself on the
+      // existing /progress stream, so holding the request open buys nothing.
+      void runPipeline(projectId, { beforeStitch: checkSceneAudio }).catch((error) => {
+        console.error(`[ContentStudio] automated render failed for ${projectId}`, error);
+      });
+    });
+    res.json(run);
+  } catch (error) {
+    res.status(422).json({ error: error instanceof Error ? error.message : 'Unable to run the workflow.' });
   }
 });
 

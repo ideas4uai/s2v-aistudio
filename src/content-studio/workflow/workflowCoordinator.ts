@@ -3,7 +3,14 @@ import { StudioStore, KNOWLEDGE_COLLECTION } from '../store.js';
 import type { ProductionPackage, StudioEpisode, WorkflowStageName } from '../domain/types.js';
 import { createWorkflowState, validateProductionPackage } from '../domain/productionPackage.js';
 import { normalizeUniverse } from '../knowledgeContext.js';
+import { packageToProjectPayload, packageToScript } from '../handoff.js';
+import { resolveUniverse } from '../universeLink.js';
+import { targetLengthSeconds } from '../../utils/targetLength.js';
 import { contentStudioAgentRegistry, type AgentRegistry } from './agentRegistry.js';
+import {
+  checkAngleDrift, checkDuration, checkImagePromptRelevance, checkScriptQuality, storyProse,
+} from './guardrails.js';
+import { generateText } from '../../services/text/index.js';
 import { deriveWorkflowStatus, nextRunnableStage, updateStage } from './workflowState.js';
 import type { AgentLog, WorkflowRun } from './types.js';
 
@@ -14,7 +21,16 @@ const EPISODES_COLLECTION = 'contentStudioEpisodes';
 
 
 export class WorkflowCoordinator {
-  constructor(private readonly registry: AgentRegistry = contentStudioAgentRegistry) {}
+  /**
+   * @param adjudicate Second opinion for the one guardrail a word count cannot
+   *   settle. Injected so the tests never reach the network — and so the only
+   *   model call the guardrail layer can make is visible in one place.
+   */
+  constructor(
+    private readonly registry: AgentRegistry = contentStudioAgentRegistry,
+    private readonly adjudicate: (prompt: string) => Promise<string> =
+      (prompt) => generateText(prompt, { task: 'planning' }),
+  ) {}
 
   async start(userId: string, episode: StudioEpisode): Promise<WorkflowRun> {
     const now = new Date().toISOString();
@@ -86,6 +102,98 @@ export class WorkflowCoordinator {
       await this.log(failed, next.stage, 'failed', `${agent.name} failed.`, errorMessage, { executionMs: Date.now() - started });
       return failed;
     }
+  }
+
+  /**
+   * Runs every remaining stage back to back, checking for drift between each.
+   *
+   * The stages themselves go through runNext, unchanged — an automated stage and a
+   * hand-clicked one are the same code path, so manual mode cannot regress from
+   * anything here. All this adds is the loop and the check between iterations.
+   *
+   * Stops at exactly three things:
+   *   - a stage that failed (runNext already recorded why),
+   *   - the story approval gate, which automate mode does NOT bypass. A human
+   *     approving the story beats is the one judgement no check here replaces, and
+   *     it sits immediately before the first stage that spends image budget. Four
+   *     stages plus a render for one click instead of five.
+   *   - a guardrail, which marks the stage that produced the drift as failed so the
+   *     existing Retry button re-runs precisely the stage at fault.
+   *
+   * @param startRender Invoked with the handed-off project id once every stage has
+   *   passed. Injected rather than imported so the coordinator keeps no dependency
+   *   on the renderer — and so a test can assert it was never reached.
+   */
+  async runAutomated(userId: string, runId: string, startRender?: (projectId: string) => void): Promise<WorkflowRun> {
+    let run = await this.requireRun(userId, runId, { allowCompleted: true });
+    // Resuming past a stage that is still failed would be the one thing automate
+    // mode must never do — the halt is only a halt while it is in the way.
+    const broken = run.stages.find((stage) => stage.status === 'failed');
+    if (broken) throw new Error(`The ${broken.stage} stage failed — retry or skip it before resuming. ${broken.error ?? ''}`.trim());
+    if (run.mode !== 'automate') run = await this.saveRun({ ...run, mode: 'automate', updatedAt: new Date().toISOString() });
+
+    // Bounded by the stage count: runNext always leaves the stage it ran in a
+    // terminal state, so this can only spin if that stops being true.
+    for (let remaining = run.stages.length; remaining > 0; remaining--) {
+      const next = nextRunnableStage(run.stages);
+      if (!next) break;
+
+      run = await this.runNext(userId, runId);
+      if (run.stages.find((stage) => stage.stage === next.stage)?.status !== 'completed') return run;
+
+      const reasons = await this.guardStage(run, next.stage);
+      if (reasons.length) {
+        return this.failStage(run, next.stage, `Automate halted after the ${next.stage} stage: ${reasons.join('; ')}`);
+      }
+    }
+
+    if (run.status === 'completed' && startRender) {
+      const productionPackage = await StudioStore.get(PACKAGES_COLLECTION, run.productionPackageId) as ProductionPackage | null;
+      const projectId = productionPackage?.render.script2VideoProjectId;
+      // Handoff deliberately stops at a draft because rendering is the user's call.
+      // Pressing Automate is that call, made once for the whole run.
+      if (projectId) startRender(projectId);
+    }
+    return run;
+  }
+
+  /**
+   * The drift checks for the transition out of `stage`. Empty means carry on.
+   *
+   * Nothing runs after `handoff`: that stage only creates the draft project, and the
+   * render's own pre-stitch audio check and terminal quality gate take over there.
+   */
+  private async guardStage(run: WorkflowRun, stage: WorkflowStageName): Promise<string[]> {
+    const productionPackage = await StudioStore.get(PACKAGES_COLLECTION, run.productionPackageId) as ProductionPackage | null;
+    if (!productionPackage) return ['the production package went missing between stages'];
+    const seed = await this.seedTopic(run);
+
+    if (stage === 'idea') return checkAngleDrift(seed, productionPackage.story.title, this.adjudicate);
+
+    // The beats, not the finished narration — this is the earliest text that says what
+    // the episode claims, and failing here saves the package stage's four model calls.
+    if (stage === 'story') return checkScriptQuality(storyProse(productionPackage.story), `${productionPackage.story.title} ${seed}`);
+
+    if (stage === 'package') {
+      const script = packageToScript(productionPackage);
+      // Measured against the budget the render will actually use: same mapper, so the
+      // guardrail cannot disagree with the project the handoff is about to create.
+      const universe = await resolveUniverse(productionPackage.ownerId, productionPackage.universe);
+      const project = packageToProjectPayload(productionPackage, productionPackage.ownerId, universe);
+      return [
+        ...checkScriptQuality(script, `${productionPackage.story.title} ${seed}`),
+        ...checkDuration(script, targetLengthSeconds(project.settings?.targetLength)),
+        ...checkImagePromptRelevance(productionPackage.scenes, `${productionPackage.story.title} ${seed}`),
+      ];
+    }
+
+    return [];
+  }
+
+  /** What the user actually typed when they created the episode. */
+  private async seedTopic(run: WorkflowRun): Promise<string> {
+    const episode = await StudioStore.get(EPISODES_COLLECTION, run.episodeId) as StudioEpisode | null;
+    return `${episode?.title ?? ''} ${episode?.topic ?? ''}`.trim();
   }
 
   async retry(userId: string, runId: string, stage: WorkflowStageName): Promise<WorkflowRun> {

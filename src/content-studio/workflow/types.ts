@@ -25,11 +25,21 @@ export interface AgentLog {
   createdAt: string;
 }
 
+/**
+ * How the run is being advanced. `manual` is the default and the original
+ * behaviour — one stage per click. `automate` runs the stages back to back with a
+ * drift check between each; it is recorded on the run so a page refresh, or the
+ * click that clears the story approval gate, can pick the loop back up.
+ */
+export type WorkflowRunMode = 'manual' | 'automate';
+
 export interface WorkflowRun {
   id: string;
   userId: string;
   episodeId: string;
   productionPackageId: string;
+  /** Absent on runs created before automate mode existed — read as 'manual'. */
+  mode?: WorkflowRunMode;
   status: WorkflowRunStatus;
   stages: WorkflowStageState[];
   createdAt: string;

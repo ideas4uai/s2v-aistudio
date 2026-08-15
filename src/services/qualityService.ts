@@ -98,8 +98,14 @@ function checkNoFailedScenes(project: Project): GateCheck {
   return pass(id, label, `All ${scenes.length} scenes rendered cleanly.`);
 }
 
-/** Narration exists and actually contains sound on every scene. */
-async function checkAudioPresent(project: Project): Promise<GateCheck> {
+/**
+ * Narration exists and actually contains sound on every scene.
+ *
+ * Exported because automate mode runs this same check one step earlier, just
+ * before the stitch, where a failure is still cheap to stop. Same function, so
+ * the pre-render halt and the terminal gate can never disagree.
+ */
+export async function checkAudioPresent(project: Project): Promise<GateCheck> {
   const id = 'audio_present', label = 'Every scene has audible narration';
   const scenes = project.scenes || [];
   if (scenes.length === 0) return fail(id, label, 'Project has no scenes.');

@@ -576,7 +576,16 @@ async function guardedSaveProjectState(project: Project, signal?: AbortSignal) {
 // Global map to track running pipelines per project
 const runningPipelines = new Set<string>();
 
-export async function runPipeline(project_id: string, options?: { preview?: boolean, mode?: 'test' | 'production' }): Promise<void> {
+export async function runPipeline(project_id: string, options?: {
+  preview?: boolean,
+  mode?: 'test' | 'production',
+  /**
+   * Last chance to stop before the stitch. Returns halt reasons, empty to proceed.
+   * Optional and unset on every existing caller, so a manually started render is
+   * byte-for-byte the render it was before this existed.
+   */
+  beforeStitch?: (project: Project) => Promise<string[]>,
+}): Promise<void> {
   const characterAnchors = new Map<string, string>();
   console.log('[Orchestrator] runPipeline called for:', project_id);
   if (runningPipelines.has(project_id)) {
@@ -937,6 +946,13 @@ export async function runPipeline(project_id: string, options?: { preview?: bool
              : "Asset generation phase failed for some scenes."
          );
       }
+    }
+
+    if (project.status === 'stitching_video' && options?.beforeStitch) {
+       // Everything above is per-scene work already paid for; everything below is the
+       // full-length encode. This is the last point where stopping costs nothing more.
+       const reasons = await options.beforeStitch(project);
+       if (reasons.length) throw new Error(`Pre-render check failed: ${reasons.join('; ')}`);
     }
 
     if (project.status === 'stitching_video') {
