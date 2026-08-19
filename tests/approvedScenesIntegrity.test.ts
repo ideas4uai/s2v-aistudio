@@ -134,4 +134,35 @@ describe('the render never rewrites an approved script', () => {
     // It never re-entered scripting: that phase replaces scene_ids with `temp-N`.
     expect(after.scenes.every((s: any) => !String(s.scene_id).startsWith('temp-'))).toBe(true);
   }, 120_000);
+
+  // The two halves of the guarantee, in one run. This suite and
+  // tests/approvedImageIntegrity.test.ts were written three days apart against
+  // separate branches, and each verified its own half alone: the script/scene fix
+  // never had an approved image in front of it, and the image fix never had this
+  // halt in front of it. This is the case where both are true at once.
+  it('keeps the script AND every approved image when it halts', async () => {
+    const scenes = Array.from({ length: 6 }, (_, i) => scene(i, {
+      image_path: path.join(dir, `approved-${i}.jpg`),
+    }));
+    // One scene that cannot be repaired — under the old all-or-nothing rule this one
+    // empty field regenerated the script and took all six approved images with it.
+    (scenes[4] as any).visuals = [{ visual_id: 'v4', prompt: '', asset_type: 'image', status: 'pending' }];
+    const id = 'integrity-script-and-images';
+    await projectWith(scenes, id);
+
+    await runPipeline(id);
+
+    const after = await loadProject(id);
+    expect(after.status).toBe('failed');
+    // Halted, and the message says what was at stake rather than only naming the scene.
+    expect(String(after.error_log)).toMatch(/scene 5 is missing a visual prompt/);
+    expect(String(after.error_log)).toMatch(/6 approved image\(s\)/);
+    // The script half: untouched.
+    expect(after.script).toBe(APPROVED_SCRIPT);
+    expect(after.scenes).toHaveLength(6);
+    expect(after.scenes.every((s: any) => !String(s.scene_id).startsWith('temp-'))).toBe(true);
+    // The image half: every approval still attached to the scene it was made on.
+    expect(after.scenes.map((s: any) => s.image_path))
+      .toEqual(scenes.map((s: any) => s.image_path));
+  }, 120_000);
 });

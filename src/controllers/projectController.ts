@@ -373,8 +373,9 @@ export async function generateScenes(req: Request, res: Response) {
             visual_id: uuidv4(),
             // Same fallback chain `background_prompt` above already uses. Without it a
             // scene whose prompt the agent returned under another key stored '', which
-            // the render used to read as "this project has no approved script" and
-            // rewrite the lot. Never let this land empty when the scene knows its shot.
+            // the render read as "this project has no approved script" and answered by
+            // rewriting the lot — script, scenes and every approved image with them.
+            // Never let this land empty when the scene knows its shot.
             prompt: s.visuals?.[0]?.prompt || s.visual_prompt || s.background_prompt || s.backgroundPrompt || '',
             asset_type: 'image',
             status: 'pending',

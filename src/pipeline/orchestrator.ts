@@ -183,8 +183,12 @@ export function countGeneratedImages(project?: Project | null): number {
 export function repairSceneVisuals(scenes: any[]): number {
   let repaired = 0;
   for (const scene of scenes || []) {
-    if (String(scene?.visuals?.[0]?.prompt || '').trim()) continue;
-    const salvaged = [scene?.background_prompt, scene?.visual_prompt, scene?.visualPrompt, scene?.caption_text]
+    if (!scene) continue;
+    if (String(scene.visuals?.[0]?.prompt || '').trim()) continue;
+    // Union of the aliases both halves of this fix met in the wild: the script/scene
+    // half hit visualPrompt and caption_text, the image half hit backgroundPrompt.
+    // Every one is the scene's own text — nothing here is invented or asked of a model.
+    const salvaged = [scene.background_prompt, scene.backgroundPrompt, scene.visual_prompt, scene.visualPrompt, scene.caption_text]
       .map((value) => String(value || '').trim())
       .find(Boolean);
     if (!salvaged) continue;
@@ -808,14 +812,17 @@ export async function runPipeline(project_id: string, options?: {
     console.log('[Orchestrator] Project status from DB:', project.status);
     if (signal.aborted) throw new Error('PIPELINE_CANCELLED');
 
-    // A project that already has scenes has an approved script. The render honours it.
+    // A project that already has scenes has an approved script, and images the user may
+    // already have approved against it. The render honours both.
     //
     // This used to be an all-or-nothing skip: every scene had to carry both narration
     // and visuals[0].prompt, and if a single one did not, the whole thing fell through
     // to the scripting phase — which overwrites project.script AND project.scenes. A
     // fifteen-scene script with fifteen generated images came back as eight scenes of
     // someone else's writing, and because the original script had been overwritten in
-    // the same pass there was nothing left to compare it against.
+    // the same pass there was nothing left to compare it against. Reproduced again from
+    // the image side three days later: six scenes with six approved images in, six
+    // regenerated scenes out, image_path gone from every one.
     //
     // Now: repair what is repairable, halt on what is not, and never rewrite. The
     // scripting phase below is reachable only for a project with no scenes at all.
@@ -830,11 +837,13 @@ export async function runPipeline(project_id: string, options?: {
       if (broken.length) {
         // Halt rather than regenerate. Rewriting the user's script is not a repair —
         // it is a different video, and it used to happen without anyone being told.
+        const approvedImages = project.scenes.filter((s: any) => s.image_path).length;
         throw new Error(
           `This project has ${project.scenes.length} approved scenes, but ${broken.length} of them cannot be rendered as they stand: `
           + `${broken.map(({ where, scene }: any) => `${where} is missing ${!String(scene.narration_text || '').trim() ? 'narration' : 'a visual prompt'}`).join('; ')}. `
           + `Fix those scenes, or clear the scene list if you want the script rewritten from scratch. `
-          + `The render stopped instead of rewriting your script.`,
+          + `The render stopped instead of rewriting your script`
+          + (approvedImages ? ` and replacing your ${approvedImages} approved image(s).` : '.'),
         );
       }
 
@@ -1138,22 +1147,82 @@ export function ensureBackgroundPrompt(scene: Scene): boolean {
   return true;
 }
 
+/**
+ * Makes the image the user approved in the editor the one the render uses.
+ *
+ * `scene.image_path` is where generateSceneImage and saveSceneImage record the
+ * approved picture, and until now nothing in the render ever read it. The render
+ * wrote it (renderVisualClip, below) and never consulted it, so it was a UI
+ * breadcrumb rather than a decision.
+ *
+ * That mattered because the pre-render cleanup around line 700 wipes every other
+ * trace of the approval before the assets phase starts: it clears
+ * `scene.background_path` unconditionally, clears `visual.rendered_path` whenever
+ * it is a local path — which is exactly where screen 4 puts the approved image
+ * under STORAGE_MODE=local — and then resets `visual.status` from 'completed'
+ * back to 'pending' unless the asset is a .mp4. The comment there says "generated
+ * images (asset_path) are kept", and screen 4 does not write asset_path.
+ *
+ * With every signal erased, the background gate below saw a scene with a prompt
+ * and no background and generated a fresh image, the NARRATOR branch adopted that
+ * image as the whole frame, and the approved one was orphaned. Measured on a real
+ * project: 9 images approved at 16:28, 9 different images generated at 16:31-16:44,
+ * and the video shipped the second set.
+ *
+ * Returns 'adopted' when the approved image is now the visual's asset, 'none' when
+ * the scene never had one, and 'missing' when it had one that is no longer on disk
+ * — which the caller turns into a halt rather than a silent substitution.
+ */
+export type ApprovedImage = 'adopted' | 'none' | 'missing';
+
+export function adoptApprovedImage(scene: any): ApprovedImage {
+  const approved = String(scene?.image_path || '').trim();
+  if (!approved) return 'none';
+  const visual = scene?.visuals?.[0];
+  if (!visual) return 'none';
+  // A remote URL cannot be stat'd here; renderVisualClip downloads it. Only a local
+  // path can be checked, and a local path that has gone is the case worth halting on.
+  const isRemote = /^https?:\/\//i.test(approved);
+  if (!isRemote && !fs.existsSync(approved)) return 'missing';
+  visual.asset_path = approved;
+  visual.status = 'completed';
+  // The approved image IS the whole frame — exactly what the NARRATOR branch means when
+  // it sets this after generating a background. That branch is unreachable here: it sits
+  // behind `if (visual.status === 'completed') return`, and adopting is what makes the
+  // visual completed. Without setting it here, renderVisualClip's Metro V4 gate
+  // (`scene?.unified && USE_METRO_V4`) is false for every approved-image scene and the
+  // render drops to the legacy ffmpeg compositor — 30fps, no vignette, no grain, no
+  // grade. Approving an image would have quietly cost the whole grade.
+  (scene as any).unified = true;
+  return 'adopted';
+}
+
 export async function processSingleScene(scene: Scene, project: Project, voicePreset: string, isPreview: boolean, isTestMode: boolean, signal?: AbortSignal, characterAnchors: Map<string, string> = new Map()) {
   // Check for cancellation at start of scene
   if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
 
-  // Every scene renders through the "unified" path — the background image IS the
-  // frame — and that path is gated on background_prompt being set. Four places build
-  // scenes (projectController x2, StoryboardAgent, the legacy generateScenes) and only
-  // the two editor ones set it, so every pipeline-created project silently fell through
-  // to the legacy ffmpeg compositor: 30fps instead of Metro V4's 24, no vignette, no
-  // grain, no grade, and — because the aesthetic suffix is appended to background_prompt
-  // and nothing else — no "absolutely no text in the image" instruction. Measured on two
-  // renders driven through POST /pipeline/run: garbled pseudo-text in 4 of 6 and 4 of 7
-  // shots, against 0 of 10 on the editor-path video that shipped to YouTube.
+  // An image the user approved in the editor is the image that renders. Same rule the
+  // script already follows: what was approved is not re-derived, and a scene that
+  // genuinely cannot be rendered stops the run by name instead of quietly becoming
+  // something else.
   //
-  // The guard belongs here rather than in the four constructors: this is the one function
-  // every scene reaches, whoever built it, so a fifth constructor cannot reintroduce it.
+  // This runs FIRST of the three guards below. Adopting marks the visual 'completed',
+  // which is what stops the visual-context and art-style passes rewriting the prompt of
+  // a scene whose picture is already chosen — the prompt the user approved stays the
+  // prompt the editor shows.
+  const approvedImage = adoptApprovedImage(scene);
+  if (approvedImage === 'missing') {
+    const where = `scene ${(scene.order ?? 0) + 1}`;
+    throw new Error(
+      `The approved image for ${where} is no longer on disk (${scene.image_path}). ` +
+      `The render stopped rather than generating a different image in its place — ` +
+      `regenerate that scene's image in the editor, then render again.`,
+    );
+  }
+  if (approvedImage === 'adopted') {
+    console.log('[Orchestrator] Using the approved editor image for scene', scene.scene_id, '—', path.basename(String(scene.image_path)));
+  }
+
   // What the script says about where and when this is set. A universe supplies this
   // through its cast bible; a project without one has only its own script, and without
   // reading it a scene like "a resolute statesman delivering a speech" is drawn with
@@ -1174,9 +1243,22 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
     }
   }
 
+  // Every scene renders through the "unified" path — the background image IS the
+  // frame — and that path is gated on background_prompt being set. Four places build
+  // scenes (projectController x2, StoryboardAgent, the legacy generateScenes) and only
+  // the two editor ones set it, so every pipeline-created project silently fell through
+  // to the legacy ffmpeg compositor: 30fps instead of Metro V4's 24, no vignette, no
+  // grain, no grade, and — because the aesthetic suffix is appended to background_prompt
+  // and nothing else — no "absolutely no text in the image" instruction. Measured on two
+  // renders driven through POST /pipeline/run: garbled pseudo-text in 4 of 6 and 4 of 7
+  // shots, against 0 of 10 on the editor-path video that shipped to YouTube.
+  //
+  // The guard belongs here rather than in the four constructors: this is the one function
+  // every scene reaches, whoever built it, so a fifth constructor cannot reintroduce it.
   if (ensureBackgroundPrompt(scene)) {
     console.log('[Orchestrator] background_prompt derived from visual prompt for scene', scene.scene_id);
   }
+
 
   // Strip `NAME:` prefixes once, here, before TTS, captions and the overlay all
   // read narration_text. Patching any one of those three leaves the other two
@@ -1329,7 +1411,12 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
     }
   }
 
-  if (scene.background_prompt && !scene.background_path && !(scene as any).unified) {
+  // `approvedImage === 'adopted'` is the whole point of the guard: a scene whose
+  // picture the user already chose must not have a second one generated behind it.
+  // The pre-render cleanup clears background_path on every run, so without this the
+  // condition below is always true for an editor project and the approved image is
+  // replaced on every single render.
+  if (scene.background_prompt && !scene.background_path && !(scene as any).unified && approvedImage !== 'adopted') {
     try {
       const bgArtStyle = (project.universe as any)?.backgroundArtStyle || '';
       // The aspect the render will actually crop to. Both this hint and the API-level
@@ -1958,6 +2045,10 @@ export async function regenerateScene(project_id: string, scene_id: string, rese
   scene.audio_hash = undefined;
   
   if (resetVisuals) {
+    // Asking for the visuals to be regenerated revokes the approval. adoptApprovedImage
+    // treats scene.image_path as authoritative, so leaving it set here would resurrect
+    // the picture the user just asked to replace.
+    scene.image_path = undefined;
     scene.visuals.forEach(v => {
       v.status = 'pending';
       v.cache_key = '';
@@ -1997,7 +2088,9 @@ export async function regenerateVisual(project_id: string, scene_id: string, vis
   const visual = scene.visuals.find(v => v.visual_id === visual_id);
   if (!visual) throw new Error(`Visual ${visual_id} not found in scene ${scene_id}`);
 
-  // 2. Reset visual
+  // 2. Reset visual. Same as regenerateScene: an explicit regenerate revokes the
+  // approved image, or adoptApprovedImage would hand the old one straight back.
+  if (scene.visuals[0]?.visual_id === visual_id) (scene as any).image_path = undefined;
   visual.status = 'pending';
   visual.cache_key = '';
   visual.asset_path = undefined;
