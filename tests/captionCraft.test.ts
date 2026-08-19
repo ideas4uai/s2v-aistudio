@@ -114,6 +114,9 @@ describe('the burned-in style is frame-relative', () => {
   });
 
   it('fades each cue instead of hard-cutting it on and off', () => {
-    expect(render).toMatch(/\{\\\\fad\(\$\{fade\},\$\{fade\}\)\}/);
+    // The envelope itself is asserted behaviourally in captionOverlayConflict.test.ts;
+    // this only pins that the tag still reaches the ASS events, and that it is the
+    // asymmetric pair rather than the symmetric one that put captions 125ms late.
+    expect(render).toMatch(/\{\\\\fad\(\$\{inMs\},\$\{outMs\}\)\}/);
   });
 });

@@ -91,6 +91,23 @@ const WEIGHT: Record<OverlayKind, number> = {
   payoff: 6, diagram: 5, comparison: 4, stat: 3, namecard: 2, kinetic: 1,
 };
 
+/**
+ * The kinds that put the narration's own words on screen verbatim.
+ *
+ * These are the ones that collide with the burned-in captions, because both are
+ * drawing the same sentence at the same instant from the same wordTimings() call —
+ * by construction, as the header above says. On a real render the closing beat
+ * showed the payoff overlay reading "of faster, more reliable test automation,
+ * accelerating your delivery." across the middle of the frame while the caption
+ * underneath read the same words three at a time, and in the final frames the two
+ * blocks overlapped.
+ *
+ * The other four are exempt on purpose: a diagram, a comparison, a stat figure and
+ * a namecard all show something *derived* — steps, sides, a number, a title — which
+ * the captions do not carry, so both can coexist and neither is a duplicate.
+ */
+export const OVERLAY_RESTATES_NARRATION: ReadonlySet<OverlayKind> = new Set<OverlayKind>(['kinetic', 'payoff']);
+
 /** Kinetic text is a phrase, not a paragraph — past this it stops reading as a graphic. */
 const MAX_KINETIC_WORDS = 7;
 const MAX_PAYOFF_WORDS = 9;

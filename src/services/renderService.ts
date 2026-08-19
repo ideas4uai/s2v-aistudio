@@ -7,6 +7,7 @@ import ffmpeg from 'ffmpeg-static';
 import { generateCaptions } from './captionService.js';
 import {
   planOverlay, sceneVisualKey, transitionBetween, transitionColor, type OverlayWord,
+  OVERLAY_RESTATES_NARRATION, type OverlayKind,
 } from './overlayPlan.js';
 import { progressBus, ProgressStage } from '../server/progressBus.js';
 
@@ -219,6 +220,18 @@ async function callSceneAnimatorV3(
     draft?: boolean;
     /** JSON motion-graphics spec. V4 only; absent means the clip renders as before. */
     overlayPath?: string;
+    /**
+     * Called with whether the engine actually drew the overlay.
+     *
+     * The caller used to infer this from `Boolean(overlayPath)` — i.e. from having
+     * asked, not from it having happened. metro_engine_v4 loads the spec through
+     * motion_overlay.load_overlay, which returns None (and says so) when PIL is
+     * missing, no font resolves, or the spec is unrenderable, and then renders the
+     * clip perfectly well without any overlay. Since the caption pass now stands
+     * down where an overlay is drawn, guessing here would mute a beat that has no
+     * overlay on it.
+     */
+    onOverlayDrawn?: (drawn: boolean) => void;
     /** Transition overrides. Must be symmetric with the neighbouring clip's opposite half. */
     inTransition?: string;
     outTransition?: string;
@@ -328,14 +341,22 @@ function runSceneAnimator(
 
     const proc = spawn('py', args, { env: childEnv });
     let stderr = '';
+    // load_overlay() prints "[Overlay] <kind> overlay, ..." only once it has a
+    // renderable layer, and "Spec present but not renderable" when it does not.
+    // Watching for the positive line is how we know rather than assume.
+    let sawOverlay = false;
 
-    proc.stdout.on('data', (d) => { process.stdout.write(d); });
+    proc.stdout.on('data', (d) => {
+      process.stdout.write(d);
+      if (/\[Overlay\] \w+ overlay,/.test(d.toString())) sawOverlay = true;
+    });
     proc.stderr.on('data', (d) => { stderr += d.toString(); });
 
     const timer = setTimeout(() => { proc.kill(); console.error('[SceneAnimV3] Timeout'); resolve(false); }, 900000);
 
     proc.on('close', (code) => {
       clearTimeout(timer);
+      opts.onOverlayDrawn?.(sawOverlay);
       if (code === 0) {
         const exists = fs.existsSync(outputPath);
         const size   = exists ? fs.statSync(outputPath).size : 0;
@@ -433,7 +454,67 @@ async function mergeVideoAudio(
  *
  * Best-effort: a failure leaves the original clip in place rather than failing the scene.
  */
-async function compositeOverlay(clipPath: string, overlayPath: string, emotion: string): Promise<void> {
+/**
+ * Records the overlay that is actually on the clip, so the caption pass can stand
+ * down for the window it occupies.
+ *
+ * Deliberately records the *outcome*, not the plan. The captions are the fallback:
+ * if the engine did not draw the overlay, or the second pass produced nothing
+ * usable, or the cutout path skipped it entirely, this stays unset and every cue
+ * renders as normal. A beat can therefore lose its overlay and still have text —
+ * what it can never do is show both.
+ *
+ * Written onto the scene, which is persisted, so a later run that reuses the cached
+ * clip inherits what was true when that clip was made rather than guessing.
+ */
+function markOverlayDrawn(scene: any, spec: { kind: string; start: number; end: number } | null, drawn: boolean): void {
+  if (!scene) return;
+  if (spec && drawn) scene.overlay_drawn = { kind: spec.kind, start: spec.start, end: spec.end };
+  else delete scene.overlay_drawn;
+}
+
+/** One frame at 24fps is 41.7ms, so a 40ms in-fade is complete by the next frame. */
+const FADE_IN_MS = 40;
+const FADE_OUT_MS = 90;
+
+/**
+ * Fade envelope for one caption cue, in milliseconds.
+ *
+ * Asymmetric on purpose. The fade started life symmetric at 110ms and put the
+ * captions measurably behind the audio: on a real render the first cue was
+ * scheduled at 0.231s — 19ms BEFORE the 0.250s speech onset detectSpeechSpan
+ * measured, so the timing data was already right — and did not cross visibility
+ * until 0.375s. That is 125ms late, past the +/-100ms tolerance the original
+ * caption-sync work set, and on a 344ms cue it left only 124ms at full opacity.
+ *
+ * In fast so the cue lands on the word; out slow because that is the half that
+ * actually stops three-word cues strobing, and being late to leave costs nothing.
+ * Both scale down on short cues so a cue never spends more time fading than shown.
+ */
+export function cueFade(durationSec: number): { inMs: number; outMs: number } {
+  const ms = Math.max(0, durationSec * 1000);
+  return {
+    inMs: Math.floor(Math.min(FADE_IN_MS, ms / 8)),
+    outMs: Math.floor(Math.min(FADE_OUT_MS, ms / 4)),
+  };
+}
+
+/**
+ * The window where an overlay is already showing the narration, so captions must not.
+ *
+ * Reads `overlay_drawn`, which records what was actually rendered rather than what was
+ * planned — see markOverlayDrawn. Null means "draw every cue", which is the safe
+ * default and the reason a failed overlay can never leave a beat with no text at all.
+ */
+export function mutedCaptionWindow(scene: any): { start: number; end: number } | null {
+  const drawn = scene?.overlay_drawn as { kind: OverlayKind; start: number; end: number } | undefined;
+  if (!drawn || !OVERLAY_RESTATES_NARRATION.has(drawn.kind)) return null;
+  if (!(drawn.end > drawn.start)) return null;
+  return { start: drawn.start, end: drawn.end };
+}
+
+/** Returns whether the overlay actually made it onto the clip. */
+async function compositeOverlay(clipPath: string, overlayPath: string, emotion: string): Promise<boolean> {
   const script = path.join(process.cwd(), 'src/scripts/motion_overlay.py');
   const withOverlay = clipPath.replace(/\.mp4$/, '.ovl.mp4');
   await new Promise<void>((resolve) => {
@@ -450,10 +531,11 @@ async function compositeOverlay(clipPath: string, overlayPath: string, emotion: 
   });
   if (fs.existsSync(withOverlay) && fs.statSync(withOverlay).size > 10000) {
     moveInto(withOverlay, clipPath);
-  } else {
-    console.warn('[Overlay] Pass produced nothing usable — keeping the clip as rendered');
-    try { if (fs.existsSync(withOverlay)) fs.unlinkSync(withOverlay); } catch { /* non-fatal */ }
+    return true;
   }
+  console.warn('[Overlay] Pass produced nothing usable — keeping the clip as rendered');
+  try { if (fs.existsSync(withOverlay)) fs.unlinkSync(withOverlay); } catch { /* non-fatal */ }
+  return false;
 }
 
 async function callRembg(inputPath: string, outputPath: string): Promise<boolean> {
@@ -831,6 +913,9 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 }
               );
               if (cutoutSuccess) {
+                // The cutout engine is not given --overlay, so nothing was drawn:
+                // record that plainly rather than letting a stale flag suppress captions.
+                markOverlayDrawn(scene, overlaySpec, false);
                 moveInto(cutoutPath, outputPath);
                 scene.rendered_path = outputPath;
                 try {
@@ -869,13 +954,14 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 height: engineH,
                 draft: isPreview,
                 overlayPath,
+                onOverlayDrawn: (drawn) => { engineDrewOverlay = drawn; },
                 inTransition,
                 outTransition,
                 transitionColor: transitionColor(project),
               }
             );
             if (unifiedSuccess) {
-              engineDrewOverlay = Boolean(overlayPath);
+              markOverlayDrawn(scene, overlaySpec, engineDrewOverlay);
               moveInto(unifiedPath, outputPath);
               scene.rendered_path = outputPath;
               try {
@@ -911,13 +997,13 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 height: engineH,
                 draft: isPreview,
                 overlayPath,
+                onOverlayDrawn: (drawn) => { engineDrewOverlay = drawn; },
                 inTransition,
                 outTransition,
                 transitionColor: transitionColor(project),
               }
             );
             if (compositeSuccess) {
-              engineDrewOverlay = Boolean(overlayPath);
               console.log('[RenderVisual] Composite succeeded — writing to output');
               // renderVisualClip returns video-only; assembleSceneSegment adds audio downstream.
               // mergeVideoAudio is available for direct use if the caller needs a self-contained clip.
@@ -963,8 +1049,9 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
      }
      // Metro draws its own overlay inline; every other path needs the second pass.
      if (overlayPath && !engineDrewOverlay) {
-       await compositeOverlay(outputPath, overlayPath, (visual as any).emotion || scene?.emotion || 'neutral');
+       engineDrewOverlay = await compositeOverlay(outputPath, overlayPath, (visual as any).emotion || scene?.emotion || 'neutral');
      }
+     markOverlayDrawn(scene, overlaySpec, engineDrewOverlay);
      return outputPath;
   } catch(e: any) {
      if (e.message === 'PIPELINE_CANCELLED' || e.name === 'AbortError') throw new Error('PIPELINE_CANCELLED');
@@ -1350,9 +1437,35 @@ Style: Default,Arial,${capFont},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 `;
 
+  // Where an overlay is drawing the narration's own words, the caption stands down
+  // for exactly that window.
+  //
+  // Both systems read the same wordTimings(), so on a kinetic or payoff beat they
+  // draw the same sentence at the same instant in two places. On a real render the
+  // closing beat carried the payoff overlay reading "of faster, more reliable test
+  // automation, accelerating your delivery." across the middle of the frame while
+  // the caption underneath read the same words three at a time, and in the last
+  // frames the two blocks overlapped.
+  //
+  // The overlay wins because it is the deliberate emphasis treatment — larger,
+  // animated, and chosen for this beat. Only the overlapping window is dropped, so
+  // a long scene keeps captions either side of it, and only the kinds that restate
+  // narration verbatim qualify: a diagram, comparison, stat or namecard shows
+  // something derived that the captions do not carry, and both belong on screen.
+  //
+  // overlay_drawn is set from what was actually rendered, never from the plan, so a
+  // failed overlay leaves the captions in place rather than muting the beat.
+  const muted = mutedCaptionWindow(scene);
+
   // Split long chunks into 2-3 word groups for mobile readability
   const wordChunks: { start: number; end: number; text: string }[] = [];
   for (const chunk of scene.caption_chunks) {
+    if (muted) {
+      // Midpoint, not overlap: a cue straddling the boundary belongs to whichever
+      // side it mostly sits in, so one cue cannot half-vanish.
+      const mid = (chunk.start + chunk.end) / 2;
+      if (mid >= muted.start && mid <= muted.end) continue;
+    }
     const words = String(chunk.text).trim().split(/\s+/);
     if (words.length <= 3) { wordChunks.push(chunk); continue; }
     const groups: string[] = [];
@@ -1361,19 +1474,25 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     groups.forEach((text, i) => wordChunks.push({ start: chunk.start + i * groupDur, end: chunk.start + (i + 1) * groupDur, text }));
   }
 
-  // Every cue was a hard cut on and a hard cut off — no fade, no pop, nothing.
-  // At three words a cue that is a lot of hard switching. A short symmetric fade
-  // is the cheapest thing that stops it reading as a subtitle track; it is also
-  // the only override tag on the caption path, so it cannot collide with the
-  // colour tag captionService already prepends.
-  const CUE_FADE_MS = 110;
+  // A cue used to hard-cut on and off, which at three words a cue is a lot of
+  // switching; a fade fixed that and introduced a sync problem of its own.
+  //
+  // The fade was symmetric at 110ms. Measured on a real render: the first cue is
+  // scheduled at 0.231s (19ms BEFORE the speech onset detectSpeechSpan measured
+  // at 0.250s, so the timing data was right), and the caption did not cross
+  // visibility until 0.375s — 125ms after the word, past the +/-100ms tolerance
+  // the original caption-sync work set. On a 344ms cue, 110+110 left only 124ms
+  // at full opacity.
+  //
+  // So: in fast, out slow. 40ms is under one frame at 24fps, so a cue is at full
+  // opacity by the frame after it starts and reads as landing on the word. The
+  // out-fade is what actually stops the flicker, and being late off costs nothing.
   const assEvents = wordChunks.map((chunk) => {
     const start = toAssTime(chunk.start);
     const end = toAssTime(chunk.end);
     const text = chunk.text.replace(/\n/g, '\\N');
-    // Never fade longer than the cue itself, or a short cue never reaches full opacity.
-    const fade = Math.max(0, Math.min(CUE_FADE_MS, Math.floor(((chunk.end - chunk.start) * 1000) / 3)));
-    return `Dialogue: 0,${start},${end},Default,,0,0,0,,{\\fad(${fade},${fade})}${text}`;
+    const { inMs, outMs } = cueFade(chunk.end - chunk.start);
+    return `Dialogue: 0,${start},${end},Default,,0,0,0,,{\\fad(${inMs},${outMs})}${text}`;
   }).join('\n');
 
   const assPath = path.join(tmpDir, `${scene.scene_id}_captions.ass`);
