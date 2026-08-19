@@ -56,7 +56,17 @@ export const countWords = (text: unknown): number =>
  * shape that table already had: shorts ran ~7s per scene, long-form ~11s.
  */
 export const sceneCountRange = (seconds: number): [number, number] => {
-  const perScene = seconds <= 60 ? 7 : 11;
+  // 7s per scene for shorts capped a 45s video at 8 scenes — a 5.6s floor per
+  // shot, so the cut rate could never approach the reference no matter how the
+  // script was written. Measured on the video that actually shipped to YouTube:
+  // 10 shots across 37.6s, a 3.76s mean, 16 cuts a minute. Every automated render
+  // measured 6.2-8.4 cuts a minute against it.
+  //
+  // 5.0 puts a 45s short at 8-11 scenes (4.1-5.6s each), which brackets what
+  // shipped, without the 16-scene explosion a 60s target would get from 4.5.
+  // Each scene is one image and one engine run, so this is a real cost increase
+  // per render — it buys the edit rhythm back.
+  const perScene = seconds <= 60 ? 5 : 11;
   return [
     Math.max(2, Math.round(seconds / (perScene * 1.2))),
     Math.max(3, Math.round(seconds / (perScene * 0.85))),

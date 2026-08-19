@@ -50,17 +50,31 @@ describe('targetWordCount', () => {
 });
 
 describe('sceneCountRange', () => {
-  it('reproduces the preset table it replaced, within a scene', () => {
-    expect(sceneCountRange(30)).toEqual([4, 5]);   // table said 4-6
-    expect(sceneCountRange(60)).toEqual([7, 10]);  // table said 7-9
-    expect(sceneCountRange(180)).toEqual([14, 19]); // table said 14-18
+  // These used to pin the preset table this function replaced (30s -> 4-5,
+  // 60s -> 7-10). That table was built around 7s per scene for shorts, which put
+  // a 5.6s floor under every shot and capped a 45s video at 8 scenes — so the cut
+  // rate could not approach the reference however the script was written.
+  // Measured on the video that actually shipped to YouTube: 10 shots across
+  // 37.6s, a 3.76s mean, 16 cuts a minute, against 6.2-8.4 for every automated
+  // render. The shorts rate is now 5s, and these assert the new intent.
+  it('brackets the shot length that shipped, for a short', () => {
+    const [lo, hi] = sceneCountRange(45);
+    expect(45 / hi).toBeLessThanOrEqual(3.76 + 0.6);
+    expect(45 / lo).toBeGreaterThanOrEqual(3.76);
+    expect([lo, hi]).toEqual([8, 11]);
   });
 
-  it('answers for a custom length the table had no row for', () => {
+  it('keeps long-form on its own, slower rate', () => {
+    // Only the shorts rate moved; 11s per scene past 60s is unchanged.
+    expect(sceneCountRange(180)).toEqual([14, 19]);
+  });
+
+  it('answers for a custom length no preset row covered', () => {
     const [lo, hi] = sceneCountRange(42);
     expect(lo).toBeLessThan(hi);
-    expect(lo).toBeGreaterThanOrEqual(4);
-    expect(hi).toBeLessThanOrEqual(8);
+    // A short beat is the point, so the per-scene length must stay under the old
+    // 5.6s floor rather than drifting back up to it.
+    expect(42 / hi).toBeLessThan(5.6);
   });
 
   it('never asks for fewer than two scenes, however short the target', () => {
