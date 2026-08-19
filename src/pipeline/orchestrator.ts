@@ -26,6 +26,7 @@ import { getFromCache } from '../services/cacheService.js';
 import { logUserEvent, logEvent, estimateCostUsd } from '../services/logService.js';
 import { buildSceneTimeline } from '../utils/timeline.js';
 import { targetLengthSeconds, planScenePadding, MAX_PAD_FACTOR, secondsForWords, countWords } from '../utils/targetLength.js';
+import { stripSpeakerPrefix } from '../utils/narration.js';
 import { projectVideoFileName } from '../utils/filename.js';
 import { QuotaService } from '../server/services/quotaService.js';
 import { AIService } from '../services/aiService.js';
@@ -1081,6 +1082,22 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   // every scene reaches, whoever built it, so a fifth constructor cannot reintroduce it.
   if (ensureBackgroundPrompt(scene)) {
     console.log('[Orchestrator] background_prompt derived from visual prompt for scene', scene.scene_id);
+  }
+
+  // Strip `NAME:` prefixes once, here, before TTS, captions and the overlay all
+  // read narration_text. Patching any one of those three leaves the other two
+  // still speaking or printing the prefix — a rendered frame showed the caption
+  // "RAVI: This staging" and another the overlay "ARJUN: It's just a routine
+  // refresh for". Character attribution is already resolved at storyboard time,
+  // so nothing downstream still needs the marker.
+  {
+    const spoken = stripSpeakerPrefix(scene.narration_text);
+    if (spoken !== scene.narration_text) {
+      console.log('[Orchestrator] stripped speaker prefix from scene', scene.scene_id);
+      scene.narration_text = spoken;
+      // caption_text is a copy of the narration at every constructor; keep them equal.
+      if ((scene as any).caption_text) (scene as any).caption_text = spoken;
+    }
   }
 
   // Stamp neighbour scene types so Metro V4 can render its half of each
