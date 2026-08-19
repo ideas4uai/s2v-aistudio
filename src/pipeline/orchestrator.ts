@@ -25,7 +25,7 @@ import { getScenesToRender, sceneRenderHash } from '../utils/diff.js';
 import { getFromCache } from '../services/cacheService.js';
 import { logUserEvent, logEvent, estimateCostUsd } from '../services/logService.js';
 import { buildSceneTimeline } from '../utils/timeline.js';
-import { targetLengthSeconds, planScenePadding, MAX_PAD_FACTOR } from '../utils/targetLength.js';
+import { targetLengthSeconds, planScenePadding, MAX_PAD_FACTOR, secondsForWords, countWords } from '../utils/targetLength.js';
 import { projectVideoFileName } from '../utils/filename.js';
 import { QuotaService } from '../server/services/quotaService.js';
 import { AIService } from '../services/aiService.js';
@@ -396,7 +396,12 @@ Output ONLY valid JSON as an array of objects: [{"narration": "", "visual": "", 
     const jsonStr = rawResult.replace(/```json|```/g, '').trim();
     const sceneData = JSON.parse(jsonStr);
 
-    return sceneData.map((s: any) => ({
+    // Same fix as StoryboardAgent: `s.duration || 5` made every scene ask for
+    // 5s regardless of what was written in it, so every scene overran by the
+    // same amount and the cut rhythm went metronomic.
+    return sceneData.map((s: any) => {
+      const sceneSeconds = s.duration || secondsForWords(countWords(s.narration));
+      return {
       scene_id: uuidv4(),
       order: s.order,
       scene_type: s.order === 0 ? 'hook' : (s.order === sceneData.length - 1 ? 'cta' : 'build'),
@@ -408,12 +413,12 @@ Output ONLY valid JSON as an array of objects: [{"narration": "", "visual": "", 
         visual_id: uuidv4(),
         prompt: s.visual,
         asset_type: 'ai_image',
-        duration_target: s.duration || 5,
+        duration_target: sceneSeconds,
         motion_instruction: s.order === 0 ? 'zoom_in' : 'pan_right',
         status: 'pending',
         cache_key: '',
       }],
-      duration_target: s.duration || 5,
+      duration_target: sceneSeconds,
       duration_actual: null,
       asset_type: 'ai_image',
       motion_instruction: null,
@@ -423,7 +428,8 @@ Output ONLY valid JSON as an array of objects: [{"narration": "", "visual": "", 
       cache_key: '',
       status: 'pending',
       error_log: null,
-    }));
+      };
+    });
   } catch (err) {
     console.warn('[Orchestrator] Failed to generate scene graph via AI, using fallback:', err);
     return fallbackSceneGraph(rawScript, project);

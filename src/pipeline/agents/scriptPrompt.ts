@@ -91,7 +91,11 @@ export function buildScriptSections(brief: ScriptBrief): ScriptSections {
   // regardless of target, which alone overshoots a 30s budget — the script then
   // came back long and the padding logic got blamed for a scripting problem.
   const perScene = Math.max(1, Math.round(words / sceneHi));
-  const perSceneFloor = Math.max(5, Math.round(perScene * 0.6));
+  // 0.6 of the average was a floor high enough to forbid the short beats the
+  // objective now asks for — the two rules contradicted and the floor won, which
+  // is how every scene ended up the same length. Kept as a floor against a scene
+  // that is a single word, not as a second way of specifying the average.
+  const perSceneFloor = Math.max(3, Math.round(perScene * 0.45));
 
   // ── ROLE: who is writing. Comes off the brand, then the cast, then a default
   // that assumes nothing about subject matter beyond "explains things".
@@ -119,7 +123,13 @@ export function buildScriptSections(brief: ScriptBrief): ScriptSections {
   const format = brief.mode === 'long' ? 'long-form video' : 'short-form vertical video';
   const objectiveParts = [
     `Write the complete spoken script for a ${format} about "${clean(brief.topic)}".`,
-    `Read aloud it must run about ${seconds} seconds — roughly ${words} words at ${WORDS_PER_SECOND} words per second — split across ${sceneLo}-${sceneHi} scenes of about ${perScene} words each.`,
+    `Read aloud it must run about ${seconds} seconds — roughly ${words} words at ${WORDS_PER_SECOND} words per second — split across ${sceneLo}-${sceneHi} scenes averaging ${perScene} words.`,
+    // "about N words each" was read as "N words every time", and the scripts came
+    // back with every scene inside a two-word band. Each scene is one shot, so
+    // uniform scenes are uniform shot lengths: measured stdev of 0.48s on a 6.18s
+    // mean, against 1.44s on 3.76s for the video that shipped. The cut rhythm is
+    // written here, not in the renderer, so the variation has to be asked for.
+    `Average, not quota: vary scene length deliberately. Some beats should land in ${Math.max(3, Math.round(perScene * 0.45))}-${Math.round(perScene * 0.7)} words and others in ${Math.round(perScene * 1.2)}-${Math.round(perScene * 1.6)}. A short beat after a long one is heard as a cut; a run of equal-length scenes reads as a slideshow however good the writing is. At least two scenes must be markedly shorter than the rest.`,
   ];
   if (clean(brief.hookStrategy)) {
     objectiveParts.push(`Open on a hook of this kind: ${clean(brief.hookStrategy)}.`);

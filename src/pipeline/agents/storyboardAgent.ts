@@ -3,6 +3,7 @@ import { Project } from '../../models/project.js';
 import { DirectorPlan } from './directorAgent.js';
 import { AIService } from '../../services/aiService.js';
 import { Scene, VisualFrame } from '../../models/scene.js';
+import { secondsForWords, countWords } from '../../utils/targetLength.js';
 
 const SHOT_TYPES = ['wide shot', 'medium shot', 'close-up', 'detail shot', 'over-shoulder shot'];
 
@@ -272,6 +273,14 @@ Total duration of all frames must equal ${sceneDuration} seconds.`;
     return expandedResults.map((s: any, idx: number) => {
       const motion = pickMotion(project, idx);
 
+      // The scriptwriter does not emit a duration, so `s.duration || 5` gave every
+      // scene in every pipeline-created project the same 5s target regardless of
+      // what was written in it — while the narration ran 6-9.7s. Every scene
+      // overran by the same amount, which is what made the cut rhythm metronomic.
+      // Derive it from the words actually written instead, so a three-word beat
+      // stays a three-word beat.
+      const sceneSeconds = s.duration || secondsForWords(countWords(s.narration));
+
       const emotion = detectEmotion(s.narration || '');
       const character = detectCharacter(s.narration || '', featuredCharacters);
       // scene_type is the RENDER vocabulary (bedroom|street|grid|corridor|black)
@@ -295,7 +304,7 @@ Total duration of all frames must equal ${sceneDuration} seconds.`;
           visual_id: uuidv4(),
           prompt: s.expandedPrompt,
           asset_type: 'ai_image',
-          duration_target: s.duration || 5,
+          duration_target: sceneSeconds,
           motion_instruction: motion,
           status: 'pending',
           cache_key: '',
@@ -303,7 +312,7 @@ Total duration of all frames must equal ${sceneDuration} seconds.`;
           ...(s.frames ? { frames: s.frames } : {}),
           ...(s.referenceImageUrl ? { referenceImageUrl: s.referenceImageUrl } : {}),
         }],
-        duration_target: s.duration || 5,
+        duration_target: sceneSeconds,
         duration_actual: null,
         asset_type: 'ai_image',
         motion_instruction: null,

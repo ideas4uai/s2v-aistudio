@@ -25,6 +25,30 @@ export const WORDS_PER_SECOND = 2.5;
 export const targetWordCount = (seconds: number): number => Math.round(seconds * WORDS_PER_SECOND);
 
 /**
+ * The inverse: how long a written line actually takes to say.
+ *
+ * Every scene constructor used to write `duration_target: s.duration || 5`, and
+ * the scriptwriter does not emit a duration, so every scene in every
+ * pipeline-created project asked for exactly 5 seconds no matter what was
+ * written in it. Narration then ran 6-9.7s and overran uniformly, which is what
+ * turned the edit metronomic: measured shot-length stdev of 0.48s on a 6.18s
+ * mean, against 1.44s on 3.76s for the video that shipped to YouTube.
+ *
+ * Deriving the target from the words that were actually written makes the
+ * target honest, so a short beat stays short instead of being held to five
+ * seconds. Rounded to a quarter-second: the renderer works in frames, and a
+ * target carrying six decimals only pretends to a precision TTS does not have.
+ */
+export const secondsForWords = (words: number): number => {
+  const secs = Math.max(words, 0) / WORDS_PER_SECOND;
+  return Math.max(1, Math.round(secs * 4) / 4);
+};
+
+/** Words in a narration line, the way every caller was counting them inline. */
+export const countWords = (text: unknown): number =>
+  String(text ?? '').trim().split(/\s+/).filter(Boolean).length;
+
+/**
  * How many scenes a `seconds`-long video should be cut into.
  *
  * Replaces the preset lookup table DirectorAgent carried, which had nothing to
