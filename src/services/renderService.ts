@@ -1285,6 +1285,25 @@ function writeCaptionAss(scene: any, tmpDir: string, playResX: number, playResY:
     return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
   };
 
+  // Every caption number below is a fraction of the frame, not a constant.
+  //
+  // Fontsize was a hardcoded 34 while PlayResY tracks the export resolution, so
+  // the type was 1.77% of frame height at 1080p (against a 3.1-5.7% norm for
+  // vertical short-form) and swung 3.5x across export settings — 2.66% at 720p,
+  // 0.89% at 4K. The motion-graphics overlay in the same frame sizes itself at
+  // 4.8-5.2% of height and says so in a comment; the two text systems were three
+  // times apart. 0.05 puts them on the same scale.
+  //
+  // MarginV was 120 — 6.25% off the bottom — which is inside the band YouTube
+  // Shorts and TikTok reserve for their own title, handle and description rows
+  // (250-320px at 1920). The captions were rendered underneath the platform UI.
+  // 0.22 lifts them into the lower-middle third, where short-form captions live.
+  const capFont = Math.max(18, Math.round(playResY * 0.05));
+  const capOutline = Math.max(2, Math.round(capFont * 0.09));
+  const capShadow = Math.max(1, Math.round(capFont * 0.03));
+  const capMarginV = Math.round(playResY * 0.22);
+  const capMarginH = Math.round(playResX * 0.08);
+
   const assHeader = `[Script Info]
 ScriptType: v4.00+
 PlayResX: ${playResX}
@@ -1293,7 +1312,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: Default,Arial,34,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,2,80,80,120,1
+Style: Default,Arial,${capFont},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,${capOutline},${capShadow},2,${capMarginH},${capMarginH},${capMarginV},1
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
@@ -1310,11 +1329,19 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     groups.forEach((text, i) => wordChunks.push({ start: chunk.start + i * groupDur, end: chunk.start + (i + 1) * groupDur, text }));
   }
 
+  // Every cue was a hard cut on and a hard cut off — no fade, no pop, nothing.
+  // At three words a cue that is a lot of hard switching. A short symmetric fade
+  // is the cheapest thing that stops it reading as a subtitle track; it is also
+  // the only override tag on the caption path, so it cannot collide with the
+  // colour tag captionService already prepends.
+  const CUE_FADE_MS = 110;
   const assEvents = wordChunks.map((chunk) => {
     const start = toAssTime(chunk.start);
     const end = toAssTime(chunk.end);
     const text = chunk.text.replace(/\n/g, '\\N');
-    return `Dialogue: 0,${start},${end},Default,,0,0,0,,${text}`;
+    // Never fade longer than the cue itself, or a short cue never reaches full opacity.
+    const fade = Math.max(0, Math.min(CUE_FADE_MS, Math.floor(((chunk.end - chunk.start) * 1000) / 3)));
+    return `Dialogue: 0,${start},${end},Default,,0,0,0,,{\\fad(${fade},${fade})}${text}`;
   }).join('\n');
 
   const assPath = path.join(tmpDir, `${scene.scene_id}_captions.ass`);
