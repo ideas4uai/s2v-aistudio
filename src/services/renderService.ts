@@ -1379,6 +1379,37 @@ async function disclosureMetadataArgs(project: any): Promise<string> {
   return `-metadata comment="${clean(disclosure)}" -metadata description="${clean(disclosure)}"`;
 }
 
+// Neutral enough to sit under an explainer without competing with it. Prefix, not
+// filename: the files on disk are named `04-ambient-background.mp3.mp3`.
+const DEFAULT_MUSIC_PREFIX = '04-ambient-background';
+
+/**
+ * The music bed for a render.
+ *
+ * music_track is only ever written by a human choosing one in the editor, so every
+ * project created through Automate mode or POST /pipeline/run had none — measured,
+ * five of six audited renders carried `music_track: null`. That is what made the
+ * dead air literal: astats reported `Max level 0.000000` across 36.2% of one file,
+ * every sample a zero, because nothing was running underneath the narration.
+ *
+ * An explicit empty string still means "no music" — that is a choice. Only an
+ * absent field falls back, and the fallback matches by prefix because the files on
+ * disk carry a doubled extension (01-lofi-study.mp3.mp3) that any hardcoded name
+ * would silently miss.
+ */
+export function resolveMusicTrack(project: any): string {
+  const chosen = project?.settings?.musicTrack ?? project?.music_track;
+  if (typeof chosen === 'string') return chosen.trim();
+  const musicDir = process.env.MUSIC_DIR || path.join(process.cwd(), 'music');
+  try {
+    const files = fs.readdirSync(musicDir).filter((f) => /\.(mp3|m4a|wav|ogg)$/i.test(f)).sort();
+    if (!files.length) return '';
+    return files.find((f) => f.startsWith(DEFAULT_MUSIC_PREFIX)) || files[0];
+  } catch {
+    return '';
+  }
+}
+
 export const stitchScenes = async (scenes: any, project: any, signal?: AbortSignal) => {
   if (!scenes || scenes.length === 0) return "";
   
@@ -1386,7 +1417,7 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
   const tmpDir = path.join(os.tmpdir(), 'ais-renderer', projectId);
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
-  const outputPath = path.join(tmpDir, `final_${new Date().getTime()}.mp4`);
+  let outputPath = path.join(tmpDir, `final_${new Date().getTime()}.mp4`);
   const listFile = path.join(tmpDir, `list_${new Date().getTime()}.txt`);
   
   let listContent = '';
@@ -1419,35 +1450,65 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
        console.log('[Stitch] Output duration:', probeDur.trim(), 'seconds');
      } catch { console.warn('[Stitch] Could not probe output duration'); }
 
-     const musicTrack = project?.settings?.musicTrack || project?.music_track;
+     // ── Master. Runs on every render, not only when someone picked music.
+     //
+     // There was no mixing stage at all before this: the whole audio chain was
+     // asetpts (a timestamp reset), silenceremove (an edit) and apad (padding),
+     // none of which touch amplitude, spectrum or dynamics. The narration level
+     // in the finished file was whatever Kokoro happened to emit. Measured across
+     // six renders including both YouTube uploads: -21.7 to -25.2 LUFS, every one
+     // 8-11 LU under YouTube's -14 target. YouTube only attenuates, never boosts,
+     // so they play back quieter than everything around them.
+     const musicTrack = resolveMusicTrack(project);
      const musicVolume = project?.settings?.musicVolume ?? project?.music_volume ?? 0.08;
-     console.log('[Music] Track:', musicTrack, 'Volume:', musicVolume);
-     if (musicTrack) {
-       const musicDir = process.env.MUSIC_DIR || path.join(process.cwd(), 'music');
-       const musicPath = path.join(musicDir, musicTrack);
-       console.log('[Music] File exists:', fs.existsSync(musicPath), musicPath);
-       if (fs.existsSync(musicPath)) {
-         const volume = Number(musicVolume).toFixed(2);
-         const outputWithMusic = path.join(tmpDir, `final_music_${Date.now()}.mp4`);
-         try {
-           // normalize=0 is not optional here. amix defaults to normalize=1, which scales
-           // every input by 1/inputs — so adding a background track quietly dropped the
-           // narration by 6dB, and put the music in at half the volume that was asked for.
-           // Measured on a real render: narration -32.0dB alone, -38.0dB once music was
-           // added. With normalize=0 the narration stays at unity and the music sits under
-           // it at exactly the chosen level.
-           await guardedExec(
-             `"${ffmpeg}" -i "${outputPath}" -stream_loop -1 -i "${musicPath}" -filter_complex "[0:a]aformat=sample_rates=44100:channel_layouts=stereo[a0];[1:a]volume=${volume}[bg];[a0][bg]amix=inputs=2:duration=first:normalize=0[aout]" -map 0:v -map "[aout]" -c:v copy -c:a aac -ar 44100 -ac 2 -b:a 192k ${disclosure} -y "${outputWithMusic}"`,
-             signal
-           );
-           fs.promises.unlink(outputPath).catch(() => {});
-           return outputWithMusic;
-         } catch (musicErr: any) {
-           console.warn('[Stitch] Music mix failed, using unmixed video:', musicErr?.message);
-         }
+     const musicPath = musicTrack
+       ? path.join(process.env.MUSIC_DIR || path.join(process.cwd(), 'music'), musicTrack)
+       : '';
+     const haveMusic = Boolean(musicPath && fs.existsSync(musicPath));
+     if (musicTrack && !haveMusic) console.warn(`[Music] Track not found, mastering without it: ${musicPath}`);
+     console.log('[Master] Track:', musicTrack || '(none)', 'Volume:', musicVolume, 'Found:', haveMusic);
+
+     const mastered = path.join(tmpDir, `final_master_${Date.now()}.mp4`);
+     try {
+       // Voice chain: high-pass below speech, then gentle 3:1 to give the
+       // narration density it never had (measured crest factor 8-11, i.e.
+       // completely uncompressed, with 17-19 dB of headroom sitting unused).
+       const voice = 'aformat=sample_rates=44100:channel_layouts=stereo,highpass=f=80,'
+         + 'acompressor=threshold=-18dB:ratio=3:attack=5:release=120:makeup=2';
+       // loudnorm last, so it measures the finished mix. I=-14 is YouTube's own
+       // normalisation target; TP=-1.5 leaves headroom for the lossy encode.
+       const master = 'loudnorm=I=-14:TP=-1.5:LRA=11';
+
+       let filter: string;
+       if (haveMusic) {
+         // normalize=0 is not optional. amix defaults to normalize=1, which scales
+         // every input by 1/inputs — adding a bed quietly dropped the narration by
+         // 6dB. Measured: narration -32.0dB alone, -38.0dB once music was added.
+         //
+         // sidechaincompress ducks the bed under the voice instead of leaving it at
+         // a static gain. Without it the bed sits ~7.5 dB under the narration where
+         // broadcast practice is 15-22, and fights every line.
+         filter = `[0:a]${voice},asplit=2[v1][vk];`
+           + `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=${Number(musicVolume).toFixed(2)}[bg];`
+           + `[bg][vk]sidechaincompress=threshold=0.03:ratio=8:attack=5:release=300[duck];`
+           + `[v1][duck]amix=inputs=2:duration=first:normalize=0[mix];`
+           + `[mix]${master}[aout]`;
        } else {
-         console.warn(`[Stitch] Music file not found: ${musicPath}`);
+         filter = `[0:a]${voice},${master}[aout]`;
        }
+       const inputs = haveMusic
+         ? `-i "${outputPath}" -stream_loop -1 -i "${musicPath}"`
+         : `-i "${outputPath}"`;
+       await guardedExec(
+         `"${ffmpeg}" ${inputs} -filter_complex "${filter}" -map 0:v -map "[aout]" `
+         + `-c:v copy -c:a aac -ar 44100 -ac 2 -b:a 192k ${disclosure} -shortest -y "${mastered}"`,
+         signal,
+       );
+       fs.promises.unlink(outputPath).catch(() => {});
+       outputPath = mastered;
+     } catch (masterErr: any) {
+       // Never lose a finished render to the mastering pass.
+       console.warn('[Master] Mastering failed, using unmastered video:', masterErr?.message);
      }
 
      if (project) {
