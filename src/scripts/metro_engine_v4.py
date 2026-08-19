@@ -147,13 +147,50 @@ WIND_MAP = {
 # ═══════════════════════════════════════════════════════════════════════════
 
 EMOTION_PALETTES = {
-    "neutral": {"r":1.02,"g":1.00,"b":0.98,"br":1.00,"co":1.00,"st":80, "sb":0.95,"ds":0.00,"vs":0.45,"ra":0.0},
+    # "neutral" was brightness x1.00, contrast x1.00, desaturation 0.00 and channel
+    # gains within 2% — arithmetically an identity transform. The grade ran on every
+    # frame of every render and did nothing, which is why independently-generated
+    # images never looked like they came from one video.
+    #
+    # It is now a real grade, and deliberately a contrasty one. Measured across six
+    # videos, recent output was MORE hue-consistent than either YouTube upload
+    # (3.7 degrees of spread against 93.7) and looked worse for it: consistency
+    # without contrast reads as monotony. Lifting contrast and dropping the black
+    # point widens the lightness range within each shot, which is the dynamism the
+    # uploads had, rather than flattening everything to one look.
+    "neutral": {"r":1.03,"g":1.00,"b":0.97,"br":0.99,"co":1.10,"st":85, "sb":0.97,"ds":0.06,"vs":0.48,"ra":0.0},
     "tense":   {"r":0.94,"g":0.97,"b":1.06,"br":0.95,"co":1.12,"st":100,"sb":1.08,"ds":0.25,"vs":0.52,"ra":0.0},
     "curious": {"r":1.08,"g":1.05,"b":0.92,"br":1.03,"co":1.00,"st":70, "sb":0.90,"ds":0.00,"vs":0.38,"ra":0.0},
     "sad":     {"r":0.92,"g":0.94,"b":1.06,"br":0.88,"co":0.95,"st":90, "sb":1.05,"ds":0.45,"vs":0.55,"ra":0.0},
     "empty":   {"r":0.90,"g":0.90,"b":1.00,"br":0.86,"co":1.18,"st":120,"sb":1.03,"ds":0.55,"vs":0.62,"ra":1.0},
-    "warm":    {"r":1.05,"g":1.02,"b":0.95,"br":1.00,"co":1.00,"st":80, "sb":0.92,"ds":0.00,"vs":0.45,"ra":0.0},
+    "warm":    {"r":1.05,"g":1.02,"b":0.95,"br":1.02,"co":1.06,"st":80, "sb":0.92,"ds":0.00,"vs":0.42,"ra":0.0},
 }
+
+# detectEmotion (storyboardAgent.ts) emits a seven-value vocabulary that is not
+# this one: confused, excited, thinking, angry, sad, surprised, neutral. Only
+# `sad` and `neutral` are keys here, so five of the seven silently fell through
+# the `if emotion in EMOTION_PALETTES else 'neutral'` guards below — and because
+# CameraPath keys off the same string, they lost their camera move as well as
+# their grade. Every scene in every render got the neutral treatment regardless
+# of what was detected.
+#
+# One alias table rather than five new palettes: the palettes and the camera
+# branches share this vocabulary, so aliasing gives a detected emotion both a
+# grade and a move, and keeps the two in agreement by construction.
+EMOTION_ALIASES = {
+    "confused":  "curious",
+    "thinking":  "curious",
+    "excited":   "warm",
+    "angry":     "tense",
+    "surprised": "tense",
+}
+
+
+def resolve_emotion(emotion):
+    """The palette/camera key for a detected emotion. Never falls through silently."""
+    e = str(emotion or "").strip().lower()
+    e = EMOTION_ALIASES.get(e, e)
+    return e if e in EMOTION_PALETTES else "neutral"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # MATH
@@ -365,7 +402,7 @@ class CameraPath:
       shake:   handheld shake in px, applied to the composed frame
     """
     def __init__(self, emotion: str, duration: float, unified: bool):
-        self.emotion  = emotion if emotion in EMOTION_PALETTES else 'neutral'
+        self.emotion  = resolve_emotion(emotion)
         self.duration = max(duration, 0.001)
         self.unified  = unified
         # Unified full-scene images get a low zoom anchor (the floor moves
@@ -399,9 +436,25 @@ class CameraPath:
             zoom    = lerp(1.0, 1.04 + self.zoom_boost, p)
             tx      = lerp(0.0, 8.0, p)
             vscroll = lerp(0.1, 0.4, p)
-        else:  # neutral — gentle pan
-            zoom    = 1.05 + self.zoom_boost
-            tx      = lerp(-18.0, 18.0, t / self.duration)
+        else:  # neutral — gentle pan with a slow push
+            # Two bugs lived on this branch, and it is the one almost every scene
+            # takes (detectEmotion's other six values mostly fall through to here).
+            #
+            # 1. It used raw `t / self.duration` while `p` — the smoothstep of
+            #    exactly that value — sat computed one line above. Every other
+            #    branch uses `p`. Measured on a shipped render: per-second drift
+            #    of 1.83, 1.77, 1.79, 1.74 px, a straight line with no ease at
+            #    either end, which is the signature of amateur Ken Burns.
+            # 2. `zoom` was a constant, so it was a fixed 5% crop-in and not a
+            #    move at all. The frame never changed scale.
+            #
+            # Amplitude: ±18 units through the -0.3 background factor gave 10.8px
+            # of travel across a six-second shot — 1% of frame width, below the
+            # threshold where a viewer reads it as motion. ±30 through the wider
+            # factor below lands at ~42px, about 7 px/s, which matches what the
+            # depth path already produces so the two paths feel like one camera.
+            zoom    = lerp(1.02, 1.055 + self.zoom_boost, p)
+            tx      = lerp(-30.0, 30.0, p)
             vscroll = 0.25
         return zoom, tx, vscroll, shake_x, shake_y
 
@@ -928,7 +981,7 @@ class SceneRendererV4:
         self.W, self.H, self.FPS = cfg.w, cfg.h, cfg.fps
         self.duration = duration
         self.total_frames = max(1, int(duration * cfg.fps))
-        self.emotion = emotion if emotion in EMOTION_PALETTES else 'neutral'
+        self.emotion = resolve_emotion(emotion)
         self.scene_type = scene_type if scene_type in PARTICLE_MAP else 'default'
         self.unified = char_rgba is None
 
@@ -1144,9 +1197,20 @@ class SceneRendererV4:
             dy0 = int(clamp(y_offset, 0, self.v_pan_room))
             frame = _depth_warp(frame, self.depth_speed_map[dy0:dy0 + self.H],
                                 self.depth_grid_x, self.depth_grid_y, cam_tx_px, cam_ty_px)
+            # The depth branch used to return here, dropping `zoom` on the floor —
+            # so a depth-parallax scene had per-pixel lateral separation and no
+            # push whatsoever. Now that every NARRATOR scene is unified this is
+            # the branch most shots take, so the missing push was most shots.
+            # Translation stays at 0: the pan is already in the remap above and
+            # applying it twice would double the drift.
+            frame = warp_zoom_translate(frame, zoom, 0.5, self.camera.cy, 0, 0)
         else:
+            # -0.3 put the background an order of magnitude below the foreground
+            # and below perception with it. -0.7 keeps the layers ordered
+            # (background < character 1.0 < particles 1.5) while making the
+            # background's own move visible.
             frame = warp_zoom_translate(frame, zoom, 0.5, self.camera.cy,
-                                        -0.3 * tx, 0)
+                                        -0.7 * tx, 0)
 
         # 2. Midground: AO + shadow + character (1.0x camera speed)
         if self.char is not None:
@@ -1470,7 +1534,7 @@ def main():
         sys.exit(1)
 
     _set_transition_color(args.transition_color)
-    emotion = args.emotion if args.emotion in EMOTION_PALETTES else 'neutral'
+    emotion = resolve_emotion(args.emotion)
     scene_type = args.scene_type if args.scene_type in PARTICLE_MAP else 'default'
 
     char_rgba = None
