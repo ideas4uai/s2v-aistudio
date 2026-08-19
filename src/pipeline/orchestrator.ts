@@ -1033,9 +1033,49 @@ export async function runPipeline(project_id: string, options?: {
 }
 
 
+/**
+ * Guarantees the invariant every renderer downstream assumes: a scene has a
+ * background_prompt. Returns true if it had to derive one.
+ *
+ * Four places build scenes — projectController's two editor paths, StoryboardAgent,
+ * and the legacy generateScenes — and only the editor ones set the field. Everything
+ * that makes a render look finished hangs off it: the aesthetic suffix carrying
+ * "absolutely no text, no words, no numbers ... anywhere in the image" is appended to
+ * background_prompt and to nothing else, and a scene without a background_path never
+ * gets flagged `unified`, so it renders on the legacy ffmpeg compositor at 30fps
+ * instead of Metro V4 at 24 with its vignette, grain and grade.
+ *
+ * Deriving from visuals[0].prompt is exactly what projectController already does
+ * (`s.background_prompt || ... || s.visuals?.[0]?.prompt`) — this puts the same
+ * fallback on the path that skipped it.
+ */
+export function ensureBackgroundPrompt(scene: Scene): boolean {
+  if (String(scene.background_prompt || '').trim()) return false;
+  const visualPrompt = String(scene.visuals?.[0]?.prompt || '').trim();
+  if (!visualPrompt) return false;
+  scene.background_prompt = visualPrompt;
+  return true;
+}
+
 export async function processSingleScene(scene: Scene, project: Project, voicePreset: string, isPreview: boolean, isTestMode: boolean, signal?: AbortSignal, characterAnchors: Map<string, string> = new Map()) {
   // Check for cancellation at start of scene
   if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
+
+  // Every scene renders through the "unified" path — the background image IS the
+  // frame — and that path is gated on background_prompt being set. Four places build
+  // scenes (projectController x2, StoryboardAgent, the legacy generateScenes) and only
+  // the two editor ones set it, so every pipeline-created project silently fell through
+  // to the legacy ffmpeg compositor: 30fps instead of Metro V4's 24, no vignette, no
+  // grain, no grade, and — because the aesthetic suffix is appended to background_prompt
+  // and nothing else — no "absolutely no text in the image" instruction. Measured on two
+  // renders driven through POST /pipeline/run: garbled pseudo-text in 4 of 6 and 4 of 7
+  // shots, against 0 of 10 on the editor-path video that shipped to YouTube.
+  //
+  // The guard belongs here rather than in the four constructors: this is the one function
+  // every scene reaches, whoever built it, so a fifth constructor cannot reintroduce it.
+  if (ensureBackgroundPrompt(scene)) {
+    console.log('[Orchestrator] background_prompt derived from visual prompt for scene', scene.scene_id);
+  }
 
   // Stamp neighbour scene types so Metro V4 can render its half of each
   // cross-scene transition (clips are stitched with concat -c copy, so each
