@@ -38,6 +38,7 @@ import { loadKnowledgeDocuments } from '../content-studio/store.js';
 import { generateSeoMetadata } from './agents/seoAgent.js';
 import { StoryboardAgent } from './agents/storyboardAgent.js';
 import { WorldAgent } from './agents/worldAgent.js';
+import { applyVisualContext, inferVisualContext, needsVisualContext } from './visualContext.js';
 import { abortManager } from './abortManager.js';
 import { requestContext } from '../server/utils/context.js';
 import { persistProjectToDisk, restoreProjectsFromDisk, deleteProjectFromDisk } from './projectDiskStore.js';
@@ -165,6 +166,39 @@ export function countGeneratedImages(project?: Project | null): number {
     if ((scene as any).background_path) n++;
   }
   return n;
+}
+
+/**
+ * Fills in a missing `visuals[0].prompt` from the other places a scene's visual
+ * direction is known to live, and returns how many scenes were repaired.
+ *
+ * Every source here is the scene's OWN text — nothing is invented and nothing is
+ * asked of a model. It exists because a scene can reach the renderer looking
+ * complete to the user while that one field is empty: `generateScenes` maps
+ * `prompt: s.visuals?.[0]?.prompt || ''` with no fallback (the `background_prompt`
+ * on the line above it has a four-way one), and `generateSceneImage` generates from
+ * the prompt in the request body without ever writing it back. A scene can
+ * therefore own a real, correct image and still store no prompt.
+ */
+export function repairSceneVisuals(scenes: any[]): number {
+  let repaired = 0;
+  for (const scene of scenes || []) {
+    if (String(scene?.visuals?.[0]?.prompt || '').trim()) continue;
+    const salvaged = [scene?.background_prompt, scene?.visual_prompt, scene?.visualPrompt, scene?.caption_text]
+      .map((value) => String(value || '').trim())
+      .find(Boolean);
+    if (!salvaged) continue;
+    if (!Array.isArray(scene.visuals) || !scene.visuals.length) {
+      scene.visuals = [{
+        visual_id: uuidv4(), prompt: salvaged, asset_type: 'image', status: 'pending',
+        motion_instruction: 'zoom_in', cache_key: '', duration_target: scene.duration_target || 5,
+      }];
+    } else {
+      scene.visuals[0].prompt = salvaged;
+    }
+    repaired++;
+  }
+  return repaired;
 }
 
 export function resetSceneForRetry(scene: any): void {
@@ -774,17 +808,41 @@ export async function runPipeline(project_id: string, options?: {
     console.log('[Orchestrator] Project status from DB:', project.status);
     if (signal.aborted) throw new Error('PIPELINE_CANCELLED');
 
-    // If the project already has scenes with narration + visual prompts, skip AI scripting entirely
-    const hasExistingScenes = (project.scenes || []).length > 0
-      && project.scenes.every((s: any) => s.narration_text && s.visuals?.[0]?.prompt);
+    // A project that already has scenes has an approved script. The render honours it.
+    //
+    // This used to be an all-or-nothing skip: every scene had to carry both narration
+    // and visuals[0].prompt, and if a single one did not, the whole thing fell through
+    // to the scripting phase — which overwrites project.script AND project.scenes. A
+    // fifteen-scene script with fifteen generated images came back as eight scenes of
+    // someone else's writing, and because the original script had been overwritten in
+    // the same pass there was nothing left to compare it against.
+    //
+    // Now: repair what is repairable, halt on what is not, and never rewrite. The
+    // scripting phase below is reachable only for a project with no scenes at all.
+    if ((project.scenes || []).length > 0) {
+      const repaired = repairSceneVisuals(project.scenes);
+      if (repaired) console.log(`[Orchestrator] Backfilled a visual prompt on ${repaired} scene(s) from their own background/legacy fields`);
 
-    if (
-      hasExistingScenes &&
-      (project.status === 'draft' || project.status === 'pending' ||
-       project.status === 'scripting' || project.status === 'scene_parsing')
-    ) {
-      console.log(`[Orchestrator] ${project.scenes.length} existing scenes with visual prompts — skipping scripting and scene_parsing, jumping to generating_assets`);
-      project.status = 'generating_assets';
+      const broken = project.scenes
+        .map((scene: any, index: number) => ({ scene, where: `scene ${(scene.order ?? index) + 1}` }))
+        .filter(({ scene }: any) => !String(scene.narration_text || '').trim() || !String(scene.visuals?.[0]?.prompt || '').trim());
+
+      if (broken.length) {
+        // Halt rather than regenerate. Rewriting the user's script is not a repair —
+        // it is a different video, and it used to happen without anyone being told.
+        throw new Error(
+          `This project has ${project.scenes.length} approved scenes, but ${broken.length} of them cannot be rendered as they stand: `
+          + `${broken.map(({ where, scene }: any) => `${where} is missing ${!String(scene.narration_text || '').trim() ? 'narration' : 'a visual prompt'}`).join('; ')}. `
+          + `Fix those scenes, or clear the scene list if you want the script rewritten from scratch. `
+          + `The render stopped instead of rewriting your script.`,
+        );
+      }
+
+      if (project.status === 'draft' || project.status === 'pending' ||
+          project.status === 'scripting' || project.status === 'scene_parsing') {
+        console.log(`[Orchestrator] ${project.scenes.length} approved scenes — skipping scripting and scene_parsing, jumping to generating_assets`);
+        project.status = 'generating_assets';
+      }
       await guardedSaveProjectState(project, signal);
     }
 
@@ -849,6 +907,22 @@ export async function runPipeline(project_id: string, options?: {
     }
 
     if (project.status === 'generating_assets') {
+      // Read the script for its setting once, before any image is generated. One short
+      // call per render, not per scene, and only for projects with no universe to say
+      // it for them. Cached on the project so a re-render reuses the same answer and
+      // the two halves of a video cannot disagree about where they are set.
+      if (needsVisualContext(project) && (project as any).visual_context === undefined) {
+        try {
+          (project as any).visual_context = await inferVisualContext(project.topic || '', project.script || '');
+          console.log(`[Orchestrator] Visual context: ${(project as any).visual_context || '(the script names no particular setting)'}`);
+        } catch (contextErr: any) {
+          // Never fatal: without it the imagery is what it was before this existed.
+          (project as any).visual_context = '';
+          console.warn('[Orchestrator] Visual context inference failed:', contextErr?.message);
+        }
+        await guardedSaveProjectState(project, signal);
+      }
+
       await updateProgress(project, 'Generating AI assets (Images & Audio)...', 40, signal);
       
       const scenesToProcess = project.scenes.filter(s => {
@@ -1080,6 +1154,26 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   //
   // The guard belongs here rather than in the four constructors: this is the one function
   // every scene reaches, whoever built it, so a fifth constructor cannot reintroduce it.
+  // What the script says about where and when this is set. A universe supplies this
+  // through its cast bible; a project without one has only its own script, and without
+  // reading it a scene like "a resolute statesman delivering a speech" is drawn with
+  // whatever faces the image model reaches for by default.
+  //
+  // This has to run BEFORE ensureBackgroundPrompt, which copies visuals[0].prompt into
+  // background_prompt: the background gate below generates from background_prompt, and
+  // on a NARRATOR scene that background becomes the whole frame. Applied after it — as
+  // it was until ensureBackgroundPrompt existed — the context reached only the character
+  // path, which a unified scene never takes, so the one image the viewer sees was drawn
+  // without it.
+  const visualContext = String((project as any).visual_context || '');
+  if (visualContext && scene.visuals[0] && (scene.visuals[0] as any).status !== 'completed') {
+    const withContext = applyVisualContext(scene.visuals[0].prompt || '', visualContext);
+    if (withContext !== scene.visuals[0].prompt) {
+      scene.visuals[0].prompt = withContext;
+      console.log(`[Orchestrator] Visual context applied to scene ${scene.scene_id}: ${visualContext}`);
+    }
+  }
+
   if (ensureBackgroundPrompt(scene)) {
     console.log('[Orchestrator] background_prompt derived from visual prompt for scene', scene.scene_id);
   }

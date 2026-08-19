@@ -60,6 +60,16 @@ export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
     plugins: [react(), tailwindcss(), logFullReload],
+    // Four test files shell out to Python, each importing numpy and cv2, and vitest's
+    // default worker count on this machine is one per hardware thread — so eight of
+    // them raced for four cores and interpreters started failing to come up at all.
+    // The failures moved between files run to run and every one of them passed alone,
+    // which is what a resource limit looks like rather than a broken assertion.
+    // Three keeps the suite parallel without letting the Python side pile up.
+    test: {
+      maxWorkers: 3,
+      minWorkers: 1,
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
