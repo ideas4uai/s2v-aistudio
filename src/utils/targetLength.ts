@@ -25,6 +25,30 @@ export const WORDS_PER_SECOND = 2.5;
 export const targetWordCount = (seconds: number): number => Math.round(seconds * WORDS_PER_SECOND);
 
 /**
+ * The inverse: how long a written line actually takes to say.
+ *
+ * Every scene constructor used to write `duration_target: s.duration || 5`, and
+ * the scriptwriter does not emit a duration, so every scene in every
+ * pipeline-created project asked for exactly 5 seconds no matter what was
+ * written in it. Narration then ran 6-9.7s and overran uniformly, which is what
+ * turned the edit metronomic: measured shot-length stdev of 0.48s on a 6.18s
+ * mean, against 1.44s on 3.76s for the video that shipped to YouTube.
+ *
+ * Deriving the target from the words that were actually written makes the
+ * target honest, so a short beat stays short instead of being held to five
+ * seconds. Rounded to a quarter-second: the renderer works in frames, and a
+ * target carrying six decimals only pretends to a precision TTS does not have.
+ */
+export const secondsForWords = (words: number): number => {
+  const secs = Math.max(words, 0) / WORDS_PER_SECOND;
+  return Math.max(1, Math.round(secs * 4) / 4);
+};
+
+/** Words in a narration line, the way every caller was counting them inline. */
+export const countWords = (text: unknown): number =>
+  String(text ?? '').trim().split(/\s+/).filter(Boolean).length;
+
+/**
  * How many scenes a `seconds`-long video should be cut into.
  *
  * Replaces the preset lookup table DirectorAgent carried, which had nothing to
@@ -32,7 +56,17 @@ export const targetWordCount = (seconds: number): number => Math.round(seconds *
  * shape that table already had: shorts ran ~7s per scene, long-form ~11s.
  */
 export const sceneCountRange = (seconds: number): [number, number] => {
-  const perScene = seconds <= 60 ? 7 : 11;
+  // 7s per scene for shorts capped a 45s video at 8 scenes — a 5.6s floor per
+  // shot, so the cut rate could never approach the reference no matter how the
+  // script was written. Measured on the video that actually shipped to YouTube:
+  // 10 shots across 37.6s, a 3.76s mean, 16 cuts a minute. Every automated render
+  // measured 6.2-8.4 cuts a minute against it.
+  //
+  // 5.0 puts a 45s short at 8-11 scenes (4.1-5.6s each), which brackets what
+  // shipped, without the 16-scene explosion a 60s target would get from 4.5.
+  // Each scene is one image and one engine run, so this is a real cost increase
+  // per render — it buys the edit rhythm back.
+  const perScene = seconds <= 60 ? 5 : 11;
   return [
     Math.max(2, Math.round(seconds / (perScene * 1.2))),
     Math.max(3, Math.round(seconds / (perScene * 0.85))),

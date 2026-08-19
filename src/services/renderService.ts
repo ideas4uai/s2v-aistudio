@@ -7,12 +7,16 @@ import ffmpeg from 'ffmpeg-static';
 import { generateCaptions } from './captionService.js';
 import {
   planOverlay, sceneVisualKey, transitionBetween, transitionColor, type OverlayWord,
+  OVERLAY_RESTATES_NARRATION, type OverlayKind,
 } from './overlayPlan.js';
 import { progressBus, ProgressStage } from '../server/progressBus.js';
 
 const execAsync = promisify(exec);
 
 let rembgRunning = false;
+// Same reason as rembgRunning: the Metro engine is internally parallel, so running
+// several at once oversubscribes the machine rather than going faster.
+let metroRunning = false;
 
 /**
  * Whether a cached render output can still be trusted.
@@ -216,11 +220,52 @@ async function callSceneAnimatorV3(
     draft?: boolean;
     /** JSON motion-graphics spec. V4 only; absent means the clip renders as before. */
     overlayPath?: string;
+    /**
+     * Called with whether the engine actually drew the overlay.
+     *
+     * The caller used to infer this from `Boolean(overlayPath)` — i.e. from having
+     * asked, not from it having happened. metro_engine_v4 loads the spec through
+     * motion_overlay.load_overlay, which returns None (and says so) when PIL is
+     * missing, no font resolves, or the spec is unrenderable, and then renders the
+     * clip perfectly well without any overlay. Since the caption pass now stands
+     * down where an overlay is drawn, guessing here would mute a beat that has no
+     * overlay on it.
+     */
+    onOverlayDrawn?: (drawn: boolean) => void;
     /** Transition overrides. Must be symmetric with the neighbouring clip's opposite half. */
     inTransition?: string;
     outTransition?: string;
     transitionColor?: string;
   } = {}
+): Promise<boolean> {
+  // Serialize engine runs, for the same reason callRembg does: the engine splits
+  // one clip across four worker processes, and the orchestrator renders scenes
+  // three at a time. That is twelve CPU-bound processes plus a depth model on an
+  // eight-thread laptop, and it does not go faster — it thrashes. Measured: with
+  // every scene now unified (so every scene runs the engine, where before most
+  // fell through to ffmpeg), the first batch of three hit the 15-minute timeout
+  // and fell back to the 30fps Ken Burns path, which is how a render that was
+  // meant to be 24fps came out at 30. Serialised, the same clip takes ~22s.
+  while (metroRunning) {
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  metroRunning = true;
+  try {
+    return await runSceneAnimator(backgroundPath, characterPath, outputPath, duration, emotion, sceneType, _ffmpegPath, opts);
+  } finally {
+    metroRunning = false;
+  }
+}
+
+function runSceneAnimator(
+  backgroundPath: string,
+  characterPath: string,
+  outputPath: string,
+  duration: number,
+  emotion: string,
+  sceneType: string,
+  _ffmpegPath: string,
+  opts: Parameters<typeof callSceneAnimatorV3>[7] = {},
 ): Promise<boolean> {
   return new Promise((resolve) => {
     const useV4 = process.env.USE_METRO_V4 === 'true';
@@ -296,14 +341,22 @@ async function callSceneAnimatorV3(
 
     const proc = spawn('py', args, { env: childEnv });
     let stderr = '';
+    // load_overlay() prints "[Overlay] <kind> overlay, ..." only once it has a
+    // renderable layer, and "Spec present but not renderable" when it does not.
+    // Watching for the positive line is how we know rather than assume.
+    let sawOverlay = false;
 
-    proc.stdout.on('data', (d) => { process.stdout.write(d); });
+    proc.stdout.on('data', (d) => {
+      process.stdout.write(d);
+      if (/\[Overlay\] \w+ overlay,/.test(d.toString())) sawOverlay = true;
+    });
     proc.stderr.on('data', (d) => { stderr += d.toString(); });
 
     const timer = setTimeout(() => { proc.kill(); console.error('[SceneAnimV3] Timeout'); resolve(false); }, 900000);
 
     proc.on('close', (code) => {
       clearTimeout(timer);
+      opts.onOverlayDrawn?.(sawOverlay);
       if (code === 0) {
         const exists = fs.existsSync(outputPath);
         const size   = exists ? fs.statSync(outputPath).size : 0;
@@ -401,7 +454,67 @@ async function mergeVideoAudio(
  *
  * Best-effort: a failure leaves the original clip in place rather than failing the scene.
  */
-async function compositeOverlay(clipPath: string, overlayPath: string, emotion: string): Promise<void> {
+/**
+ * Records the overlay that is actually on the clip, so the caption pass can stand
+ * down for the window it occupies.
+ *
+ * Deliberately records the *outcome*, not the plan. The captions are the fallback:
+ * if the engine did not draw the overlay, or the second pass produced nothing
+ * usable, or the cutout path skipped it entirely, this stays unset and every cue
+ * renders as normal. A beat can therefore lose its overlay and still have text —
+ * what it can never do is show both.
+ *
+ * Written onto the scene, which is persisted, so a later run that reuses the cached
+ * clip inherits what was true when that clip was made rather than guessing.
+ */
+function markOverlayDrawn(scene: any, spec: { kind: string; start: number; end: number } | null, drawn: boolean): void {
+  if (!scene) return;
+  if (spec && drawn) scene.overlay_drawn = { kind: spec.kind, start: spec.start, end: spec.end };
+  else delete scene.overlay_drawn;
+}
+
+/** One frame at 24fps is 41.7ms, so a 40ms in-fade is complete by the next frame. */
+const FADE_IN_MS = 40;
+const FADE_OUT_MS = 90;
+
+/**
+ * Fade envelope for one caption cue, in milliseconds.
+ *
+ * Asymmetric on purpose. The fade started life symmetric at 110ms and put the
+ * captions measurably behind the audio: on a real render the first cue was
+ * scheduled at 0.231s — 19ms BEFORE the 0.250s speech onset detectSpeechSpan
+ * measured, so the timing data was already right — and did not cross visibility
+ * until 0.375s. That is 125ms late, past the +/-100ms tolerance the original
+ * caption-sync work set, and on a 344ms cue it left only 124ms at full opacity.
+ *
+ * In fast so the cue lands on the word; out slow because that is the half that
+ * actually stops three-word cues strobing, and being late to leave costs nothing.
+ * Both scale down on short cues so a cue never spends more time fading than shown.
+ */
+export function cueFade(durationSec: number): { inMs: number; outMs: number } {
+  const ms = Math.max(0, durationSec * 1000);
+  return {
+    inMs: Math.floor(Math.min(FADE_IN_MS, ms / 8)),
+    outMs: Math.floor(Math.min(FADE_OUT_MS, ms / 4)),
+  };
+}
+
+/**
+ * The window where an overlay is already showing the narration, so captions must not.
+ *
+ * Reads `overlay_drawn`, which records what was actually rendered rather than what was
+ * planned — see markOverlayDrawn. Null means "draw every cue", which is the safe
+ * default and the reason a failed overlay can never leave a beat with no text at all.
+ */
+export function mutedCaptionWindow(scene: any): { start: number; end: number } | null {
+  const drawn = scene?.overlay_drawn as { kind: OverlayKind; start: number; end: number } | undefined;
+  if (!drawn || !OVERLAY_RESTATES_NARRATION.has(drawn.kind)) return null;
+  if (!(drawn.end > drawn.start)) return null;
+  return { start: drawn.start, end: drawn.end };
+}
+
+/** Returns whether the overlay actually made it onto the clip. */
+async function compositeOverlay(clipPath: string, overlayPath: string, emotion: string): Promise<boolean> {
   const script = path.join(process.cwd(), 'src/scripts/motion_overlay.py');
   const withOverlay = clipPath.replace(/\.mp4$/, '.ovl.mp4');
   await new Promise<void>((resolve) => {
@@ -418,10 +531,11 @@ async function compositeOverlay(clipPath: string, overlayPath: string, emotion: 
   });
   if (fs.existsSync(withOverlay) && fs.statSync(withOverlay).size > 10000) {
     moveInto(withOverlay, clipPath);
-  } else {
-    console.warn('[Overlay] Pass produced nothing usable — keeping the clip as rendered');
-    try { if (fs.existsSync(withOverlay)) fs.unlinkSync(withOverlay); } catch { /* non-fatal */ }
+    return true;
   }
+  console.warn('[Overlay] Pass produced nothing usable — keeping the clip as rendered');
+  try { if (fs.existsSync(withOverlay)) fs.unlinkSync(withOverlay); } catch { /* non-fatal */ }
+  return false;
 }
 
 async function callRembg(inputPath: string, outputPath: string): Promise<boolean> {
@@ -799,6 +913,9 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 }
               );
               if (cutoutSuccess) {
+                // The cutout engine is not given --overlay, so nothing was drawn:
+                // record that plainly rather than letting a stale flag suppress captions.
+                markOverlayDrawn(scene, overlaySpec, false);
                 moveInto(cutoutPath, outputPath);
                 scene.rendered_path = outputPath;
                 try {
@@ -837,13 +954,14 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 height: engineH,
                 draft: isPreview,
                 overlayPath,
+                onOverlayDrawn: (drawn) => { engineDrewOverlay = drawn; },
                 inTransition,
                 outTransition,
                 transitionColor: transitionColor(project),
               }
             );
             if (unifiedSuccess) {
-              engineDrewOverlay = Boolean(overlayPath);
+              markOverlayDrawn(scene, overlaySpec, engineDrewOverlay);
               moveInto(unifiedPath, outputPath);
               scene.rendered_path = outputPath;
               try {
@@ -879,13 +997,13 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 height: engineH,
                 draft: isPreview,
                 overlayPath,
+                onOverlayDrawn: (drawn) => { engineDrewOverlay = drawn; },
                 inTransition,
                 outTransition,
                 transitionColor: transitionColor(project),
               }
             );
             if (compositeSuccess) {
-              engineDrewOverlay = Boolean(overlayPath);
               console.log('[RenderVisual] Composite succeeded — writing to output');
               // renderVisualClip returns video-only; assembleSceneSegment adds audio downstream.
               // mergeVideoAudio is available for direct use if the caller needs a self-contained clip.
@@ -931,8 +1049,9 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
      }
      // Metro draws its own overlay inline; every other path needs the second pass.
      if (overlayPath && !engineDrewOverlay) {
-       await compositeOverlay(outputPath, overlayPath, (visual as any).emotion || scene?.emotion || 'neutral');
+       engineDrewOverlay = await compositeOverlay(outputPath, overlayPath, (visual as any).emotion || scene?.emotion || 'neutral');
      }
+     markOverlayDrawn(scene, overlaySpec, engineDrewOverlay);
      return outputPath;
   } catch(e: any) {
      if (e.message === 'PIPELINE_CANCELLED' || e.name === 'AbortError') throw new Error('PIPELINE_CANCELLED');
@@ -1285,6 +1404,25 @@ function writeCaptionAss(scene: any, tmpDir: string, playResX: number, playResY:
     return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
   };
 
+  // Every caption number below is a fraction of the frame, not a constant.
+  //
+  // Fontsize was a hardcoded 34 while PlayResY tracks the export resolution, so
+  // the type was 1.77% of frame height at 1080p (against a 3.1-5.7% norm for
+  // vertical short-form) and swung 3.5x across export settings — 2.66% at 720p,
+  // 0.89% at 4K. The motion-graphics overlay in the same frame sizes itself at
+  // 4.8-5.2% of height and says so in a comment; the two text systems were three
+  // times apart. 0.05 puts them on the same scale.
+  //
+  // MarginV was 120 — 6.25% off the bottom — which is inside the band YouTube
+  // Shorts and TikTok reserve for their own title, handle and description rows
+  // (250-320px at 1920). The captions were rendered underneath the platform UI.
+  // 0.22 lifts them into the lower-middle third, where short-form captions live.
+  const capFont = Math.max(18, Math.round(playResY * 0.05));
+  const capOutline = Math.max(2, Math.round(capFont * 0.09));
+  const capShadow = Math.max(1, Math.round(capFont * 0.03));
+  const capMarginV = Math.round(playResY * 0.22);
+  const capMarginH = Math.round(playResX * 0.08);
+
   const assHeader = `[Script Info]
 ScriptType: v4.00+
 PlayResX: ${playResX}
@@ -1293,15 +1431,41 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: Default,Arial,34,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,2,80,80,120,1
+Style: Default,Arial,${capFont},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,${capOutline},${capShadow},2,${capMarginH},${capMarginH},${capMarginV},1
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 `;
 
+  // Where an overlay is drawing the narration's own words, the caption stands down
+  // for exactly that window.
+  //
+  // Both systems read the same wordTimings(), so on a kinetic or payoff beat they
+  // draw the same sentence at the same instant in two places. On a real render the
+  // closing beat carried the payoff overlay reading "of faster, more reliable test
+  // automation, accelerating your delivery." across the middle of the frame while
+  // the caption underneath read the same words three at a time, and in the last
+  // frames the two blocks overlapped.
+  //
+  // The overlay wins because it is the deliberate emphasis treatment — larger,
+  // animated, and chosen for this beat. Only the overlapping window is dropped, so
+  // a long scene keeps captions either side of it, and only the kinds that restate
+  // narration verbatim qualify: a diagram, comparison, stat or namecard shows
+  // something derived that the captions do not carry, and both belong on screen.
+  //
+  // overlay_drawn is set from what was actually rendered, never from the plan, so a
+  // failed overlay leaves the captions in place rather than muting the beat.
+  const muted = mutedCaptionWindow(scene);
+
   // Split long chunks into 2-3 word groups for mobile readability
   const wordChunks: { start: number; end: number; text: string }[] = [];
   for (const chunk of scene.caption_chunks) {
+    if (muted) {
+      // Midpoint, not overlap: a cue straddling the boundary belongs to whichever
+      // side it mostly sits in, so one cue cannot half-vanish.
+      const mid = (chunk.start + chunk.end) / 2;
+      if (mid >= muted.start && mid <= muted.end) continue;
+    }
     const words = String(chunk.text).trim().split(/\s+/);
     if (words.length <= 3) { wordChunks.push(chunk); continue; }
     const groups: string[] = [];
@@ -1310,11 +1474,25 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     groups.forEach((text, i) => wordChunks.push({ start: chunk.start + i * groupDur, end: chunk.start + (i + 1) * groupDur, text }));
   }
 
+  // A cue used to hard-cut on and off, which at three words a cue is a lot of
+  // switching; a fade fixed that and introduced a sync problem of its own.
+  //
+  // The fade was symmetric at 110ms. Measured on a real render: the first cue is
+  // scheduled at 0.231s (19ms BEFORE the speech onset detectSpeechSpan measured
+  // at 0.250s, so the timing data was right), and the caption did not cross
+  // visibility until 0.375s — 125ms after the word, past the +/-100ms tolerance
+  // the original caption-sync work set. On a 344ms cue, 110+110 left only 124ms
+  // at full opacity.
+  //
+  // So: in fast, out slow. 40ms is under one frame at 24fps, so a cue is at full
+  // opacity by the frame after it starts and reads as landing on the word. The
+  // out-fade is what actually stops the flicker, and being late off costs nothing.
   const assEvents = wordChunks.map((chunk) => {
     const start = toAssTime(chunk.start);
     const end = toAssTime(chunk.end);
     const text = chunk.text.replace(/\n/g, '\\N');
-    return `Dialogue: 0,${start},${end},Default,,0,0,0,,${text}`;
+    const { inMs, outMs } = cueFade(chunk.end - chunk.start);
+    return `Dialogue: 0,${start},${end},Default,,0,0,0,,{\\fad(${inMs},${outMs})}${text}`;
   }).join('\n');
 
   const assPath = path.join(tmpDir, `${scene.scene_id}_captions.ass`);
@@ -1352,6 +1530,37 @@ async function disclosureMetadataArgs(project: any): Promise<string> {
   return `-metadata comment="${clean(disclosure)}" -metadata description="${clean(disclosure)}"`;
 }
 
+// Neutral enough to sit under an explainer without competing with it. Prefix, not
+// filename: the files on disk are named `04-ambient-background.mp3.mp3`.
+const DEFAULT_MUSIC_PREFIX = '04-ambient-background';
+
+/**
+ * The music bed for a render.
+ *
+ * music_track is only ever written by a human choosing one in the editor, so every
+ * project created through Automate mode or POST /pipeline/run had none — measured,
+ * five of six audited renders carried `music_track: null`. That is what made the
+ * dead air literal: astats reported `Max level 0.000000` across 36.2% of one file,
+ * every sample a zero, because nothing was running underneath the narration.
+ *
+ * An explicit empty string still means "no music" — that is a choice. Only an
+ * absent field falls back, and the fallback matches by prefix because the files on
+ * disk carry a doubled extension (01-lofi-study.mp3.mp3) that any hardcoded name
+ * would silently miss.
+ */
+export function resolveMusicTrack(project: any): string {
+  const chosen = project?.settings?.musicTrack ?? project?.music_track;
+  if (typeof chosen === 'string') return chosen.trim();
+  const musicDir = process.env.MUSIC_DIR || path.join(process.cwd(), 'music');
+  try {
+    const files = fs.readdirSync(musicDir).filter((f) => /\.(mp3|m4a|wav|ogg)$/i.test(f)).sort();
+    if (!files.length) return '';
+    return files.find((f) => f.startsWith(DEFAULT_MUSIC_PREFIX)) || files[0];
+  } catch {
+    return '';
+  }
+}
+
 export const stitchScenes = async (scenes: any, project: any, signal?: AbortSignal) => {
   if (!scenes || scenes.length === 0) return "";
   
@@ -1359,7 +1568,7 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
   const tmpDir = path.join(os.tmpdir(), 'ais-renderer', projectId);
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
-  const outputPath = path.join(tmpDir, `final_${new Date().getTime()}.mp4`);
+  let outputPath = path.join(tmpDir, `final_${new Date().getTime()}.mp4`);
   const listFile = path.join(tmpDir, `list_${new Date().getTime()}.txt`);
   
   let listContent = '';
@@ -1392,35 +1601,65 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
        console.log('[Stitch] Output duration:', probeDur.trim(), 'seconds');
      } catch { console.warn('[Stitch] Could not probe output duration'); }
 
-     const musicTrack = project?.settings?.musicTrack || project?.music_track;
+     // ── Master. Runs on every render, not only when someone picked music.
+     //
+     // There was no mixing stage at all before this: the whole audio chain was
+     // asetpts (a timestamp reset), silenceremove (an edit) and apad (padding),
+     // none of which touch amplitude, spectrum or dynamics. The narration level
+     // in the finished file was whatever Kokoro happened to emit. Measured across
+     // six renders including both YouTube uploads: -21.7 to -25.2 LUFS, every one
+     // 8-11 LU under YouTube's -14 target. YouTube only attenuates, never boosts,
+     // so they play back quieter than everything around them.
+     const musicTrack = resolveMusicTrack(project);
      const musicVolume = project?.settings?.musicVolume ?? project?.music_volume ?? 0.08;
-     console.log('[Music] Track:', musicTrack, 'Volume:', musicVolume);
-     if (musicTrack) {
-       const musicDir = process.env.MUSIC_DIR || path.join(process.cwd(), 'music');
-       const musicPath = path.join(musicDir, musicTrack);
-       console.log('[Music] File exists:', fs.existsSync(musicPath), musicPath);
-       if (fs.existsSync(musicPath)) {
-         const volume = Number(musicVolume).toFixed(2);
-         const outputWithMusic = path.join(tmpDir, `final_music_${Date.now()}.mp4`);
-         try {
-           // normalize=0 is not optional here. amix defaults to normalize=1, which scales
-           // every input by 1/inputs — so adding a background track quietly dropped the
-           // narration by 6dB, and put the music in at half the volume that was asked for.
-           // Measured on a real render: narration -32.0dB alone, -38.0dB once music was
-           // added. With normalize=0 the narration stays at unity and the music sits under
-           // it at exactly the chosen level.
-           await guardedExec(
-             `"${ffmpeg}" -i "${outputPath}" -stream_loop -1 -i "${musicPath}" -filter_complex "[0:a]aformat=sample_rates=44100:channel_layouts=stereo[a0];[1:a]volume=${volume}[bg];[a0][bg]amix=inputs=2:duration=first:normalize=0[aout]" -map 0:v -map "[aout]" -c:v copy -c:a aac -ar 44100 -ac 2 -b:a 192k ${disclosure} -y "${outputWithMusic}"`,
-             signal
-           );
-           fs.promises.unlink(outputPath).catch(() => {});
-           return outputWithMusic;
-         } catch (musicErr: any) {
-           console.warn('[Stitch] Music mix failed, using unmixed video:', musicErr?.message);
-         }
+     const musicPath = musicTrack
+       ? path.join(process.env.MUSIC_DIR || path.join(process.cwd(), 'music'), musicTrack)
+       : '';
+     const haveMusic = Boolean(musicPath && fs.existsSync(musicPath));
+     if (musicTrack && !haveMusic) console.warn(`[Music] Track not found, mastering without it: ${musicPath}`);
+     console.log('[Master] Track:', musicTrack || '(none)', 'Volume:', musicVolume, 'Found:', haveMusic);
+
+     const mastered = path.join(tmpDir, `final_master_${Date.now()}.mp4`);
+     try {
+       // Voice chain: high-pass below speech, then gentle 3:1 to give the
+       // narration density it never had (measured crest factor 8-11, i.e.
+       // completely uncompressed, with 17-19 dB of headroom sitting unused).
+       const voice = 'aformat=sample_rates=44100:channel_layouts=stereo,highpass=f=80,'
+         + 'acompressor=threshold=-18dB:ratio=3:attack=5:release=120:makeup=2';
+       // loudnorm last, so it measures the finished mix. I=-14 is YouTube's own
+       // normalisation target; TP=-1.5 leaves headroom for the lossy encode.
+       const master = 'loudnorm=I=-14:TP=-1.5:LRA=11';
+
+       let filter: string;
+       if (haveMusic) {
+         // normalize=0 is not optional. amix defaults to normalize=1, which scales
+         // every input by 1/inputs — adding a bed quietly dropped the narration by
+         // 6dB. Measured: narration -32.0dB alone, -38.0dB once music was added.
+         //
+         // sidechaincompress ducks the bed under the voice instead of leaving it at
+         // a static gain. Without it the bed sits ~7.5 dB under the narration where
+         // broadcast practice is 15-22, and fights every line.
+         filter = `[0:a]${voice},asplit=2[v1][vk];`
+           + `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=${Number(musicVolume).toFixed(2)}[bg];`
+           + `[bg][vk]sidechaincompress=threshold=0.03:ratio=8:attack=5:release=300[duck];`
+           + `[v1][duck]amix=inputs=2:duration=first:normalize=0[mix];`
+           + `[mix]${master}[aout]`;
        } else {
-         console.warn(`[Stitch] Music file not found: ${musicPath}`);
+         filter = `[0:a]${voice},${master}[aout]`;
        }
+       const inputs = haveMusic
+         ? `-i "${outputPath}" -stream_loop -1 -i "${musicPath}"`
+         : `-i "${outputPath}"`;
+       await guardedExec(
+         `"${ffmpeg}" ${inputs} -filter_complex "${filter}" -map 0:v -map "[aout]" `
+         + `-c:v copy -c:a aac -ar 44100 -ac 2 -b:a 192k ${disclosure} -shortest -y "${mastered}"`,
+         signal,
+       );
+       fs.promises.unlink(outputPath).catch(() => {});
+       outputPath = mastered;
+     } catch (masterErr: any) {
+       // Never lose a finished render to the mastering pass.
+       console.warn('[Master] Mastering failed, using unmastered video:', masterErr?.message);
      }
 
      if (project) {

@@ -4,6 +4,7 @@ import {
   sceneCountRange,
   TARGET_TOLERANCE,
 } from '../../utils/targetLength.js';
+import { stripInternalLabel, hookStrategyBrief } from '../../utils/narration.js';
 
 /**
  * Builds the Script Agent's prompt: one generic Role / Objective / Instructions /
@@ -91,7 +92,11 @@ export function buildScriptSections(brief: ScriptBrief): ScriptSections {
   // regardless of target, which alone overshoots a 30s budget — the script then
   // came back long and the padding logic got blamed for a scripting problem.
   const perScene = Math.max(1, Math.round(words / sceneHi));
-  const perSceneFloor = Math.max(5, Math.round(perScene * 0.6));
+  // 0.6 of the average was a floor high enough to forbid the short beats the
+  // objective now asks for — the two rules contradicted and the floor won, which
+  // is how every scene ended up the same length. Kept as a floor against a scene
+  // that is a single word, not as a second way of specifying the average.
+  const perSceneFloor = Math.max(3, Math.round(perScene * 0.45));
 
   // ── ROLE: who is writing. Comes off the brand, then the cast, then a default
   // that assumes nothing about subject matter beyond "explains things".
@@ -118,12 +123,21 @@ export function buildScriptSections(brief: ScriptBrief): ScriptSections {
   // ── OBJECTIVE: what this particular script has to be.
   const format = brief.mode === 'long' ? 'long-form video' : 'short-form vertical video';
   const objectiveParts = [
-    `Write the complete spoken script for a ${format} about "${clean(brief.topic)}".`,
-    `Read aloud it must run about ${seconds} seconds — roughly ${words} words at ${WORDS_PER_SECOND} words per second — split across ${sceneLo}-${sceneHi} scenes of about ${perScene} words each.`,
+    `Write the complete spoken script for a ${format} about "${stripInternalLabel(brief.topic)}".`,
+    `Read aloud it must run about ${seconds} seconds — roughly ${words} words at ${WORDS_PER_SECOND} words per second — split across ${sceneLo}-${sceneHi} scenes averaging ${perScene} words.`,
+    // "about N words each" was read as "N words every time", and the scripts came
+    // back with every scene inside a two-word band. Each scene is one shot, so
+    // uniform scenes are uniform shot lengths: measured stdev of 0.48s on a 6.18s
+    // mean, against 1.44s on 3.76s for the video that shipped. The cut rhythm is
+    // written here, not in the renderer, so the variation has to be asked for.
+    `Average, not quota: vary scene length deliberately. Some beats should land in ${Math.max(3, Math.round(perScene * 0.45))}-${Math.round(perScene * 0.7)} words and others in ${Math.round(perScene * 1.2)}-${Math.round(perScene * 1.6)}. A short beat after a long one is heard as a cut; a run of equal-length scenes reads as a slideshow however good the writing is. At least two scenes must be markedly shorter than the rest.`,
   ];
-  if (clean(brief.hookStrategy)) {
-    objectiveParts.push(`Open on a hook of this kind: ${clean(brief.hookStrategy)}.`);
-  }
+  // Was `Open on a hook of this kind: ${hookStrategy}` — which puts the raw slug
+  // in the model's context as a usable word. A shipped upload opens on the caption
+  // "Shocking. Your software": the adjective came from the setting, not the writer.
+  // hookStrategyBrief describes the move instead of naming it.
+  const hookBrief = hookStrategyBrief(brief.hookStrategy);
+  if (hookBrief) objectiveParts.push(hookBrief);
   if (clean(brief.direction?.mood) || clean(brief.direction?.narrativeArc)) {
     objectiveParts.push(
       `It has to land as: ${[clean(brief.direction?.mood), clean(brief.direction?.narrativeArc), clean(brief.direction?.pacing)].filter(Boolean).join(' / ')}.`,
@@ -169,6 +183,13 @@ export function buildScriptSections(brief: ScriptBrief): ScriptSections {
     `No statistics, percentages, benchmark figures, dates, study citations or named research unless they appear verbatim in the material above. If you want to reach for a number, use a concrete example instead. An invented figure is worse than no figure.`,
     `Do not claim anything about the subject you were not given. No capability, no adoption, no comparison you cannot point at in the brief.`,
     `Match every claim to the strength the material supports. Words that promise a guaranteed outcome — fixes, solves, eliminates, guarantees, always, automatically, never fails — are for outcomes the material above states are guaranteed. Everywhere else, describe the capability as it is: attempts to, proposes, is designed to, helps. "It repairs your tests" and "it proposes a repair you review" are different products; write the one you were actually given.`,
+    // The general form of three separate leaks: every value in this prompt is
+    // metadata describing the script, and the model kept treating some of them as
+    // words for the script. "CRAFT1 - Playwright..." produced the spoken line
+    // "CRAFT1 gives Playwright a vital healing touch"; the hookStrategy slug
+    // produced "Shocking. Your software". Stripping known labels handles the cases
+    // we have seen; this handles the ones we have not.
+    `Everything above describes the script — it is not material to quote. Project titles, identifiers, codes, setting names and section labels are how this job was filed, not things the subject is. Never speak a label, a slug or an internal name, and never treat one as a product, person, company or feature. If a title carries a prefix or code you cannot explain from the material, it is filing, so ignore it.`,
     `No generic dramatic opener. A first line that is a bare intensifier — "Shocking." "Insane." "You won't believe this." "This changes everything." — would fit any video on any subject, and a viewer reads it as bait before hearing the second line. Open hard, but let the force come from the specific thing at stake rather than from adjectives about it.`,
     `One core concept for the whole script. Covering three ideas shallowly is the failure mode; depth on one is the goal.`,
     `No generic pain-point preamble — "developers everywhere struggle with…", "we've all been there" — unless that struggle is literally the subject.`,

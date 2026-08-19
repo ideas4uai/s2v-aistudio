@@ -25,7 +25,8 @@ import { getScenesToRender, sceneRenderHash } from '../utils/diff.js';
 import { getFromCache } from '../services/cacheService.js';
 import { logUserEvent, logEvent, estimateCostUsd } from '../services/logService.js';
 import { buildSceneTimeline } from '../utils/timeline.js';
-import { targetLengthSeconds, planScenePadding, MAX_PAD_FACTOR } from '../utils/targetLength.js';
+import { targetLengthSeconds, planScenePadding, MAX_PAD_FACTOR, secondsForWords, countWords } from '../utils/targetLength.js';
+import { stripSpeakerPrefix } from '../utils/narration.js';
 import { projectVideoFileName } from '../utils/filename.js';
 import { QuotaService } from '../server/services/quotaService.js';
 import { AIService } from '../services/aiService.js';
@@ -396,7 +397,12 @@ Output ONLY valid JSON as an array of objects: [{"narration": "", "visual": "", 
     const jsonStr = rawResult.replace(/```json|```/g, '').trim();
     const sceneData = JSON.parse(jsonStr);
 
-    return sceneData.map((s: any) => ({
+    // Same fix as StoryboardAgent: `s.duration || 5` made every scene ask for
+    // 5s regardless of what was written in it, so every scene overran by the
+    // same amount and the cut rhythm went metronomic.
+    return sceneData.map((s: any) => {
+      const sceneSeconds = s.duration || secondsForWords(countWords(s.narration));
+      return {
       scene_id: uuidv4(),
       order: s.order,
       scene_type: s.order === 0 ? 'hook' : (s.order === sceneData.length - 1 ? 'cta' : 'build'),
@@ -408,12 +414,12 @@ Output ONLY valid JSON as an array of objects: [{"narration": "", "visual": "", 
         visual_id: uuidv4(),
         prompt: s.visual,
         asset_type: 'ai_image',
-        duration_target: s.duration || 5,
+        duration_target: sceneSeconds,
         motion_instruction: s.order === 0 ? 'zoom_in' : 'pan_right',
         status: 'pending',
         cache_key: '',
       }],
-      duration_target: s.duration || 5,
+      duration_target: sceneSeconds,
       duration_actual: null,
       asset_type: 'ai_image',
       motion_instruction: null,
@@ -423,7 +429,8 @@ Output ONLY valid JSON as an array of objects: [{"narration": "", "visual": "", 
       cache_key: '',
       status: 'pending',
       error_log: null,
-    }));
+      };
+    });
   } catch (err) {
     console.warn('[Orchestrator] Failed to generate scene graph via AI, using fallback:', err);
     return fallbackSceneGraph(rawScript, project);
@@ -1033,9 +1040,65 @@ export async function runPipeline(project_id: string, options?: {
 }
 
 
+/**
+ * Guarantees the invariant every renderer downstream assumes: a scene has a
+ * background_prompt. Returns true if it had to derive one.
+ *
+ * Four places build scenes — projectController's two editor paths, StoryboardAgent,
+ * and the legacy generateScenes — and only the editor ones set the field. Everything
+ * that makes a render look finished hangs off it: the aesthetic suffix carrying
+ * "absolutely no text, no words, no numbers ... anywhere in the image" is appended to
+ * background_prompt and to nothing else, and a scene without a background_path never
+ * gets flagged `unified`, so it renders on the legacy ffmpeg compositor at 30fps
+ * instead of Metro V4 at 24 with its vignette, grain and grade.
+ *
+ * Deriving from visuals[0].prompt is exactly what projectController already does
+ * (`s.background_prompt || ... || s.visuals?.[0]?.prompt`) — this puts the same
+ * fallback on the path that skipped it.
+ */
+export function ensureBackgroundPrompt(scene: Scene): boolean {
+  if (String(scene.background_prompt || '').trim()) return false;
+  const visualPrompt = String(scene.visuals?.[0]?.prompt || '').trim();
+  if (!visualPrompt) return false;
+  scene.background_prompt = visualPrompt;
+  return true;
+}
+
 export async function processSingleScene(scene: Scene, project: Project, voicePreset: string, isPreview: boolean, isTestMode: boolean, signal?: AbortSignal, characterAnchors: Map<string, string> = new Map()) {
   // Check for cancellation at start of scene
   if (signal?.aborted) throw new Error('PIPELINE_CANCELLED');
+
+  // Every scene renders through the "unified" path — the background image IS the
+  // frame — and that path is gated on background_prompt being set. Four places build
+  // scenes (projectController x2, StoryboardAgent, the legacy generateScenes) and only
+  // the two editor ones set it, so every pipeline-created project silently fell through
+  // to the legacy ffmpeg compositor: 30fps instead of Metro V4's 24, no vignette, no
+  // grain, no grade, and — because the aesthetic suffix is appended to background_prompt
+  // and nothing else — no "absolutely no text in the image" instruction. Measured on two
+  // renders driven through POST /pipeline/run: garbled pseudo-text in 4 of 6 and 4 of 7
+  // shots, against 0 of 10 on the editor-path video that shipped to YouTube.
+  //
+  // The guard belongs here rather than in the four constructors: this is the one function
+  // every scene reaches, whoever built it, so a fifth constructor cannot reintroduce it.
+  if (ensureBackgroundPrompt(scene)) {
+    console.log('[Orchestrator] background_prompt derived from visual prompt for scene', scene.scene_id);
+  }
+
+  // Strip `NAME:` prefixes once, here, before TTS, captions and the overlay all
+  // read narration_text. Patching any one of those three leaves the other two
+  // still speaking or printing the prefix — a rendered frame showed the caption
+  // "RAVI: This staging" and another the overlay "ARJUN: It's just a routine
+  // refresh for". Character attribution is already resolved at storyboard time,
+  // so nothing downstream still needs the marker.
+  {
+    const spoken = stripSpeakerPrefix(scene.narration_text);
+    if (spoken !== scene.narration_text) {
+      console.log('[Orchestrator] stripped speaker prefix from scene', scene.scene_id);
+      scene.narration_text = spoken;
+      // caption_text is a copy of the narration at every constructor; keep them equal.
+      if ((scene as any).caption_text) (scene as any).caption_text = spoken;
+    }
+  }
 
   // Stamp neighbour scene types so Metro V4 can render its half of each
   // cross-scene transition (clips are stitched with concat -c copy, so each
