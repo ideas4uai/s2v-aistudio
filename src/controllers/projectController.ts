@@ -371,7 +371,12 @@ export async function generateScenes(req: Request, res: Response) {
         visuals: [
           {
             visual_id: uuidv4(),
-            prompt: s.visuals?.[0]?.prompt || '',
+            // Same alias fallback background_prompt uses three lines above. Without it
+            // a scene agent that returns the visual under visual_prompt (or only under
+            // background_prompt) produced a scene with an empty visuals[0].prompt — and
+            // the render's all-or-nothing hasExistingScenes test answers one empty
+            // prompt by regenerating the entire project, approved images included.
+            prompt: s.visuals?.[0]?.prompt || s.visual_prompt || s.background_prompt || s.backgroundPrompt || '',
             asset_type: 'image',
             status: 'pending',
             // Dropping these rebuilt the visual without the Cinematic Effect the
