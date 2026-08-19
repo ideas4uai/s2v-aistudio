@@ -13,6 +13,9 @@ import { progressBus, ProgressStage } from '../server/progressBus.js';
 const execAsync = promisify(exec);
 
 let rembgRunning = false;
+// Same reason as rembgRunning: the Metro engine is internally parallel, so running
+// several at once oversubscribes the machine rather than going faster.
+let metroRunning = false;
 
 /**
  * Whether a cached render output can still be trusted.
@@ -221,6 +224,35 @@ async function callSceneAnimatorV3(
     outTransition?: string;
     transitionColor?: string;
   } = {}
+): Promise<boolean> {
+  // Serialize engine runs, for the same reason callRembg does: the engine splits
+  // one clip across four worker processes, and the orchestrator renders scenes
+  // three at a time. That is twelve CPU-bound processes plus a depth model on an
+  // eight-thread laptop, and it does not go faster — it thrashes. Measured: with
+  // every scene now unified (so every scene runs the engine, where before most
+  // fell through to ffmpeg), the first batch of three hit the 15-minute timeout
+  // and fell back to the 30fps Ken Burns path, which is how a render that was
+  // meant to be 24fps came out at 30. Serialised, the same clip takes ~22s.
+  while (metroRunning) {
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  metroRunning = true;
+  try {
+    return await runSceneAnimator(backgroundPath, characterPath, outputPath, duration, emotion, sceneType, _ffmpegPath, opts);
+  } finally {
+    metroRunning = false;
+  }
+}
+
+function runSceneAnimator(
+  backgroundPath: string,
+  characterPath: string,
+  outputPath: string,
+  duration: number,
+  emotion: string,
+  sceneType: string,
+  _ffmpegPath: string,
+  opts: Parameters<typeof callSceneAnimatorV3>[7] = {},
 ): Promise<boolean> {
   return new Promise((resolve) => {
     const useV4 = process.env.USE_METRO_V4 === 'true';
