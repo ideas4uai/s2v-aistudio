@@ -9,6 +9,7 @@ import {
   planOverlay, sceneVisualKey, transitionBetween, universeAccent,
 } from '../src/services/overlayPlan.js';
 import { visualClipPath } from '../src/services/renderService.js';
+import { arcPosition, arcKey } from '../src/services/colourArc.js';
 import { wordTimings } from '../src/services/captionService.js';
 
 const scene = (over: any = {}): any => ({
@@ -248,10 +249,16 @@ describe('cache keys cover the new treatments', () => {
     expect(sceneVisualKey(p.scenes[3], p, 7)).not.toBe('');   // but it does have a cut
   });
 
-  it('gives a beat with neither an overlay nor a cut the path it always had', () => {
+  it('still keys a beat with neither an overlay nor a cut — on its place in the arc', () => {
+    // This used to require an empty key, i.e. the unadorned path. The episode's colour
+    // arc now moves every scene's pixels by where it sits in the running order, and no
+    // timestamp comparison can see that, so the position has to be in the name or a clip
+    // graded for scene four gets served for scene one.
     const p = project(plain);
-    expect(sceneVisualKey(p.scenes[3], p, 7)).toBe('');
-    expect(clip(p, 3)).toBe(visualClipPath(os.tmpdir(), 'p1', 'v3', 'zoom_in'));
+    expect(sceneVisualKey(p.scenes[3], p, 7)).toBe(arcKey(arcPosition(3, p.scenes.length)));
+    expect(clip(p, 3)).not.toBe(visualClipPath(os.tmpdir(), 'p1', 'v3', 'zoom_in'));
+    // ...and two scenes at different points of the episode never share a clip
+    expect(sceneVisualKey(p.scenes[3], p, 7)).not.toBe(sceneVisualKey(p.scenes[2], p, 7));
   });
 });
 
@@ -396,7 +403,9 @@ describe('the two new transitions', { timeout: 60_000 }, () => {
     expect(src).toContain("parser.add_argument('--transition_color'");
     // A worker that never received the colour would render its half of the cut to a
     // different terminal frame.
-    expect(src).toContain('in_tr, out_tr, tr_color) = job');
+    expect(src).toContain('in_tr, out_tr, tr_color,');
+    // ...and the colour arc rides the same tuple, for the same reason.
+    expect(src).toContain('arc_pos) = job');
     expect(src).toContain('_set_transition_color(tr_color)');
   });
 });

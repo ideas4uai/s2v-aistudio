@@ -10,6 +10,7 @@ import {
   OVERLAY_RESTATES_NARRATION, type OverlayKind,
 } from './overlayPlan.js';
 import { planSfxCues, renderSfxBed, sfxHeadroom } from './sfx.js';
+import { arcPosition, NO_ARC } from './colourArc.js';
 import { progressBus, ProgressStage } from '../server/progressBus.js';
 
 const execAsync = promisify(exec);
@@ -219,6 +220,8 @@ async function callSceneAnimatorV3(
     height?: number;
     /** Draft render: skip the depth-parallax pass, which is the engine's biggest cost. */
     draft?: boolean;
+    /** 0 at the episode's open, 1 at its close; -1 for no colour arc. See colourArc.ts. */
+    arcPos?: number;
     /** JSON motion-graphics spec. V4 only; absent means the clip renders as before. */
     overlayPath?: string;
     /**
@@ -291,6 +294,7 @@ function runSceneAnimator(
       '--fps',        fps,
       '--width',      String(opts.width || 1080),
       '--height',     String(opts.height || 1920),
+      '--arc',        String(opts.arcPos ?? NO_ARC),
     ];
     if (useV4 || useDoraemon) {
       // Only forward scene types that Metro V4 has explicit transition rules for.
@@ -673,6 +677,9 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
   const neighbourSpec = (j: number) => (sceneList[j]
     ? planOverlay(sceneList[j], project, audioDuration || visual.duration_target || 5) : null);
   const inTransition = sceneIdx > 0 ? transitionBetween(neighbourSpec(sceneIdx - 1), overlaySpec) : '';
+  // Where this scene sits in the episode, for the colour arc. Same index the transitions
+  // and the cache key are computed from, so the grade rides the same ordering the edit does.
+  const arcPos = arcPosition(sceneIdx, sceneList.length);
   const outTransition = sceneIdx >= 0 ? transitionBetween(overlaySpec, neighbourSpec(sceneIdx + 1)) : '';
   const clipSeconds = audioDuration || visual.duration_target || 5;
   const outputPath = visualClipPath(
@@ -911,6 +918,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                   width: engineW,
                   height: engineH,
                   draft: isPreview,
+                arcPos,
                 }
               );
               if (cutoutSuccess) {
@@ -954,6 +962,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 width: engineW,
                 height: engineH,
                 draft: isPreview,
+                arcPos,
                 overlayPath,
                 onOverlayDrawn: (drawn) => { engineDrewOverlay = drawn; },
                 inTransition,
@@ -997,6 +1006,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 width: engineW,
                 height: engineH,
                 draft: isPreview,
+                arcPos,
                 overlayPath,
                 onOverlayDrawn: (drawn) => { engineDrewOverlay = drawn; },
                 inTransition,
