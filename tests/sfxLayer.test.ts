@@ -4,8 +4,11 @@ import os from 'os';
 import path from 'path';
 import {
   synthesize, planSfxCues, renderSfxBed, sfxHeadroom, SFX_SAMPLE_RATE, WHOOSH_LEAD, TICK_LEAD,
+  SFX_DURATION,
 } from '../src/services/sfx.js';
 import { planOverlay } from '../src/services/overlayPlan.js';
+import { speechWindow } from '../src/services/captionService.js';
+import { sceneBeats } from '../src/utils/beats.js';
 
 /**
  * There was no sound-effects layer at all — not a thin one, an absent one. The finished
@@ -74,10 +77,14 @@ describe('the sounds themselves', () => {
     // Gentler than the music's duck: a bed must leave a line alone, an effect only has to
     // not sit on it.
     expect(render).toMatch(/\[bg\]\[vk\]sidechaincompress=threshold=0\.03:ratio=8/);
-    // and the tick stays the quieter of the two — it can land under a line, the whoosh
-    // is placed in a gap.
-    const p = (k: 'whoosh' | 'tick') => Math.max(...Array.from(synthesize(k)).map(Math.abs));
-    expect(p('tick')).toBeLessThan(p('whoosh'));
+    // The tick used to be required to peak below the whoosh. It now matches it, on
+    // purpose: loudness integrates over about 200 ms, so a 55 ms tick at the same peak as
+    // a 420 ms whoosh still reads several dB quieter. Two rounds of "it's a bit little"
+    // came back from levels the band analysis said were clear, and that gap is why.
+    // What is still required is that nothing peaks ABOVE the whoosh.
+    const p = (k: 'whoosh' | 'tick' | 'riser') => Math.max(...Array.from(synthesize(k)).map(Math.abs));
+    expect(p('tick')).toBeLessThanOrEqual(p('whoosh'));
+    expect(p('riser')).toBeLessThan(p('whoosh'));
   });
 
   it('reaches the level it declares, rather than whatever survives the fades', () => {
@@ -87,7 +94,7 @@ describe('the sounds themselves', () => {
     // built around has to be the level the sound actually reaches.
     const peak = (k: 'whoosh' | 'tick') => 20 * Math.log10(Math.max(...Array.from(synthesize(k)).map(Math.abs)));
     expect(peak('whoosh')).toBeCloseTo(-10, 1);
-    expect(peak('tick')).toBeCloseTo(-12, 1);
+    expect(peak('tick')).toBeCloseTo(-10, 1);
   });
 
   it('keeps the tick an attack, not a swell', () => {
@@ -111,10 +118,14 @@ describe('when an effect fires', () => {
     expect(whooshes.some((c) => c.reason.includes('whip_flash'))).toBe(true);
   });
 
-  it('marks the turn into the close', () => {
+  it('marks the turn into the close — with the riser when one fits, else a whoosh', () => {
+    // This used to require the whoosh specifically. A riser resolving on that cut is the
+    // same mark made better, so when one fits it takes the moment and the whoosh stands
+    // down; two transition sounds on one cut is one too many.
     const scenes = episode();
     const cues = planSfxCues(scenes, projectOf(scenes), evenly(scenes));
-    expect(cues.some((c) => c.reason.includes('turn into the close'))).toBe(true);
+    expect(cues.some((c) => c.reason.includes('into the close'))).toBe(true);
+    expect(cues.filter((c) => c.reason.includes('into the close'))).toHaveLength(1);
   });
 
   it('ticks a stat and a kinetic line, and nothing else', () => {
@@ -145,10 +156,27 @@ describe('when an effect fires', () => {
   });
 
   it('never lands two effects on top of each other', () => {
+    // The gap is clear air BETWEEN effects now, end to start — start-to-start was fine
+    // while everything was under half a second and wrong the moment the riser ran 1.2s.
     const scenes = episode();
     const cues = planSfxCues(scenes, projectOf(scenes), evenly(scenes));
     for (let i = 1; i < cues.length; i++) {
-      expect(cues[i].at - cues[i - 1].at).toBeGreaterThanOrEqual(1.2);
+      const previousEnd = cues[i - 1].at + SFX_DURATION[cues[i - 1].kind];
+      expect(cues[i].at - previousEnd).toBeGreaterThanOrEqual(1.2);
+    }
+  });
+
+  it('lets nothing land inside the riser', () => {
+    // The case the old start-to-start rule would have allowed: a 1.3s-later cue passes
+    // "not within 1.2s" while sitting in the middle of a 1.2s sound.
+    const scenes = episode();
+    const cues = planSfxCues(scenes, projectOf(scenes), evenly(scenes));
+    const riser = cues.find((c) => c.kind === 'riser');
+    expect(riser).toBeTruthy();
+    const span = [riser!.at, riser!.at + SFX_DURATION.riser];
+    for (const other of cues.filter((c) => c !== riser)) {
+      const overlaps = other.at < span[1] && other.at + SFX_DURATION[other.kind] > span[0];
+      expect(overlaps).toBe(false);
     }
   });
 
@@ -163,6 +191,129 @@ describe('when an effect fires', () => {
     const scenes = episode();
     const cues = planSfxCues(scenes, projectOf(scenes), evenly(scenes));
     expect(cues.every((c) => c.reason.length > 0)).toBe(true);
+  });
+});
+
+describe('the riser', () => {
+  /** Overrides for one scene of the standard episode. */
+  const withScene = (i: number, over: Record<string, unknown>) => {
+    const scenes = episode();
+    Object.assign(scenes[i], over);
+    return scenes;
+  };
+  const riserIn = (scenes: any[], durations = evenly(scenes)) =>
+    planSfxCues(scenes, projectOf(scenes), durations).find((c) => c.kind === 'riser');
+
+  it('builds out of the escalation that runs into the close', () => {
+    const scenes = episode();
+    const r = riserIn(scenes);
+    expect(r).toBeTruthy();
+    expect(r!.reason).toMatch(/building through scene 5 into the close at scene 6/);
+  });
+
+  it('resolves on the measured cut into the close, ahead of its first word', () => {
+    // The boundary is the ffprobe'd concat position, not an offset from anything. The
+    // first version resolved on the close's first word instead and the effects duck was
+    // pulling the climax down as the voice arrived; the speech span is what shows the
+    // cut leads the word, so a climax placed here always lands before the key opens.
+    const scenes = episode();
+    const durations = [5, 7, 4, 6, 8, 5];
+    const r = riserIn(scenes, durations)!;
+    const cut = durations.slice(0, 5).reduce((n, d) => n + d, 0);
+    expect(r.at + SFX_DURATION.riser).toBeCloseTo(cut, 6);
+    expect(speechWindow(scenes[5]).start).toBeGreaterThan(0);
+  });
+
+  it('peaks at its end, so the build resolves rather than swells', () => {
+    const s = synthesize('riser');
+    const peak = Math.max(...Array.from(s).map(Math.abs));
+    const at = Array.from(s).findIndex((x) => Math.abs(x) === peak) / s.length;
+    expect(at).toBeGreaterThan(0.9);
+    // and it really climbs: the last tenth carries far more energy than the first
+    const tenth = (q: number) => {
+      const a = Math.floor((s.length * q) / 10);
+      const b = Math.floor((s.length * (q + 1)) / 10);
+      let e = 0;
+      for (let i = a; i < b; i++) e += s[i] * s[i];
+      return e / (b - a);
+    };
+    expect(10 * Math.log10(tenth(9) / tenth(0))).toBeGreaterThan(30);
+  });
+
+  it('carries a rising pitch, not just a rising level', () => {
+    // Without a pitch in it a riser is a swell. Zero-crossing rate in the last tenth
+    // must clearly exceed the first tenth's.
+    const s = synthesize('riser');
+    const crossings = (from: number, to: number) => {
+      let c = 0;
+      for (let i = from + 1; i < to; i++) if ((s[i - 1] < 0) !== (s[i] < 0)) c++;
+      return c / (to - from);
+    };
+    const a = Math.floor(s.length * 0.15);
+    const b = Math.floor(s.length * 0.25);
+    const y = Math.floor(s.length * 0.85);
+    const z = Math.floor(s.length * 0.95);
+    expect(crossings(y, z)).toBeGreaterThan(crossings(a, b) * 1.5);
+  });
+
+  it('stays under the sounds it is building toward', () => {
+    // A build that arrives louder than its own payoff has swallowed it.
+    const peak = (k: 'whoosh' | 'tick' | 'riser') =>
+      Math.max(...Array.from(synthesize(k)).map(Math.abs));
+    expect(peak('riser')).toBeLessThan(peak('whoosh'));
+    expect(peak('riser')).toBeLessThan(peak('tick'));
+  });
+
+  it('stands the closing whoosh down rather than stacking on it', () => {
+    const scenes = episode();
+    const cues = planSfxCues(scenes, projectOf(scenes), evenly(scenes));
+    expect(cues.some((c) => c.kind === 'riser')).toBe(true);
+    expect(cues.some((c) => c.reason.includes('turn into the close'))).toBe(false);
+  });
+
+  it('is at most one per render', () => {
+    const scenes = episode();
+    expect(planSfxCues(scenes, projectOf(scenes), evenly(scenes))
+      .filter((c) => c.kind === 'riser')).toHaveLength(1);
+  });
+
+  it('will not fire on a beat too short to build through', () => {
+    // Under twice its own length it would start on or before the cut into that beat and
+    // be smeared across two shots instead of building through one. Both cases keep the
+    // same 0.6s tail, so length is the only thing being varied.
+    const short = withScene(4, { speech_start: 0.2, speech_end: 1.4 });
+    expect(riserIn(short, [6, 6, 6, 6, 2.0, 6])).toBeUndefined();
+    // a second longer and it fits
+    const enough = withScene(4, { speech_start: 0.2, speech_end: 2.4 });
+    expect(riserIn(enough, [6, 6, 6, 6, 3.0, 6])).toBeTruthy();
+  });
+
+  it('will not fire when the escalation talks right up to the cut', () => {
+    // No air to build in. The effects bus ducks under the voice, so a riser placed here
+    // would be pulled down exactly as it arrived.
+    const scenes = withScene(4, { speech_start: 0.2, speech_end: 5.9 });   // 0.1s tail
+    expect(riserIn(scenes)).toBeUndefined();
+    expect(riserIn(withScene(4, { speech_start: 0.2, speech_end: 5.4 }))).toBeTruthy();
+  });
+
+  it('does not fire when nothing escalates into the close', () => {
+    // Three spoken beats are hook, payload, payoff — sceneBeats produces no escalation,
+    // so there is no build to make. Four is the first shape that has one.
+    const three = [
+      S(0, 'Your test suite takes forty minutes and nobody trusts it.'),
+      S(1, 'One change cut that to four minutes flat.'),
+      S(2, 'What will you ship with the time you get back?'),
+    ];
+    expect(riserIn(three, [6, 6, 6])).toBeUndefined();
+    expect(sceneBeats(three)).toEqual(['hook', 'payload', 'payoff']);
+    expect(riserIn(episode().slice(0, 4), [6, 6, 6, 6])).toBeTruthy();
+  });
+
+  it('is silent on a project whose close has no words', () => {
+    // A wordless closing card gets no beat, so there is nothing to resolve onto.
+    const scenes = withScene(5, { narration_text: '' });
+    expect(riserIn(scenes)).toBeTruthy();   // the close moves to scene 5, which does speak
+    expect(sceneBeats(scenes)[5]).toBeNull();
   });
 });
 

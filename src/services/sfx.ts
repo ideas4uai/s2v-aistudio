@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { planOverlay, transitionBetween, type OverlayKind, type OverlaySpec } from './overlayPlan.js';
 import { sceneBeats } from '../utils/beats.js';
+import { speechWindow } from './captionService.js';
 
 /**
  * The sound-effects layer: a whoosh on a cut that is meant to be felt, a soft tick when
@@ -30,7 +31,7 @@ import { sceneBeats } from '../utils/beats.js';
 
 export const SFX_SAMPLE_RATE = 44100;
 
-export type SfxKind = 'whoosh' | 'tick';
+export type SfxKind = 'whoosh' | 'tick' | 'riser';
 
 export interface SfxCue {
   /** Seconds into the finished video. */
@@ -64,16 +65,32 @@ export interface SfxCue {
  * and the mix ducks the whole effects bus under the voice (see the master pass), so
  * neither can sit on a line however loud it is in a gap.
  *
- * The whoosh at -10 was confirmed correct on a listen. The tick went out at -16 in that
- * same pass and was still too quiet to register, so it sits at -12 now: half the distance,
- * in dB, between that -16 and the -8 of the deliberately-loud proof render that was
- * audible. Nothing else about it changed — it still lands 80 ms ahead of its word and
- * still ducks under the voice, which is what a 4 dB rise can afford to leave alone.
+ * The whoosh at -10 was confirmed correct on a listen. The tick was heard at -16 and again
+ * after the interpolation to -12, and reported as still too small both times, so it now
+ * matches the whoosh at -10 — three quarters of the way from the -16 that failed to the -8
+ * proof render that was clearly audible, and 2 dB under that proof.
+ *
+ * Equal peak is not equal loudness here, which is why the tick can take the whoosh's
+ * number without becoming the loudest thing in the mix: loudness integrates over roughly
+ * 200 ms, and the tick is 55 ms against the whoosh's 420. At the same peak a sound that
+ * short still reads several dB quieter. That is the reason two rounds of "it's a bit
+ * little" kept coming back from levels the band analysis said were clear — clearing a
+ * masker makes a sound detectable, and duration is what makes it feel present.
+ *
+ * The riser is the one sound that must NOT be the loudest thing at its moment: it exists
+ * to build toward the beat it resolves into, and a build that arrives louder than what it
+ * is building to has swallowed its own payoff. It sits below both.
  */
-const PEAK: Record<SfxKind, number> = { whoosh: 0.316, tick: 0.251 };
+const PEAK: Record<SfxKind, number> = { whoosh: 0.316, tick: 0.316, riser: 0.251 };
 
-/** Length of each sound. A whoosh past half a second stops punctuating and starts being a bed. */
-const DURATION: Record<SfxKind, number> = { whoosh: 0.42, tick: 0.055 };
+/**
+ * Length of each sound. A whoosh past half a second stops punctuating and starts being a
+ * bed; a riser under about a second has no time to build and just sounds like a swell.
+ */
+const DURATION: Record<SfxKind, number> = { whoosh: 0.42, tick: 0.055, riser: 1.2 };
+
+/** Exported so a test can check the spacing rule without re-declaring these numbers. */
+export const SFX_DURATION: Readonly<Record<SfxKind, number>> = DURATION;
 
 /**
  * A whoosh peaks after it starts, and the peak wants to be ON the cut — so it begins this
@@ -98,6 +115,25 @@ export const WHOOSH_LEAD = 0.21;
  * snapping on and then the word, which is the order the eye and ear expect.
  */
 export const TICK_LEAD = 0.08;
+
+/**
+ * A riser needs the beat it builds through to be at least this long — twice its own
+ * length. Under that it would start on or before the cut into that beat, so instead of
+ * building through a shot it would be smeared across two, and the ear would hear a swell
+ * with no shape rather than an approach to something.
+ */
+export const RISER_MIN_BEAT = 2.4;
+
+/**
+ * ...and it needs this much of that beat's tail to be free of narration.
+ *
+ * A riser's whole shape is in its last third, and a riser whose last third sits under a
+ * spoken line is ducked by the effects sidechain exactly when it should be arriving. If
+ * the escalation talks right up to the cut there is no room to build in, and the honest
+ * answer is to place nothing. This is the riser's version of the "does this moment
+ * actually benefit" test the overlay planner applies.
+ */
+export const RISER_MIN_TAIL = 0.5;
 
 /** Closest two effects may land. Under this they stop reading as two events and turn to mud. */
 const MIN_GAP = 1.2;
@@ -149,6 +185,7 @@ export function synthesize(kind: SfxKind, seed = 1): Float32Array {
 
   let lo = 0;
   let hi = 0;
+  let phase = 0;
   for (let i = 0; i < n; i++) {
     const t = i / n;
     let s: number;
@@ -161,6 +198,21 @@ export function synthesize(kind: SfxKind, seed = 1): Float32Array {
       s = lo - hi;
       // Swell in, fall away, weighted so the peak lands where WHOOSH_LEAD puts the cut.
       s *= Math.pow(Math.sin(Math.PI * t), 1.4);
+    } else if (kind === 'riser') {
+      // Two things climbing together. The noise is the energy — a passband walking from
+      // 400 Hz to about 7 kHz — and the tone is what makes it read as RISING rather than
+      // merely getting louder; without a pitch in it a riser is just a swell. Both sweep
+      // exponentially because pitch is heard logarithmically, so a linear ramp spends
+      // most of its length in the top octave and arrives early.
+      const cut = 400 * Math.pow(18, t);
+      lo = lowpass(noise(), lo, cut);
+      hi = lowpass(lo, hi, 180);
+      phase += (2 * Math.PI * (180 * Math.pow(6.5, t))) / SFX_SAMPLE_RATE;
+      s = (lo - hi) * 0.75 + Math.sin(phase) * 0.45;
+      // Quiet for the first half and steep into the resolve: an even ramp announces
+      // itself too early and stops being an approach. Then a 3% release, so the sound
+      // stops dead on the beat it resolves into instead of smearing across it.
+      s *= Math.pow(t, 2.2) * (t > 0.97 ? (1 - t) / 0.03 : 1);
     } else {
       // A soft pop: 1.8 kHz with its octave a third down, decaying in about 25 ms.
       const ph = (2 * Math.PI * 1800 * i) / SFX_SAMPLE_RATE;
@@ -218,12 +270,61 @@ export function planSfxCues(scenes: any[], project: any, segmentDurations: numbe
 
   const cues: SfxCue[] = [];
 
+  // ── The riser, building out of an escalation into the beat it resolves on ────────
+  //
+  // Which boundary that is comes from sceneBeats and nothing else. With the beat model
+  // the pipeline actually has, exactly one boundary can qualify: sceneBeats lays an
+  // episode out as hook, payload, escalation..., payoff, so the payload is preceded by
+  // the hook and the only escalation-into-something transition in the whole episode is
+  // the one into the close. An escalation-into-payload cannot occur — worth saying
+  // plainly rather than writing a branch that can never run.
+  //
+  // That also makes the riser at most one per render, which is the right ceiling for the
+  // largest gesture in the layer.
+  let riserInto = -1;
+  for (let i = 1; i < list.length; i++) {
+    if (beats[i] !== 'payoff' || beats[i - 1] !== 'escalation') continue;
+    // Room to build through, and room at the end to build INTO. Both are measured, not
+    // assumed: the beat's length is the ffprobe'd segment, and its tail comes from the
+    // same speech span wordTimings lays the captions across.
+    const beatLength = segmentDurations[i - 1];
+    const { start, span } = speechWindow(list[i - 1]);
+    const tail = beatLength - (start + span);
+    if (beatLength < RISER_MIN_BEAT || tail < RISER_MIN_TAIL) continue;
+    // It resolves ON the cut — the measured concat boundary, not an offset from it.
+    //
+    // The first version resolved on the close's first word instead, a quarter-second
+    // later. Measured on that render, the climax was arriving exactly as the voice did
+    // and the effects sidechain was pulling it down on the way in: the loudest surviving
+    // instant had slid back to the cut anyway, with the intended peak ducked off. The cut
+    // is both the right place musically and the only place the duck leaves alone.
+    //
+    // The speech span is what proves that: a scene's words start `speech_start` after its
+    // own cut, so the riser's climax always lands in the close's leading silence, before
+    // the key opens. That is also why this is safe to anchor on the boundary rather than
+    // on speech — the two are separated by a measured, non-zero gap.
+    const resolveAt = offsets[i];
+    riserInto = i;
+    cues.push({
+      at: resolveAt - DURATION.riser,
+      kind: 'riser',
+      reason: `building through scene ${i} into the close at scene ${i + 1}`,
+    });
+    break;
+  }
+
   // ── Whooshes, on cuts already meant to be felt ───────────────────────────────────
   for (let i = 1; i < list.length; i++) {
     const designed = transitionBetween(specs[i - 1], specs[i]);
     // The turn into the close. Every short-form edit marks it, and it is the one cut
     // whose position is known from the beat rather than from an overlay.
-    const intoClose = beats[i] === 'payoff' && beats[i - 1] !== 'payoff';
+    //
+    // Unless a riser already resolves there. A riser IS that mark, and a better one —
+    // it arrives at the same instant having spent a second earning it. Stacking a whoosh
+    // on top would be two transition sounds on one cut. The spacing rule below would
+    // drop one of them anyway; doing it here means the right one survives rather than
+    // whichever happened to sort first.
+    const intoClose = beats[i] === 'payoff' && beats[i - 1] !== 'payoff' && i !== riserInto;
     if (!designed && !intoClose) continue;
     cues.push({
       at: offsets[i] - WHOOSH_LEAD,
@@ -250,7 +351,14 @@ export function planSfxCues(scenes: any[], project: any, segmentDurations: numbe
   const kept: SfxCue[] = [];
   for (const cue of cues.sort((a, b) => a.at - b.at)) {
     if (cue.at < 0.25 || cue.at + DURATION[cue.kind] > total - 0.15) continue;
-    if (kept.length && cue.at - kept[kept.length - 1].at < MIN_GAP) continue;
+    // MIN_GAP is clear air BETWEEN two effects, measured from the end of one to the start
+    // of the next. It used to be start-to-start, which was fine while every effect was
+    // under half a second and wrong the moment one of them ran for 1.2s: a tick 1.3s
+    // after a riser began would have passed the old rule while landing inside the riser.
+    if (kept.length) {
+      const previous = kept[kept.length - 1];
+      if (cue.at - (previous.at + DURATION[previous.kind]) < MIN_GAP) continue;
+    }
     if (kept.length >= cap) break;
     kept.push(cue);
   }
