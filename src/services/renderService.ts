@@ -9,7 +9,7 @@ import {
   planOverlay, sceneVisualKey, transitionBetween, transitionColor, type OverlayWord,
   OVERLAY_RESTATES_NARRATION, type OverlayKind,
 } from './overlayPlan.js';
-import { planSfxCues, renderSfxBed, sfxHeadroom } from './sfx.js';
+import { planSfxCues, renderSfxBed, sfxHeadroom, resolveSfxVolume } from './sfx.js';
 import { arcPosition, NO_ARC } from './colourArc.js';
 import { progressBus, ProgressStage } from '../server/progressBus.js';
 
@@ -1652,7 +1652,7 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
      //
      // sfxVolume is the trim, and 0 is the way to turn the layer off for a comparison
      // render without touching the code that decides where the effects go.
-     const sfxVolume = Number(project?.settings?.sfxVolume ?? project?.sfx_volume ?? 1);
+     const sfxVolume = resolveSfxVolume(project);
      const sfxPath = path.join(tmpDir, `sfx_${Date.now()}.wav`);
      const usable = stitched.every((s) => Number.isFinite(s.duration) && s.duration > 0);
      const sfxCues = usable && sfxVolume > 0

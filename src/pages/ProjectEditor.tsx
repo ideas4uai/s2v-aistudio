@@ -109,6 +109,7 @@ interface Project {
   seo_metadata?: SeoMetadata;
   music_track?: string;
   music_volume?: number;
+  sfx_volume?: number;
   thumbnail_path?: string;
   topic?: string;
   universe?: {
@@ -201,6 +202,8 @@ export function ProjectEditor() {
   const [selectedMusic, setSelectedMusic] = useState<string | null>(null);
   const [previewingTrack, setPreviewingTrack] = useState<string | null>(null);
   const [musicVolume, setMusicVolume] = useState<number>(0.08);
+  // 1 = the level the effects layer was tuned to; see SFX_VOLUME_DEFAULT in services/sfx.ts.
+  const [sfxVolume, setSfxVolume] = useState<number>(1);
   const [musicSaved, setMusicSaved] = useState(false);
   const [musicError, setMusicError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -232,8 +235,9 @@ export function ProjectEditor() {
     if (project) {
       setSelectedMusic(project.music_track || null);
       setMusicVolume(project.music_volume ?? 0.08);
+      setSfxVolume(project.sfx_volume ?? 1);
     }
-  }, [project?.music_track, project?.music_volume]);
+  }, [project?.music_track, project?.music_volume, project?.sfx_volume]);
 
   // Auto-save script to DB after 2s of inactivity so it survives fetchProject reloads
   useEffect(() => {
@@ -256,7 +260,7 @@ export function ProjectEditor() {
   // authenticatedFetch resolves for 4xx/5xx too, so awaiting it is not "it saved".
   // Without the res.ok check the picker showed "Saved ✓" on the 404 the endpoint was
   // returning, which is why a track could look selected and still be absent from the render.
-  const saveMusic = async (body: { music_track: string; music_volume: number }) => {
+  const saveMusic = async (body: { music_track: string; music_volume: number; sfx_volume?: number }) => {
     const res = await authenticatedFetch(`/api/projects/${id}/music`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -273,7 +277,7 @@ export function ProjectEditor() {
     setMusicSaved(false);
     setMusicError(null);
     try {
-      await saveMusic({ music_track: filename ?? '', music_volume: musicVolume });
+      await saveMusic({ music_track: filename ?? '', music_volume: musicVolume, sfx_volume: sfxVolume });
       setMusicSaved(true);
       setTimeout(() => setMusicSaved(false), 2000);
     } catch (e: any) {
@@ -286,7 +290,17 @@ export function ProjectEditor() {
     if (audioRef.current) audioRef.current.volume = volume;
     setMusicError(null);
     try {
-      await saveMusic({ music_track: selectedMusic ?? '', music_volume: volume });
+      await saveMusic({ music_track: selectedMusic ?? '', music_volume: volume, sfx_volume: sfxVolume });
+    } catch (e: any) {
+      setMusicError(e.message);
+    }
+  };
+
+  const handleSfxVolumeChange = async (volume: number) => {
+    setSfxVolume(volume);
+    setMusicError(null);
+    try {
+      await saveMusic({ music_track: selectedMusic ?? '', music_volume: musicVolume, sfx_volume: volume });
     } catch (e: any) {
       setMusicError(e.message);
     }
@@ -1855,7 +1869,7 @@ export function ProjectEditor() {
                 </div>
 
                 <div className="flex items-center gap-4 pt-4 border-t border-neutral-100">
-                  <span className="text-sm font-medium text-neutral-600 whitespace-nowrap">Volume</span>
+                  <span className="text-sm font-medium text-neutral-600 whitespace-nowrap">Music volume</span>
                   <input
                     type="range" min={5} max={15} step={1}
                     value={Math.round(musicVolume * 100)}
@@ -1864,6 +1878,21 @@ export function ProjectEditor() {
                   />
                   <span className="text-sm font-bold text-neutral-700 w-8 text-right">{Math.round(musicVolume * 100)}%</span>
                 </div>
+
+                <div className="flex items-center gap-4 pt-4 border-t border-neutral-100">
+                  <span className="text-sm font-medium text-neutral-600 whitespace-nowrap">SFX volume</span>
+                  <input
+                    type="range" min={0} max={150} step={5}
+                    value={Math.round(sfxVolume * 100)}
+                    onChange={e => handleSfxVolumeChange(Number(e.target.value) / 100)}
+                    className="flex-1 accent-indigo-600"
+                  />
+                  <span className="text-sm font-bold text-neutral-700 w-10 text-right">{Math.round(sfxVolume * 100)}%</span>
+                </div>
+                <p className="text-xs text-neutral-400 -mt-2">
+                  Whoosh on a cut, tick on a graphic, riser into the close. One trim for all
+                  three — 100% is the tuned level, 0% turns the layer off.
+                </p>
               </div>
 
               <div className="flex justify-between items-center">

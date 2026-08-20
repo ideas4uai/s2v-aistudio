@@ -93,6 +93,33 @@ const DURATION: Record<SfxKind, number> = { whoosh: 0.42, tick: 0.055, riser: 1.
 export const SFX_DURATION: Readonly<Record<SfxKind, number>> = DURATION;
 
 /**
+ * The operator's trim on the whole effects layer, as a multiplier on the levels above.
+ *
+ * One number for all three sounds, not three numbers. The balance between them was not
+ * guessed: the whoosh and the tick sit at the narration's own peak (the tick needs the
+ * same number for less loudness because it is 55 ms against 420), and the riser sits under
+ * both because a build that arrives louder than what it is building to has swallowed its
+ * own payoff. Three sliders would hand that back to be re-derived per project. One slider
+ * moves the layer and keeps the shape.
+ *
+ * 1 is exactly what this session's masking analysis landed on, so the control changes
+ * nothing until it is moved. 0 turns the layer off completely — no cues are planned, no
+ * bed is written, and the master pass runs the filter graph it ran before the layer
+ * existed. The ceiling is 1.5: at 2 the whoosh would peak 6 dB above the narration and
+ * spend the render fighting loudnorm's limiter, and the useful direction from the tuned
+ * level is down anyway.
+ */
+export const SFX_VOLUME_DEFAULT = 1;
+export const SFX_VOLUME_MAX = 1.5;
+
+/** The operator's trim, clamped to what the control can actually ask for. */
+export const resolveSfxVolume = (project: any): number => {
+  const raw = Number(project?.settings?.sfxVolume ?? project?.sfx_volume ?? SFX_VOLUME_DEFAULT);
+  if (!Number.isFinite(raw)) return SFX_VOLUME_DEFAULT;
+  return Math.min(SFX_VOLUME_MAX, Math.max(0, raw));
+};
+
+/**
  * A whoosh peaks after it starts, and the peak wants to be ON the cut — so it begins this
  * far before the boundary. Standard practice, and the reason a transition sound placed
  * exactly on the cut always sounds late.

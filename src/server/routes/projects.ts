@@ -419,10 +419,13 @@ projectsRouter.patch('/:id/music', async (req, res) => {
     // getProject() returned null and every music save 404'd. The picker reported
     // "Saved" regardless, so the selection looked stored and the render then read
     // music_track: undefined and muxed no music at all.
-    const { music_track, music_volume } = req.body;
+    // sfx_volume rides this route rather than getting its own: it is the same tab, the
+    // same save, and the same class of setting — a level the operator trims per project.
+    const { music_track, music_volume, sfx_volume } = req.body;
     const saved = await patchProject(req.params.id, (project: any) => {
       if (music_track !== undefined) project.music_track = music_track || null;
       if (music_volume !== undefined) project.music_volume = Number(music_volume);
+      if (sfx_volume !== undefined) project.sfx_volume = Number(sfx_volume);
     }, 'music');
     if (!saved) return res.status(409).json({ error: 'Music selection could not be saved — try again.' });
     res.json({ ok: true });
