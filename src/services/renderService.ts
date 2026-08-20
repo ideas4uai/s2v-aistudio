@@ -1589,7 +1589,11 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
       } catch {
         console.log('[Stitch] Could not probe:', scenePath.slice(-40));
       }
-      stitched.push({ scene, duration: dur });
+      // What the orchestrator hands this function is a concat entry — a path and a
+      // duration — with the scene it came from attached. Everything else here only
+      // ever needed the path, so the entry is what gets passed; the effects layer is
+      // the first thing that needs the narration and the overlay behind it.
+      stitched.push({ scene: (scene as any).scene ?? scene, duration: dur });
       listContent += `file '${scenePath.replace(/'/g, "'\\''")}'\n`;
     }
   }

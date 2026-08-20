@@ -1836,7 +1836,12 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
       console.log('[Stitch] Adding segment:', segPath.slice(-50));
       finalScenes.push({
         video_path: segPath,
-        duration: scene.duration_actual || 0
+        duration: scene.duration_actual || 0,
+        // The scene itself, not just its file. stitchScenes needs to know what beat
+        // each segment is and what overlay it carries — the effects layer decides
+        // where a cut is worth marking from exactly that, and a list of paths and
+        // durations cannot answer it.
+        scene,
       });
     }
 

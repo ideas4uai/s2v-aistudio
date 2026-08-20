@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {
-  synthesize, planSfxCues, renderSfxBed, sfxHeadroom, SFX_SAMPLE_RATE,
+  synthesize, planSfxCues, renderSfxBed, sfxHeadroom, SFX_SAMPLE_RATE, WHOOSH_LEAD,
 } from '../src/services/sfx.js';
 import { planOverlay } from '../src/services/overlayPlan.js';
 
@@ -72,6 +72,23 @@ describe('the sounds themselves', () => {
     // and the tick is the quieter of the two — it lands under a line, not between them
     const p = (k: 'whoosh' | 'tick') => Math.max(...Array.from(synthesize(k)).map(Math.abs));
     expect(p('tick')).toBeLessThan(p('whoosh'));
+  });
+
+  it('reaches the level it declares, rather than whatever survives the fades', () => {
+    // The first version normalised before applying the anti-click ramps, so the tick's
+    // peak — its whole character, 0.6 ms in — was multiplied by a near-zero head fade
+    // and the sound landed at -33.7 dBFS against the -26 it claimed. The level a mix is
+    // built around has to be the level the sound actually reaches.
+    const peak = (k: 'whoosh' | 'tick') => 20 * Math.log10(Math.max(...Array.from(synthesize(k)).map(Math.abs)));
+    expect(peak('whoosh')).toBeCloseTo(-20, 1);
+    expect(peak('tick')).toBeCloseTo(-26, 1);
+  });
+
+  it('keeps the tick an attack, not a swell', () => {
+    const s = synthesize('tick');
+    const peak = Math.max(...Array.from(s).map(Math.abs));
+    const at = Array.from(s).findIndex((x) => Math.abs(x) === peak) / SFX_SAMPLE_RATE;
+    expect(at).toBeLessThan(0.003);
   });
 
   it('keeps the whoosh short enough to punctuate rather than wash', () => {
@@ -145,13 +162,24 @@ describe('when an effect fires', () => {
 
 describe('where the effect lands', () => {
   it('leads the cut so the whoosh peaks ON the boundary', () => {
+    // The lead is where the sound actually peaks, not a round number. If the envelope
+    // is ever reshaped, this fails rather than sliding every whoosh quietly off its cut.
+    const whoosh = synthesize('whoosh');
+    const peak = Math.max(...Array.from(whoosh).map(Math.abs));
+    const peakAt = Array.from(whoosh).findIndex((x) => Math.abs(x) === peak) / SFX_SAMPLE_RATE;
+    expect(WHOOSH_LEAD).toBeCloseTo(peakAt, 2);
+
     const scenes = episode();
     const durations = [5, 7, 4, 6, 8, 5];
     const cues = planSfxCues(scenes, projectOf(scenes), durations);
     const boundary = (i: number) => durations.slice(0, i).reduce((n, d) => n + d, 0);
-    for (const cue of cues.filter((c) => c.kind === 'whoosh')) {
+    const whooshes = cues.filter((c) => c.kind === 'whoosh');
+    expect(whooshes.length).toBeGreaterThan(0);
+    for (const cue of whooshes) {
       const i = Number(/scene (\d+)/.exec(cue.reason)![1]) - 1;
-      expect(cue.at).toBeCloseTo(boundary(i) - 0.14, 6);
+      expect(cue.at).toBeCloseTo(boundary(i) - WHOOSH_LEAD, 6);
+      // and its loudest instant really does land on the cut, within a frame at 24fps
+      expect(Math.abs(cue.at + peakAt - boundary(i))).toBeLessThan(1 / 24);
     }
   });
 
@@ -263,8 +291,21 @@ describe('the master pass carries the layer', () => {
   });
 
   it('measures the cut boundaries rather than trusting duration_target', () => {
-    expect(render).toMatch(/stitched\.push\(\{ scene, duration: dur \}\)/);
+    expect(render).toMatch(/stitched\.push\(\{ scene: \(scene as any\)\.scene \?\? scene, duration: dur \}\)/);
     expect(master).toMatch(/planSfxCues\(stitched\.map/);
+  });
+
+  it('is handed the narrated scene, not just a path and a duration', () => {
+    // The first render of this layer placed nothing at all. stitchScenes is called with
+    // concat entries — `{ video_path, duration }` — and never with the scenes themselves,
+    // so every scene the effects layer inspected had no narration, no scene_id and no
+    // overlay, and both planOverlay and sceneBeats correctly answered "nothing here".
+    // The two halves of that seam: the orchestrator attaches the scene, and the stitch
+    // unwraps it.
+    const orch = fs.readFileSync(path.join(process.cwd(), 'src/pipeline/orchestrator.ts'), 'utf-8');
+    const entry = orch.slice(orch.indexOf('finalScenes.push({'));
+    expect(entry.slice(0, entry.indexOf('});'))).toMatch(/\n\s+scene,/);
+    expect(render).toContain('(scene as any).scene ?? scene');
   });
 
   it('skips the layer rather than guessing when a segment could not be probed', () => {

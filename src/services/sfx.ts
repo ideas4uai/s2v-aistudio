@@ -58,8 +58,12 @@ const DURATION: Record<SfxKind, number> = { whoosh: 0.42, tick: 0.055 };
  * A whoosh peaks after it starts, and the peak wants to be ON the cut — so it begins this
  * far before the boundary. Standard practice, and the reason a transition sound placed
  * exactly on the cut always sounds late.
+ *
+ * The number is not taste: it is where synthesize('whoosh') actually peaks, measured at
+ * 211 ms of its 420 ms. The test asserts the two stay equal, so reshaping the envelope
+ * cannot silently slide every whoosh off its cut.
  */
-const WHOOSH_LEAD = 0.14;
+export const WHOOSH_LEAD = 0.21;
 
 /** Closest two effects may land. Under this they stop reading as two events and turn to mud. */
 const MIN_GAP = 1.2;
@@ -78,8 +82,18 @@ const SECONDS_PER_CUE = 8;
  */
 const TICKS_ON: ReadonlySet<OverlayKind> = new Set<OverlayKind>(['stat', 'kinetic']);
 
-/** A raised-cosine fade this long at each end, so no sample starts or ends on a step. */
-const ANTICLICK = 0.004;
+/**
+ * Raised-cosine fades so no sample starts or ends on a step.
+ *
+ * The head fade is a tenth of the tail's on purpose. A tick's whole character is its
+ * attack, and a 4 ms fade-in sits right on top of it: measured, a 4 ms head fade pulled
+ * the tick's real peak down to -33.7 dBFS against the -26 it declares, because the first
+ * cycle of an 1.8 kHz tone is 0.6 ms in and the ramp there is near zero. 0.4 ms is two
+ * cycles at that frequency — enough that the waveform does not start on a step, short
+ * enough that the transient survives.
+ */
+const FADE_IN = 0.0004;
+const FADE_OUT = 0.004;
 
 /** One-pole filter — enough to shape noise into a whoosh, and the whole DSP budget needed. */
 const lowpass = (x: number, prev: number, cutoff: number): number => {
@@ -121,16 +135,23 @@ export function synthesize(kind: SfxKind, seed = 1): Float32Array {
     out[i] = s;
   }
 
-  // Peak-normalise, then anti-click both ends.
+  // Anti-click first, THEN normalise — in that order, so PEAK[kind] is the level the
+  // sound actually reaches. Normalising before the fades meant the declared peak was
+  // whatever survived them, which for the tick was 8 dB lower than this file claims.
+  const inFade = Math.max(1, Math.round(FADE_IN * SFX_SAMPLE_RATE));
+  const outFade = Math.max(1, Math.round(FADE_OUT * SFX_SAMPLE_RATE));
+  const ramp = (i: number) => {
+    const head = i < inFade ? 0.5 - 0.5 * Math.cos((Math.PI * i) / inFade) : 1;
+    const tail = n - 1 - i < outFade ? 0.5 - 0.5 * Math.cos((Math.PI * (n - 1 - i)) / outFade) : 1;
+    return Math.min(head, tail);
+  };
   let peak = 0;
-  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(out[i]));
-  const gain = peak > 0 ? PEAK[kind] / peak : 0;
-  const fade = Math.max(1, Math.round(ANTICLICK * SFX_SAMPLE_RATE));
   for (let i = 0; i < n; i++) {
-    const edge = Math.min(i, n - 1 - i);
-    const ramp = edge < fade ? 0.5 - 0.5 * Math.cos((Math.PI * edge) / fade) : 1;
-    out[i] *= gain * ramp;
+    out[i] *= ramp(i);
+    peak = Math.max(peak, Math.abs(out[i]));
   }
+  const gain = peak > 0 ? PEAK[kind] / peak : 0;
+  for (let i = 0; i < n; i++) out[i] *= gain;
   return out;
 }
 

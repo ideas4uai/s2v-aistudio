@@ -67,6 +67,13 @@ export function sceneBeats(scenes: any[]): (Beat | null)[] {
  * weight below 1 can only remove hold time a scene was going to spend on a still, and one
  * above 1 is capped at MAX_PAD_FACTOR anyway — a wider spread would mostly be clipped off
  * at both ends and buy nothing but a warning in the log.
+ *
+ * ponytail: on a script that under-fills its target, MAX_PAD_FACTOR binds before the
+ * payoff weight does — measured on a real nine-scene render at a 110s target, the close
+ * asked for 14.8s and the 1.5x dead-air cap allowed 8.2s, so the whole hold was clipped.
+ * That is the cap doing its job and it is the right trade: exempting the close would buy
+ * the lean back in literal silence. If holding the close ever matters more than that,
+ * the upgrade is a longer closing line, not a bigger cap.
  */
 export const BEAT_HOLD: Record<Beat, number> = {
   // Open on the front foot. A hook held past its words is the reason a viewer leaves.
