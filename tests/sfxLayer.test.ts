@@ -87,7 +87,7 @@ describe('the sounds themselves', () => {
     // built around has to be the level the sound actually reaches.
     const peak = (k: 'whoosh' | 'tick') => 20 * Math.log10(Math.max(...Array.from(synthesize(k)).map(Math.abs)));
     expect(peak('whoosh')).toBeCloseTo(-10, 1);
-    expect(peak('tick')).toBeCloseTo(-16, 1);
+    expect(peak('tick')).toBeCloseTo(-12, 1);
   });
 
   it('keeps the tick an attack, not a swell', () => {

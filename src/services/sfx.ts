@@ -60,11 +60,17 @@ export interface SfxCue {
  * These levels come from that measurement plus the practice they sit in. Narration in the
  * finished file peaks at -10 dBFS. In short-form editing a transition sound occupies a gap
  * and is routinely as loud as the dialogue around it; a hard effect that overlaps dialogue
- * sits 6-10 dB under it. So: the whoosh at the narration's own peak, the tick 6 dB below
- * it — and the mix ducks the whole effects bus under the voice (see the master pass), so
+ * sits 6-10 dB under it. So: the whoosh at the narration's own peak, the tick below it —
+ * and the mix ducks the whole effects bus under the voice (see the master pass), so
  * neither can sit on a line however loud it is in a gap.
+ *
+ * The whoosh at -10 was confirmed correct on a listen. The tick went out at -16 in that
+ * same pass and was still too quiet to register, so it sits at -12 now: half the distance,
+ * in dB, between that -16 and the -8 of the deliberately-loud proof render that was
+ * audible. Nothing else about it changed — it still lands 80 ms ahead of its word and
+ * still ducks under the voice, which is what a 4 dB rise can afford to leave alone.
  */
-const PEAK: Record<SfxKind, number> = { whoosh: 0.316, tick: 0.158 };
+const PEAK: Record<SfxKind, number> = { whoosh: 0.316, tick: 0.251 };
 
 /** Length of each sound. A whoosh past half a second stops punctuating and starts being a bed. */
 const DURATION: Record<SfxKind, number> = { whoosh: 0.42, tick: 0.055 };
