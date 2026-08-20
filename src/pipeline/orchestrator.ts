@@ -26,6 +26,7 @@ import { getFromCache } from '../services/cacheService.js';
 import { logUserEvent, logEvent, estimateCostUsd } from '../services/logService.js';
 import { buildSceneTimeline } from '../utils/timeline.js';
 import { targetLengthSeconds, planScenePadding, MAX_PAD_FACTOR, secondsForWords, countWords } from '../utils/targetLength.js';
+import { beatShares } from '../utils/beats.js';
 import { stripSpeakerPrefix } from '../utils/narration.js';
 import { projectVideoFileName } from '../utils/filename.js';
 import { QuotaService } from '../server/services/quotaService.js';
@@ -1594,10 +1595,15 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   // every scene by one shared factor.
   let holdDuration = audioDur;
   if (audioDur > 0) {
-    const words = (t?: string) => (t || '').trim().split(/\s+/).filter(Boolean).length;
-    const totalWords = project.scenes.reduce((n, s) => n + words(s.narration_text), 0);
+    // The share is weighted by what the beat is doing, not only by how much was
+    // written in it. Word count alone makes the edit a function of sentence length and
+    // nothing else: a hook and a close of equal length get equal time, which is the one
+    // thing a professional edit never does. The weights renormalise against the same
+    // total below, so every scene's share still sums to exactly `target` — this moves
+    // hold time between beats, it does not add any.
     const target = targetLengthSeconds(project.settings?.targetLength);
-    const share = totalWords > 0 ? target * words(scene.narration_text) / totalWords : 0;
+    const here = project.scenes.findIndex((s: any) => s.scene_id === scene.scene_id);
+    const share = beatShares(project.scenes, target)[here] ?? 0;
     const plan = planScenePadding([audioDur], share);
     holdDuration = plan.durations[0];
     (scene as any).pad_seconds = Number((holdDuration - audioDur).toFixed(3));
