@@ -497,6 +497,44 @@ def apply_emotion_grade(frame, emotion, blend=1.0):
     return res
 
 
+def apply_colour_arc(frame, pos):
+    """A slow colour drift across the whole episode, applied AFTER the per-scene grade.
+
+    The grade above decides a scene's look from that scene's own detected emotion, in
+    isolation. Nine scenes graded independently have no direction: whatever variety they
+    have is a function of what each line happened to say, and an episode that opens and
+    closes on the same detected emotion opens and closes on the same picture.
+
+    `pos` is where the scene sits in the episode, 0 at the open and 1 at the close. The
+    drift runs cool-and-held-back to warm-and-open, which is the ordinary shape of a
+    short-form arc: the problem gets stated in a colder frame than the one the payoff
+    lands in.
+
+    Deliberately small, and deliberately NOT a normalisation. The craft audit found this
+    pipeline was already MORE hue-consistent than either reference upload (3.7 degrees of
+    spread against 93.7) and looked worse for it — consistency without contrast reads as
+    monotony. This can only ADD between-scene difference: it is a monotonic ramp applied
+    without reference to what the emotion grade did, so two scenes at different points of
+    the episode end up further apart than they started, never closer.
+
+    pos < 0 means no arc and the frame is returned untouched, which is what an older
+    caller or a one-scene render gets.
+    """
+    if pos < 0:
+        return frame
+    p = clamp(pos, 0.0, 1.0)
+    f = frame.astype(np.float32)
+    # Warm the reds and cool the blues as the episode runs: +/-4% at each end, crossing
+    # over in the middle so mid-episode scenes stay where the emotion grade put them.
+    f[:, :, 2] *= 0.96 + 0.08 * p
+    f[:, :, 0] *= 1.04 - 0.08 * p
+    # ...and open the saturation up as it goes: held back at the start, full at the close.
+    sat = 0.94 + 0.12 * p
+    grey = np.mean(f, axis=2, keepdims=True)
+    f = grey + (f - grey) * sat
+    return np.clip(f, 0, 255).astype(np.uint8)
+
+
 def apply_vignette_flicker(frame, mask, t, intensity=0.022):
     """Vignette and light flicker folded into one full-frame float pass."""
     f = 1.0 + intensity * math.sin(t * 47.3) * math.sin(t * 13.7)
@@ -976,12 +1014,14 @@ class SceneRendererV4:
                  char_rgba, duration: float, emotion: str, scene_type: str,
                  prev_scene_type: str = '', next_scene_type: str = '',
                  seed: int = 42, idle: bool = True, overlay_path: str = '',
-                 in_transition: str = '', out_transition: str = ''):
+                 in_transition: str = '', out_transition: str = '', arc_pos: float = -1.0):
         self.cfg = cfg
         self.W, self.H, self.FPS = cfg.w, cfg.h, cfg.fps
         self.duration = duration
         self.total_frames = max(1, int(duration * cfg.fps))
         self.emotion = resolve_emotion(emotion)
+        # Where this scene sits in the episode, 0 to 1, or -1 when the caller did not say.
+        self.arc_pos = arc_pos
         self.scene_type = scene_type if scene_type in PARTICLE_MAP else 'default'
         self.unified = char_rgba is None
 
@@ -1226,9 +1266,14 @@ class SceneRendererV4:
             frame = cv2.warpAffine(frame, M, (self.W, self.H),
                                    borderMode=cv2.BORDER_REPLICATE)
 
-        # 5. Emotion grade (half-res, blends in over the first 1.5s)
+        # 5. Emotion grade (half-res, blends in over the first 1.5s), then the episode's
+        #    colour arc on top of it. Order matters: the arc is a second, weaker pass over
+        #    whatever the scene's own grade decided, so the per-emotion look survives and
+        #    only picks up a drift. Reversing them would let the emotion grade re-normalise
+        #    the arc away.
         blend = clamp(t / 1.5, 0, 1)
         frame = apply_emotion_grade(frame, self.emotion, blend)
+        frame = apply_colour_arc(frame, self.arc_pos)
 
         # 6. Vignette + light flicker (one float pass) + grain
         frame = apply_vignette_flicker(frame, self.vignette_mask, t)
@@ -1411,7 +1456,8 @@ def _render_range(job):
     a second Depth-Anything inference — see _gen_depth.
     """
     (start, end, seg_path, background, char_path, duration, emotion, scene_type,
-     prev_t, next_t, seed, idle, w, h, fps, overlay_path, in_tr, out_tr, tr_color) = job
+     prev_t, next_t, seed, idle, w, h, fps, overlay_path, in_tr, out_tr, tr_color,
+     arc_pos) = job
 
     # Module-level in the worker process: spawn (Windows) re-imports the module, so a
     # colour set only in the parent would silently revert to the default here and the
@@ -1428,7 +1474,8 @@ def _render_range(job):
     renderer = SceneRendererV4(
         cfg, background, char_rgba, duration, emotion, scene_type,
         prev_scene_type=prev_t, next_scene_type=next_t, seed=seed, idle=idle,
-        overlay_path=overlay_path, in_transition=in_tr, out_transition=out_tr)
+        overlay_path=overlay_path, in_transition=in_tr, out_transition=out_tr,
+        arc_pos=arc_pos)
 
     # Catch the particle system up to this range's first frame, or the seam shows.
     # The overlay needs no equivalent: it is a pure function of t (motion_overlay.py),
@@ -1503,6 +1550,8 @@ def main():
     # NOTE: no choices= — unknown values map to defaults instead of exit(2)
     parser.add_argument('--emotion', default='neutral')
     parser.add_argument('--scene_type', default='street')
+    parser.add_argument('--arc', type=float, default=-1.0,
+                        help='position of this scene in the episode, 0=open 1=close; -1 disables the colour arc')
     parser.add_argument('--camera', default='',
                         help='Accepted for v3 CLI compatibility (camera is '
                              'emotion-driven in V4)')
@@ -1564,7 +1613,8 @@ def main():
         prev_scene_type=args.prev_scene_type,
         next_scene_type=args.next_scene_type,
         seed=args.seed, idle=not args.no_idle, overlay_path=args.overlay,
-        in_transition=args.in_transition, out_transition=args.out_transition)
+        in_transition=args.in_transition, out_transition=args.out_transition,
+        arc_pos=args.arc)
 
     if char_rgba is not None:
         print(f'[MetroV4] Light dx: {renderer.light_dx:+.2f} | '
@@ -1584,7 +1634,8 @@ def main():
              args.duration, emotion, scene_type, args.prev_scene_type,
              args.next_scene_type, args.seed, not args.no_idle,
              args.width, args.height, args.fps, args.overlay,
-             args.in_transition, args.out_transition, args.transition_color)
+             args.in_transition, args.out_transition, args.transition_color,
+             args.arc)
             for i, (s, e) in enumerate(ranges)
         ]
         print(f'[MetroV4] Rendering {total} frames across {len(jobs)} processes '

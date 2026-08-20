@@ -9,6 +9,8 @@ import {
   planOverlay, sceneVisualKey, transitionBetween, transitionColor, type OverlayWord,
   OVERLAY_RESTATES_NARRATION, type OverlayKind,
 } from './overlayPlan.js';
+import { planSfxCues, renderSfxBed, sfxHeadroom } from './sfx.js';
+import { arcPosition, NO_ARC } from './colourArc.js';
 import { progressBus, ProgressStage } from '../server/progressBus.js';
 
 const execAsync = promisify(exec);
@@ -218,6 +220,8 @@ async function callSceneAnimatorV3(
     height?: number;
     /** Draft render: skip the depth-parallax pass, which is the engine's biggest cost. */
     draft?: boolean;
+    /** 0 at the episode's open, 1 at its close; -1 for no colour arc. See colourArc.ts. */
+    arcPos?: number;
     /** JSON motion-graphics spec. V4 only; absent means the clip renders as before. */
     overlayPath?: string;
     /**
@@ -290,6 +294,7 @@ function runSceneAnimator(
       '--fps',        fps,
       '--width',      String(opts.width || 1080),
       '--height',     String(opts.height || 1920),
+      '--arc',        String(opts.arcPos ?? NO_ARC),
     ];
     if (useV4 || useDoraemon) {
       // Only forward scene types that Metro V4 has explicit transition rules for.
@@ -672,6 +677,9 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
   const neighbourSpec = (j: number) => (sceneList[j]
     ? planOverlay(sceneList[j], project, audioDuration || visual.duration_target || 5) : null);
   const inTransition = sceneIdx > 0 ? transitionBetween(neighbourSpec(sceneIdx - 1), overlaySpec) : '';
+  // Where this scene sits in the episode, for the colour arc. Same index the transitions
+  // and the cache key are computed from, so the grade rides the same ordering the edit does.
+  const arcPos = arcPosition(sceneIdx, sceneList.length);
   const outTransition = sceneIdx >= 0 ? transitionBetween(overlaySpec, neighbourSpec(sceneIdx + 1)) : '';
   const clipSeconds = audioDuration || visual.duration_target || 5;
   const outputPath = visualClipPath(
@@ -910,6 +918,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                   width: engineW,
                   height: engineH,
                   draft: isPreview,
+                arcPos,
                 }
               );
               if (cutoutSuccess) {
@@ -953,6 +962,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 width: engineW,
                 height: engineH,
                 draft: isPreview,
+                arcPos,
                 overlayPath,
                 onOverlayDrawn: (drawn) => { engineDrewOverlay = drawn; },
                 inTransition,
@@ -996,6 +1006,7 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
                 width: engineW,
                 height: engineH,
                 draft: isPreview,
+                arcPos,
                 overlayPath,
                 onOverlayDrawn: (drawn) => { engineDrewOverlay = drawn; },
                 inTransition,
@@ -1572,20 +1583,31 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
   const listFile = path.join(tmpDir, `list_${new Date().getTime()}.txt`);
   
   let listContent = '';
+  // Each segment's measured length, in concat order. The stitch already probes these to
+  // log them; the effects layer needs the same numbers to know where the cuts land, and a
+  // measured boundary is the frame the concat actually cuts on rather than what
+  // duration_target asked for.
+  const stitched: { scene: any; duration: number }[] = [];
   for (const scene of scenes) {
     const scenePath = (scene as any).segment_path || scene.rendered_path || scene.video_path;
     if (scenePath) {
+      let dur = NaN;
       try {
         const { stdout } = await execAsync(`ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${scenePath}"`, { timeout: 10000 });
-        const dur = parseFloat(stdout.trim());
+        dur = parseFloat(stdout.trim());
         console.log('[Stitch] Segment duration:', isNaN(dur) ? '?' : dur.toFixed(2) + 's', 'path:', scenePath.slice(-40));
       } catch {
         console.log('[Stitch] Could not probe:', scenePath.slice(-40));
       }
+      // What the orchestrator hands this function is a concat entry — a path and a
+      // duration — with the scene it came from attached. Everything else here only
+      // ever needed the path, so the entry is what gets passed; the effects layer is
+      // the first thing that needs the narration and the overlay behind it.
+      stitched.push({ scene: (scene as any).scene ?? scene, duration: dur });
       listContent += `file '${scenePath.replace(/'/g, "'\\''")}'\n`;
     }
   }
-  
+
   fs.writeFileSync(listFile, listContent);
   console.log('[Stitch] Concat list contents:\n', fs.readFileSync(listFile, 'utf8'));
 
@@ -1619,6 +1641,38 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
      if (musicTrack && !haveMusic) console.warn(`[Music] Track not found, mastering without it: ${musicPath}`);
      console.log('[Master] Track:', musicTrack || '(none)', 'Volume:', musicVolume, 'Found:', haveMusic);
 
+
+     // ── The sound-effects layer. ──────────────────────────────────────────────
+     //
+     // There was no effects layer at all: narration and, since the mixing work, a
+     // music bed. Every cut and every graphic landed in silence. The cues are decided
+     // by planSfxCues from what the edit is already doing — see sfx.ts — and rendered
+     // to one WAV the length of the video, so this costs the master pass one input
+     // rather than one per hit.
+     //
+     // sfxVolume is the trim, and 0 is the way to turn the layer off for a comparison
+     // render without touching the code that decides where the effects go.
+     const sfxVolume = Number(project?.settings?.sfxVolume ?? project?.sfx_volume ?? 1);
+     const sfxPath = path.join(tmpDir, `sfx_${Date.now()}.wav`);
+     const usable = stitched.every((s) => Number.isFinite(s.duration) && s.duration > 0);
+     const sfxCues = usable && sfxVolume > 0
+       ? planSfxCues(stitched.map((s) => s.scene), project, stitched.map((s) => s.duration))
+       : [];
+     if (!usable) console.warn('[SFX] A segment length could not be measured — skipping the effects layer rather than guessing where the cuts are');
+     const totalSeconds = stitched.reduce((n, s) => n + (Number.isFinite(s.duration) ? s.duration : 0), 0);
+     const haveSfx = renderSfxBed(sfxCues, totalSeconds, sfxPath, sfxVolume);
+     // The video is input 0 and the bed, when there is one, is input 1.
+     const sfxInput = haveMusic ? 2 : 1;
+     if (haveSfx) {
+       console.log(
+         `[SFX] ${sfxCues.length} cue(s) over ${totalSeconds.toFixed(1)}s,`,
+         `peak ${sfxHeadroom(sfxCues, sfxVolume).toFixed(1)} dBFS:`,
+         sfxCues.map((c) => `${c.at.toFixed(2)}s ${c.kind} (${c.reason})`).join('; '),
+       );
+     } else {
+       console.log('[SFX] No cue earned an effect on this render — mixing without the layer');
+     }
+
      const mastered = path.join(tmpDir, `final_master_${Date.now()}.mp4`);
      try {
        // Voice chain: high-pass below speech, then gentle 3:1 to give the
@@ -1630,6 +1684,14 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
        // normalisation target; TP=-1.5 leaves headroom for the lossy encode.
        const master = 'loudnorm=I=-14:TP=-1.5:LRA=11';
 
+       // The effects bus is ducked under the voice by its own sidechain, gentler than
+       // the music's: 4:1 against the bed's 8:1, so a transition sound in a gap keeps
+       // all of its level and one that lands on a line steps back instead of sitting on
+       // it. That is what lets the effects be as loud as they now are — see PEAK in
+       // sfx.ts for why the first, quieter levels could not be heard at all.
+       const duckSfx = `[sfxraw][sk]sidechaincompress=threshold=0.05:ratio=4:attack=5:release=250[sfx];`;
+       const sfxIn = `[${sfxInput}:a]aformat=sample_rates=44100:channel_layouts=stereo[sfxraw];`;
+
        let filter: string;
        if (haveMusic) {
          // normalize=0 is not optional. amix defaults to normalize=1, which scales
@@ -1639,17 +1701,33 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
          // sidechaincompress ducks the bed under the voice instead of leaving it at
          // a static gain. Without it the bed sits ~7.5 dB under the narration where
          // broadcast practice is 15-22, and fights every line.
-         filter = `[0:a]${voice},asplit=2[v1][vk];`
+         //
+         // The effects join the bed bus AFTER the music's own sidechain, carrying their
+         // own duck instead — the bed has to get out of the way of a line, a transition
+         // sound only has to not sit on one.
+         filter = `[0:a]${voice},asplit=${haveSfx ? 3 : 2}[v1][vk]${haveSfx ? '[sk]' : ''};`
            + `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=${Number(musicVolume).toFixed(2)}[bg];`
            + `[bg][vk]sidechaincompress=threshold=0.03:ratio=8:attack=5:release=300[duck];`
-           + `[v1][duck]amix=inputs=2:duration=first:normalize=0[mix];`
+           + (haveSfx
+             ? sfxIn + duckSfx + `[duck][sfx]amix=inputs=2:duration=first:normalize=0[bed];`
+             : '')
+           + `[v1][${haveSfx ? 'bed' : 'duck'}]amix=inputs=2:duration=first:normalize=0[mix];`
+           + `[mix]${master}[aout]`;
+       } else if (haveSfx) {
+         filter = `[0:a]${voice},asplit=2[v1][sk];`
+           + sfxIn + duckSfx
+           + `[v1][sfx]amix=inputs=2:duration=first:normalize=0[mix];`
            + `[mix]${master}[aout]`;
        } else {
          filter = `[0:a]${voice},${master}[aout]`;
        }
-       const inputs = haveMusic
-         ? `-i "${outputPath}" -stream_loop -1 -i "${musicPath}"`
-         : `-i "${outputPath}"`;
+       // Input order is fixed and sfxInput was computed from it: video, then the bed if
+       // there is one, then the effects.
+       const inputs = [
+         `-i "${outputPath}"`,
+         haveMusic ? `-stream_loop -1 -i "${musicPath}"` : '',
+         haveSfx ? `-i "${sfxPath}"` : '',
+       ].filter(Boolean).join(' ');
        await guardedExec(
          `"${ffmpeg}" ${inputs} -filter_complex "${filter}" -map 0:v -map "[aout]" `
          + `-c:v copy -c:a aac -ar 44100 -ac 2 -b:a 192k ${disclosure} -shortest -y "${mastered}"`,

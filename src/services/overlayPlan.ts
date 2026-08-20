@@ -1,6 +1,9 @@
 import { extractFigure } from '../pipeline/agents/scriptPrompt.js';
 import { detectSteps, detectComparison, detectName, countUpParts } from './overlayTreatments.js';
 import { wordTimings } from './captionService.js';
+import { arcPosition, arcKey } from './colourArc.js';
+import { sceneBeats } from '../utils/beats.js';
+import { usableAsCutaway } from './entityImage.js';
 
 /**
  * Decides which scenes get a motion-graphics overlay, and what it says.
@@ -382,6 +385,68 @@ export function transitionBetween(from: OverlaySpec | null, to: OverlaySpec | nu
   return '';
 }
 
+/**
+ * The one scene, if any, whose whole frame should be the sourced photograph rather than a
+ * generated image — a cutaway. Returns the scene index, or -1.
+ *
+ * ── Why it is built on the name-card and not beside it ───────────────────────────────
+ *
+ * The entity-image system already answers the hard question: it searches Commons, reads the
+ * machine-readable per-file licence, rejects anything a burned-in credit cannot honour
+ * (ShareAlike, copyleft, non-free, anything unrecognised), and hands back a local file plus
+ * the exact credit line its licence demands. A cutaway that went looking for its own image
+ * would be a second path to the same legal question, and the second path is where the risk
+ * gets in. So this does not source anything: it asks which scene planOverlay ALREADY chose
+ * to put a verified logo on, and promotes that one scene's background.
+ *
+ * That also means the attribution is already solved. The name-card is still drawn on the
+ * cutaway scene, carrying the same `credit` string it would have carried anyway, so a file
+ * whose licence requires a credit gets one on screen exactly as before. Nothing about the
+ * licensing, the rejection rules or the credit rendering changes here.
+ *
+ * ── The restraint ────────────────────────────────────────────────────────────────────
+ *
+ * Every named entity becoming a full-frame photograph would be a slideshow of logos. Four
+ * gates, and all four must pass:
+ *
+ *   1. planOverlay put a name-card WITH a verified logoPath on the scene. That already caps
+ *      it at one per episode (`named` latches after the first mention) and already means the
+ *      episode's subject, not a passing mention — resolveEntityImage sources projectEntity,
+ *      and the card only carries a logo when the sourced entity is the one this scene names.
+ *   2. Not the opening beat. The hook is the shot that decides whether anyone stays, and a
+ *      stock photograph is a worse first frame than a made one.
+ *   3. Not the closing beat. The payoff carries the line the whole episode is for, and the
+ *      close is also where the riser resolves and the payoff overlay runs to the end of the
+ *      clip — three treatments on one shot is a pile-up.
+ *   4. No approved image on the scene. An image the user picked in the editor is never
+ *      replaced by anything, which is the guarantee the approved-content work exists to make.
+ *   5. The sourced file is a picture and not a mark. What this system searches for is a
+ *      brand asset, and for a software tool Commons returns a logo — right for a card,
+ *      wrong for a whole frame. Verified on a real render: the Playwright logo filled
+ *      1920x1080 with a near-black mark on a black field. usableAsCutaway is the gate,
+ *      and it lives next to the sourcing because that is where knowing what was fetched
+ *      belongs.
+ *
+ * If no safe licensed image was found, planOverlay never sets logoPath, this returns -1, and
+ * the scene generates its own imagery exactly as it does today. That is the same graceful
+ * degradation the name-card has always had, reached by the same route.
+ */
+export function cutawayIndex(project: any): number {
+  const scenes: any[] = project?.scenes || [];
+  if (scenes.length < 3) return -1;
+  const beats = sceneBeats(scenes);
+  for (let i = 0; i < scenes.length; i++) {
+    const scene = scenes[i];
+    if (!scene || String(scene.image_path || '').trim()) continue;
+    if (beats[i] === 'hook' || beats[i] === 'payoff') continue;
+    const spec = planOverlay(scene, project, Number(scene.duration_target) || 5);
+    if (spec?.kind !== 'namecard' || !spec.logoPath) continue;
+    if (!usableAsCutaway(project?.entity_image?.image)) continue;
+    return i;
+  }
+  return -1;
+}
+
 /** BGR accent as the engine's --transition_color expects it. */
 export const transitionColor = (project: any): string => universeAccent(project).join(',');
 
@@ -399,6 +464,14 @@ export function sceneVisualKey(scene: any, project: any, clipDuration: number): 
   const tr = [transitionBetween(at(i - 1), spec), transitionBetween(spec, at(i + 1))]
     .filter(Boolean).join('');
   const key = overlayKey(spec);
-  if (!key && !tr) return '';
-  return `${key}${tr ? `t${tr.replace(/[^a-z]/g, '').slice(0, 6)}` : ''}`;
+  // The episode's colour arc moves this scene's pixels and no timestamp comparison can
+  // see it, exactly like the Cinematic Effect and the overlay above. A scene now almost
+  // always has a key for this reason, where before most had none.
+  const arc = arcKey(arcPosition(i, scenes.length));
+  // A cutaway replaces the whole frame with a sourced photograph. Nothing else in the
+  // key would change when it turns on or off, so a stale generated clip would be served
+  // for a scene that is now a photograph, and vice versa.
+  const cut = cutawayIndex(project) === i ? 'c' : '';
+  if (!key && !tr && !arc && !cut) return '';
+  return `${key}${tr ? `t${tr.replace(/[^a-z]/g, '').slice(0, 6)}` : ''}${arc}${cut}`;
 }

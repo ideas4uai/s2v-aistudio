@@ -18,7 +18,7 @@ import { fallbackHook, fallbackScript, fallbackSceneGraph } from './fallbacks.js
 import { generateSceneAudio } from '../services/voiceService.js';
 import { generateAsset } from '../services/assetService.js';
 import { renderVisualClip, validateVisualClip, assembleSceneSegment, stitchScenes, getAudioDuration, visualClipPath, isShortsProject, prepareSceneAudio } from '../services/renderService.js';
-import { sceneVisualKey } from '../services/overlayPlan.js';
+import { sceneVisualKey, cutawayIndex } from '../services/overlayPlan.js';
 import { resolveEntityImage } from '../services/entityImage.js';
 import { generateHash, generateAudioHash, generateVisualHash, generateSceneHash, generateAssetHash } from '../utils/hash.js';
 import { getScenesToRender, sceneRenderHash } from '../utils/diff.js';
@@ -26,6 +26,7 @@ import { getFromCache } from '../services/cacheService.js';
 import { logUserEvent, logEvent, estimateCostUsd } from '../services/logService.js';
 import { buildSceneTimeline } from '../utils/timeline.js';
 import { targetLengthSeconds, planScenePadding, MAX_PAD_FACTOR, secondsForWords, countWords } from '../utils/targetLength.js';
+import { beatShares } from '../utils/beats.js';
 import { stripSpeakerPrefix } from '../utils/narration.js';
 import { projectVideoFileName } from '../utils/filename.js';
 import { QuotaService } from '../server/services/quotaService.js';
@@ -39,6 +40,7 @@ import { generateSeoMetadata } from './agents/seoAgent.js';
 import { StoryboardAgent } from './agents/storyboardAgent.js';
 import { WorldAgent } from './agents/worldAgent.js';
 import { applyVisualContext, inferVisualContext, needsVisualContext } from './visualContext.js';
+import { applyShotFraming } from './shotFraming.js';
 import { abortManager } from './abortManager.js';
 import { requestContext } from '../server/utils/context.js';
 import { persistProjectToDisk, restoreProjectsFromDisk, deleteProjectFromDisk } from './projectDiskStore.js';
@@ -1223,6 +1225,38 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
     console.log('[Orchestrator] Using the approved editor image for scene', scene.scene_id, '—', path.basename(String(scene.image_path)));
   }
 
+  // The B-roll cutaway: one scene of the episode shows the real, licence-verified
+  // photograph of the thing being talked about instead of a generated impression of it.
+  //
+  // Resolved here rather than at the assets stage below, because the point is to NOT
+  // generate an image for this scene. resolveEntityImage is idempotent and deduplicated —
+  // it is designed to be called from every scene — so asking early costs one shared
+  // lookup, and asking at all is free for a project that names nothing.
+  //
+  // cutawayIndex owns every condition; see it for why this is at most one scene and never
+  // the open, the close, or a scene the user approved an image for. Nothing is sourced
+  // here: it promotes the file the name-card had already licence-checked, so there is one
+  // licensing path in this codebase and this is not a second one.
+  await resolveEntityImage(project, signal);
+  const cutaway = cutawayIndex(project);
+  if (cutaway >= 0 && (project.scenes || [])[cutaway]?.scene_id === scene.scene_id) {
+    const sourced = (project as any).entity_image?.image;
+    const local = String(sourced?.localPath || '').trim();
+    if (local && fs.existsSync(local) && scene.visuals?.[0]) {
+      scene.visuals[0].asset_path = local;
+      scene.visuals[0].status = 'completed';
+      // Same reason adoptApprovedImage sets it: the picture IS the whole frame, and
+      // without this the render drops to the legacy compositor and loses the grade.
+      (scene as any).unified = true;
+      console.log(
+        `[Orchestrator] Cutaway on scene ${cutaway + 1}: ${sourced.title} (${sourced.licenseShortName},`,
+        `credit ${sourced.attributionRequired ? 'required — drawn on the name-card' : 'not required'})`,
+      );
+    } else {
+      console.log('[Orchestrator] Cutaway scene had no usable local file — generating imagery as normal');
+    }
+  }
+
   // What the script says about where and when this is set. A universe supplies this
   // through its cast bible; a project without one has only its own script, and without
   // reading it a scene like "a resolute statesman delivering a speech" is drawn with
@@ -1240,6 +1274,25 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
     if (withContext !== scene.visuals[0].prompt) {
       scene.visuals[0].prompt = withContext;
       console.log(`[Orchestrator] Visual context applied to scene ${scene.scene_id}: ${visualContext}`);
+    }
+  }
+
+  // Consecutive shots have to LOOK different or the cut does not read as one. Measured
+  // at a stricter scene-detection threshold, only 67% of this pipeline's cuts were
+  // separable against the reference's 100% — two adjacent stills of the same subject
+  // came back framed almost identically, so there was nothing at the boundary for a
+  // detector or an eye to catch.
+  //
+  // Same guard as the visual context above: a completed visual is an approved or adopted
+  // image and is never regenerated, so its prompt must not be rewritten either. And
+  // applyShotFraming leaves a prompt that already states its own framing alone — a shot
+  // the script chose outranks a positional cycle.
+  const framingIndex = (project.scenes || []).findIndex((s: any) => s.scene_id === scene.scene_id);
+  if (framingIndex >= 0 && scene.visuals[0] && (scene.visuals[0] as any).status !== 'completed') {
+    const framed = applyShotFraming(scene.visuals[0].prompt || '', framingIndex);
+    if (framed !== scene.visuals[0].prompt) {
+      scene.visuals[0].prompt = framed;
+      console.log(`[Orchestrator] Shot framing for scene ${framingIndex + 1}: ${framed.slice(framed.lastIndexOf(', ') + 2)}`);
     }
   }
 
@@ -1594,10 +1647,15 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   // every scene by one shared factor.
   let holdDuration = audioDur;
   if (audioDur > 0) {
-    const words = (t?: string) => (t || '').trim().split(/\s+/).filter(Boolean).length;
-    const totalWords = project.scenes.reduce((n, s) => n + words(s.narration_text), 0);
+    // The share is weighted by what the beat is doing, not only by how much was
+    // written in it. Word count alone makes the edit a function of sentence length and
+    // nothing else: a hook and a close of equal length get equal time, which is the one
+    // thing a professional edit never does. The weights renormalise against the same
+    // total below, so every scene's share still sums to exactly `target` — this moves
+    // hold time between beats, it does not add any.
     const target = targetLengthSeconds(project.settings?.targetLength);
-    const share = totalWords > 0 ? target * words(scene.narration_text) / totalWords : 0;
+    const here = project.scenes.findIndex((s: any) => s.scene_id === scene.scene_id);
+    const share = beatShares(project.scenes, target)[here] ?? 0;
     const plan = planScenePadding([audioDur], share);
     holdDuration = plan.durations[0];
     (scene as any).pad_seconds = Number((holdDuration - audioDur).toFixed(3));
@@ -1830,7 +1888,12 @@ export async function concatFinalVideo(project_id: string, isPreview: boolean = 
       console.log('[Stitch] Adding segment:', segPath.slice(-50));
       finalScenes.push({
         video_path: segPath,
-        duration: scene.duration_actual || 0
+        duration: scene.duration_actual || 0,
+        // The scene itself, not just its file. stitchScenes needs to know what beat
+        // each segment is and what overlay it carries — the effects layer decides
+        // where a cut is worth marking from exactly that, and a list of paths and
+        // durations cannot answer it.
+        scene,
       });
     }
 

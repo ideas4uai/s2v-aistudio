@@ -69,6 +69,30 @@ export interface SourcedImage {
   localPath: string;
 }
 
+/**
+ * Whether a sourced file is the kind of picture that can carry a whole frame.
+ *
+ * What this system searches for is a brand asset, and what Commons returns for a software
+ * tool is almost always a logo. That is exactly right for the lower-third name-card it was
+ * built to feed, and wrong for a cutaway: rendered on a real frame, "File:Playwright
+ * Logo.svg" filled 1920x1080 with a near-black mark on a black field. It was correctly
+ * sourced, correctly licensed and correctly credited, and it was a bad shot.
+ *
+ * So the cutaway asks this first. A name-card is unaffected — a logo is what it wants.
+ *
+ * ponytail: decided from the file title, which is what Commons reliably gives us and what
+ * actually named the failing case. A logo whose title says nothing ("File:Pw-mark-2019.png")
+ * would slip through. The upgrade, if a cutaway ever fires on one, is to look at the pixels
+ * — a mark on a flat or transparent field has a huge near-uniform fraction where a
+ * photograph has none — but that is a subprocess and a decoder for a path that should
+ * almost never fire, and the wrong answer here costs one shot, not a licence breach.
+ */
+export function usableAsCutaway(image: { title?: string } | null | undefined): boolean {
+  const title = String(image?.title || '');
+  if (!title) return false;
+  return !/\b(logo|logotype|wordmark|icon|favicon|emblem|symbol|badge|banner|seal|crest)\b|\.svg\b/i.test(title);
+}
+
 export interface RejectedImage {
   title: string;
   license: string;
