@@ -41,15 +41,30 @@ export interface SfxCue {
 }
 
 /**
- * Peak amplitude of each sound, as a fraction of full scale: -20 dBFS and -26 dBFS.
+ * Peak amplitude of each sound, as a fraction of full scale: -10 dBFS and -16 dBFS.
  *
- * Narration reaches the amix compressed to roughly -6 dBFS peak, so the whoosh sits ~14 dB
- * and the tick ~20 dB below the voice at their loudest instant, and both are transients an
- * order of magnitude shorter than loudness integration's 400 ms window. sfxHeadroom()
- * reports this so the render log carries the number rather than this comment carrying a
- * claim.
+ * The first version used -20 and -26, chosen so each sound sat comfortably under the
+ * narration's peak. Peak level turned out to be the wrong thing to choose by, and the
+ * finished render proved it: measured on the delivered file, band by band against what
+ * was already playing underneath,
+ *
+ *   whoosh   masked by 3-20 dB everywhere below 4.5 kHz; cleared the bed only above it.
+ *            The moment got 0.60 dB louder — under the ~1 dB an ear resolves at all.
+ *   tick     masked by 6-28 dB in every band up to 7 kHz. The moment got 0.03 dB
+ *            QUIETER. It was below the codec's own difference noise.
+ *
+ * Both were exactly the level they claimed and neither could be heard, because what
+ * decides audibility is not a sound's peak but how it compares with the music and speech
+ * occupying its own bands at that instant.
+ *
+ * These levels come from that measurement plus the practice they sit in. Narration in the
+ * finished file peaks at -10 dBFS. In short-form editing a transition sound occupies a gap
+ * and is routinely as loud as the dialogue around it; a hard effect that overlaps dialogue
+ * sits 6-10 dB under it. So: the whoosh at the narration's own peak, the tick 6 dB below
+ * it — and the mix ducks the whole effects bus under the voice (see the master pass), so
+ * neither can sit on a line however loud it is in a gap.
  */
-const PEAK: Record<SfxKind, number> = { whoosh: 0.10, tick: 0.05 };
+const PEAK: Record<SfxKind, number> = { whoosh: 0.316, tick: 0.158 };
 
 /** Length of each sound. A whoosh past half a second stops punctuating and starts being a bed. */
 const DURATION: Record<SfxKind, number> = { whoosh: 0.42, tick: 0.055 };
@@ -64,6 +79,19 @@ const DURATION: Record<SfxKind, number> = { whoosh: 0.42, tick: 0.055 };
  * cannot silently slide every whoosh off its cut.
  */
 export const WHOOSH_LEAD = 0.21;
+
+/**
+ * A tick lands this far BEFORE the word whose overlay it marks.
+ *
+ * Not a refinement — it is the difference between hearing it and not. The overlay's
+ * entrance is by construction the instant the first word is spoken, which is the most
+ * masking instant in the whole scene: measured on the delivered render, the tick sitting
+ * exactly on that onset was 22 dB under it in its own band and 6-28 dB under it in every
+ * band up to 7 kHz. Eighty milliseconds earlier is the leading silence before the line,
+ * where the only thing to clear is the music bed. It also reads better — the graphic
+ * snapping on and then the word, which is the order the eye and ear expect.
+ */
+export const TICK_LEAD = 0.08;
 
 /** Closest two effects may land. Under this they stop reading as two events and turn to mud. */
 const MIN_GAP = 1.2;
@@ -202,7 +230,7 @@ export function planSfxCues(scenes: any[], project: any, segmentDurations: numbe
   specs.forEach((spec, i) => {
     if (!spec || !TICKS_ON.has(spec.kind)) return;
     cues.push({
-      at: offsets[i] + spec.start,
+      at: offsets[i] + spec.start - TICK_LEAD,
       kind: 'tick',
       reason: `${spec.kind} overlay entrance on scene ${i + 1}`,
     });

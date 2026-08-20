@@ -1674,6 +1674,14 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
        // normalisation target; TP=-1.5 leaves headroom for the lossy encode.
        const master = 'loudnorm=I=-14:TP=-1.5:LRA=11';
 
+       // The effects bus is ducked under the voice by its own sidechain, gentler than
+       // the music's: 4:1 against the bed's 8:1, so a transition sound in a gap keeps
+       // all of its level and one that lands on a line steps back instead of sitting on
+       // it. That is what lets the effects be as loud as they now are — see PEAK in
+       // sfx.ts for why the first, quieter levels could not be heard at all.
+       const duckSfx = `[sfxraw][sk]sidechaincompress=threshold=0.05:ratio=4:attack=5:release=250[sfx];`;
+       const sfxIn = `[${sfxInput}:a]aformat=sample_rates=44100:channel_layouts=stereo[sfxraw];`;
+
        let filter: string;
        if (haveMusic) {
          // normalize=0 is not optional. amix defaults to normalize=1, which scales
@@ -1684,22 +1692,20 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
          // a static gain. Without it the bed sits ~7.5 dB under the narration where
          // broadcast practice is 15-22, and fights every line.
          //
-         // The effects join AFTER the sidechain, not before it. Ducking a whoosh under
-         // the voice is ducking away the one thing it exists to do — the bed is what
-         // has to get out of the way of a line, a transition sound is what punctuates
-         // it. Its level is what keeps it off the narration; see sfxHeadroom.
-         filter = `[0:a]${voice},asplit=2[v1][vk];`
+         // The effects join the bed bus AFTER the music's own sidechain, carrying their
+         // own duck instead — the bed has to get out of the way of a line, a transition
+         // sound only has to not sit on one.
+         filter = `[0:a]${voice},asplit=${haveSfx ? 3 : 2}[v1][vk]${haveSfx ? '[sk]' : ''};`
            + `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=${Number(musicVolume).toFixed(2)}[bg];`
            + `[bg][vk]sidechaincompress=threshold=0.03:ratio=8:attack=5:release=300[duck];`
            + (haveSfx
-             ? `[${sfxInput}:a]aformat=sample_rates=44100:channel_layouts=stereo[sfx];`
-               + `[duck][sfx]amix=inputs=2:duration=first:normalize=0[bed];`
+             ? sfxIn + duckSfx + `[duck][sfx]amix=inputs=2:duration=first:normalize=0[bed];`
              : '')
            + `[v1][${haveSfx ? 'bed' : 'duck'}]amix=inputs=2:duration=first:normalize=0[mix];`
            + `[mix]${master}[aout]`;
        } else if (haveSfx) {
-         filter = `[0:a]${voice}[v1];`
-           + `[${sfxInput}:a]aformat=sample_rates=44100:channel_layouts=stereo[sfx];`
+         filter = `[0:a]${voice},asplit=2[v1][sk];`
+           + sfxIn + duckSfx
            + `[v1][sfx]amix=inputs=2:duration=first:normalize=0[mix];`
            + `[mix]${master}[aout]`;
        } else {

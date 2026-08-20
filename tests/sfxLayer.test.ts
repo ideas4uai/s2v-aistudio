@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {
-  synthesize, planSfxCues, renderSfxBed, sfxHeadroom, SFX_SAMPLE_RATE, WHOOSH_LEAD,
+  synthesize, planSfxCues, renderSfxBed, sfxHeadroom, SFX_SAMPLE_RATE, WHOOSH_LEAD, TICK_LEAD,
 } from '../src/services/sfx.js';
 import { planOverlay } from '../src/services/overlayPlan.js';
 
@@ -62,14 +62,20 @@ describe('the sounds themselves', () => {
     }
   });
 
-  it('leaves the voice at least 12 dB of room at its loudest instant', () => {
-    // Narration reaches the mix compressed to roughly -6 dBFS peak. An effect that
-    // reaches within 12 dB of that is competing with the line, not punctuating it.
-    for (const kind of ['whoosh', 'tick'] as const) {
-      const peak = Math.max(...Array.from(synthesize(kind)).map(Math.abs));
-      expect(20 * Math.log10(peak)).toBeLessThan(-18);
-    }
-    // and the tick is the quieter of the two — it lands under a line, not between them
+  it('is kept off the narration by the duck, not by being too quiet to hear', () => {
+    // This test used to require both sounds to sit 18 dB under full scale, on the theory
+    // that headroom against the narration's peak is what keeps an effect from competing
+    // with it. Measured on the delivered render, that theory produced two sounds nobody
+    // could hear: the whoosh was masked by the music in every band below 4.5 kHz and the
+    // tick was under the codec's own difference noise. Peak headroom is not what makes an
+    // effect polite — a sidechain is, and the master pass now has one for the effects bus.
+    const render = fs.readFileSync(path.join(process.cwd(), 'src/services/renderService.ts'), 'utf-8');
+    expect(render).toMatch(/\[sfxraw\]\[sk\]sidechaincompress=threshold=0\.05:ratio=4/);
+    // Gentler than the music's duck: a bed must leave a line alone, an effect only has to
+    // not sit on it.
+    expect(render).toMatch(/\[bg\]\[vk\]sidechaincompress=threshold=0\.03:ratio=8/);
+    // and the tick stays the quieter of the two — it can land under a line, the whoosh
+    // is placed in a gap.
     const p = (k: 'whoosh' | 'tick') => Math.max(...Array.from(synthesize(k)).map(Math.abs));
     expect(p('tick')).toBeLessThan(p('whoosh'));
   });
@@ -80,8 +86,8 @@ describe('the sounds themselves', () => {
     // and the sound landed at -33.7 dBFS against the -26 it claimed. The level a mix is
     // built around has to be the level the sound actually reaches.
     const peak = (k: 'whoosh' | 'tick') => 20 * Math.log10(Math.max(...Array.from(synthesize(k)).map(Math.abs)));
-    expect(peak('whoosh')).toBeCloseTo(-20, 1);
-    expect(peak('tick')).toBeCloseTo(-26, 1);
+    expect(peak('whoosh')).toBeCloseTo(-10, 1);
+    expect(peak('tick')).toBeCloseTo(-16, 1);
   });
 
   it('keeps the tick an attack, not a swell', () => {
@@ -194,7 +200,7 @@ describe('where the effect lands', () => {
     for (const cue of cues.filter((c) => c.kind === 'tick')) {
       const i = Number(/scene (\d+)/.exec(cue.reason)![1]) - 1;
       const spec = planOverlay(scenes[i], project, durations[i])!;
-      expect(cue.at).toBeCloseTo(offset(i) + spec.start, 6);
+      expect(cue.at).toBeCloseTo(offset(i) + spec.start - TICK_LEAD, 6);
     }
   });
 
@@ -265,7 +271,9 @@ describe('the rendered bed', () => {
     for (let i = 44; i + 1 < buf.length; i += 2) peak = Math.max(peak, Math.abs(buf.readInt16LE(i)));
     expect(peak).toBeLessThan(32767);
     // and reports that peak as a level, for the render log
-    expect(sfxHeadroom(cues)).toBeLessThan(-12);
+    // The loudest effect peaks at the narration's own peak in the finished file
+    // (-10 dBFS) and no higher; the duck bus is what keeps it off a line.
+    expect(sfxHeadroom(cues)).toBeCloseTo(-10, 1);
     expect(sfxHeadroom([])).toBe(-Infinity);
   });
 });
