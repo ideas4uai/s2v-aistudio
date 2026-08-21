@@ -73,9 +73,15 @@ each. Neither is the `py` launcher, which is Python 3.11 here and belongs to the
 engine (cv2, `metro_engine_v4.py`) — a TTS dependency change must never break a render.
 
 ```
-TTS_PYTHON=.../python.exe          # kokoro + soundfile
+TTS_PYTHON=.../python.exe          # kokoro + soundfile + faster-whisper
 CLONE_PYTHON=.../.venv-clone/...   # chatterbox-tts + psutil + soundfile + "setuptools<81"
 ```
+
+`faster-whisper` is the caption aligner, not a second synthesiser. It lives in the
+Kokoro environment because the sidecar there is already long-lived, so the model loads
+once per server rather than once per scene. Without it every render still completes —
+captions fall back to dividing the speech span evenly between the words, which measured
+up to 0.47s late on a clean scene.
 
 Both are set in `.env`. `python` on PATH resolves differently for Node than for a
 shell, so these are pinned rather than inferred. Set up the cloning environment with:

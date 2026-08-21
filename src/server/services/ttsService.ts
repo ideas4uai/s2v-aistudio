@@ -356,7 +356,9 @@ async function generateSilentAudio(outputPath: string, durationSec: number): Pro
 }
 
 /** Where a synthesised clip is cached. Keyed on the text plus every parameter that
- *  changes the sound, so a script edit or a voice change is a miss and nothing else is. */
+ *  changes the sound, so a script edit or a voice change is a miss and nothing else is.
+ *  generateAudioHash carries SYNTH_VERSION, which is what makes a fix to the
+ *  synthesiser itself a miss for text that did not change. */
 function cachePathFor(text: string, signature: string): string {
   return path.join(process.cwd(), 'cache', 'tts', `${generateAudioHash(text, signature)}.wav`);
 }

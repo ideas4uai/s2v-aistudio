@@ -74,6 +74,10 @@ export interface Scene {
   // hold and apad tail, which carry no words. See detectSpeechSpan().
   speech_start?: number;
   speech_end?: number;
+  // When each narration word is actually spoken, forced-aligned against the same
+  // processed segment. Absent whenever the aligner could not run, and wordTimings()
+  // falls back to dividing the span evenly. See measureWordTimings().
+  word_timings?: { word: string; start: number; end: number }[];
   audio_hash?: string;
   asset_type: AssetType;
   motion_instruction: string | null;
