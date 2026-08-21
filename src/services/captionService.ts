@@ -21,16 +21,36 @@ export const speechWindow = (scene: any): { start: number; span: number } => {
 /**
  * Per-word timings across the speech window.
  *
- * Even division inside the measured span — the same approximation the captions have
- * always used. It is exported because the motion-graphics overlay needs the same
- * numbers: two timing systems drifting apart is exactly the bug speechWindow() was
- * introduced to fix, so kinetic text reads its words from here rather than deriving
- * its own from the scene duration.
+ * Measured where the render could measure them, divided evenly where it could not.
+ *
+ * `scene.word_timings` is forced alignment run on the same processed segment the
+ * captions are burned onto (see measureWordTimings in renderService). Even division
+ * is what this always did, and it assumes every word takes the same time to say:
+ * measured against alignment on nine real scenes it put the captions up to 0.47s
+ * late on a clean scene and up to 1.5s late on one whose narration carried an em
+ * dash. It stays as the fallback because a caption a third of a second out is a far
+ * better outcome than a scene with no captions at all.
+ *
+ * Exported because the motion-graphics overlay needs the same numbers: two timing
+ * systems drifting apart is exactly the bug speechWindow() was introduced to fix, so
+ * kinetic text reads its words from here rather than deriving its own.
  */
 export const wordTimings = (text: string, scene: any): WordTimestamp[] => {
   const { start, span } = speechWindow(scene);
   const words = String(text || '').split(' ').filter((w: string) => w.trim());
   if (!words.length) return [];
+  // Only usable when it covers this exact text — the payoff overlay and the captions
+  // can be handed a subset, and a timing list that does not line up word-for-word
+  // would be worse than the approximation it replaced.
+  const measured = scene?.word_timings;
+  if (Array.isArray(measured) && measured.length === words.length) {
+    return words.map((word: string, i: number) => ({
+      word,
+      start: Number(measured[i].start),
+      end: Number(measured[i].end),
+      confidence: 1,
+    }));
+  }
   const per = span / words.length;
   return words.map((word: string, i: number) => ({
     word,
@@ -115,6 +135,15 @@ export const generateCaptions = async (scene: any, audioPath: string, mode: stri
       end: last ? last.end : speechStart + span,
     });
   }
+
+  // Hold each cue until the next one takes over.
+  //
+  // Under even division these already met exactly, so this changes nothing there.
+  // Under measured timings they do not: a real pause between two words would leave a
+  // hole where no caption is on screen, and at three words a cue that reads as the
+  // captions blinking off mid-sentence. The last cue keeps its own end — there is
+  // nothing after it to hold for.
+  for (let i = 0; i < chunks.length - 1; i++) chunks[i].end = chunks[i + 1].start;
 
   return { words: timings, chunks };
 };

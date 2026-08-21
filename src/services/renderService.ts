@@ -9,7 +9,7 @@ import {
   planOverlay, sceneVisualKey, transitionBetween, transitionColor, type OverlayWord,
   OVERLAY_RESTATES_NARRATION, type OverlayKind,
 } from './overlayPlan.js';
-import { planSfxCues, renderSfxBed, sfxHeadroom } from './sfx.js';
+import { planSfxCues, renderSfxBed, sfxHeadroom, resolveSfxVolume } from './sfx.js';
 import { arcPosition, NO_ARC } from './colourArc.js';
 import { progressBus, ProgressStage } from '../server/progressBus.js';
 
@@ -1108,14 +1108,39 @@ export async function getAudioDuration(audioPath: string): Promise<number> {
  */
 const detectSpeechSpan = async (file: string, totalDuration: number): Promise<{ start: number; end: number }> => {
   const fallback = { start: 0, end: totalDuration };
+  // Every return of `fallback` is a measurement that did not happen, and it is not a
+  // harmless one: "the whole segment is speech" puts the first caption on the leading
+  // silence and stretches the layout across a tail with no words in it. It used to be
+  // silent, so a render that fell back looked exactly like one that measured — which
+  // is how two scenes of nine shipped with speech 0.000→segment-end and their first
+  // caption 0.24s early. Say which branch fired, always.
+  const gaveUp = (why: string) => {
+    console.warn(
+      `[RenderService] Speech span not measurable on ${path.basename(file)} (${why}) — ` +
+      `treating the whole ${totalDuration.toFixed(3)}s segment as speech`);
+    return fallback;
+  };
+  // One retry, because the failure this guards against is transient rather than a
+  // property of the file. Measured on a nine-scene render: two segments came back
+  // "no silence at all" while three concurrent scenes were encoding, and both files
+  // measured cleanly on a second pass with nothing changed — 0.239s and 0.237s of
+  // leading silence, exactly the two scenes whose first caption shipped 0.24s early.
+  // The call costs ~1.7s and only runs again when the first one found nothing.
+  const detect = async (): Promise<string> => {
+    for (let attempt = 1; ; attempt++) {
+      const { stderr } = await execAsync(
+        `"${ffmpeg}" -i "${file}" -af silencedetect=noise=-40dB:d=0.2 -f null -`,
+        { timeout: 30000, maxBuffer: 1 << 22 }
+      );
+      if (attempt >= 2 || /silence_start:/.test(stderr)) return stderr;
+      console.warn(`[RenderService] No silence found in ${path.basename(file)} on the first pass — measuring again`);
+    }
+  };
   try {
-    const { stderr } = await execAsync(
-      `"${ffmpeg}" -i "${file}" -af silencedetect=noise=-40dB:d=0.2 -f null -`,
-      { timeout: 30000, maxBuffer: 1 << 22 }
-    );
+    const stderr = await detect();
     const starts = [...stderr.matchAll(/silence_start:\s*(-?[\d.]+)/g)].map((m) => parseFloat(m[1]));
     const ends = [...stderr.matchAll(/silence_end:\s*(-?[\d.]+)/g)].map((m) => parseFloat(m[1]));
-    if (starts.length === 0) return fallback;
+    if (starts.length === 0) return gaveUp('silencedetect reported no silence at all');
 
     // ffmpeg closes a trailing silence at EOF rather than leaving it open, so pair
     // them up positionally and treat a missing close as "runs to the end".
@@ -1129,12 +1154,45 @@ const detectSpeechSpan = async (file: string, totalDuration: number): Promise<{ 
 
     // Never hand back a degenerate span — a scene that is entirely silence, or a
     // detector misfire, should fall back to the old whole-segment behaviour.
-    if (!(end > start) || end - start < 0.2) return fallback;
+    if (!(end > start) || end - start < 0.2) {
+      return gaveUp(`the detected span ${start.toFixed(3)}→${end.toFixed(3)}s is degenerate`);
+    }
     return { start, end: Math.min(end, totalDuration) };
-  } catch {
-    return fallback;
+  } catch (e: any) {
+    return gaveUp(e?.message || String(e));
   }
 };
+
+/**
+ * Measure when each narration word is spoken, and store it on the scene.
+ *
+ * Everything that puts something on screen or in the mix at a word — the captions,
+ * the kinetic overlay, the tick effect — reads wordTimings(), which until now divided
+ * the speech span equally between the words. That assumes every word takes the same
+ * time to say. Measured against forced alignment across nine real scenes it left the
+ * captions up to 0.47s late even on a clean scene, and no weighting heuristic closed
+ * it: character- and syllable-weighted division both left the worst case at ~0.45s.
+ *
+ * Best effort by design. An unavailable aligner, a failed match, an engine that is not
+ * running — all of them leave word_timings unset and the even division in place, which
+ * is what shipped before this and is wrong by a fraction of a second rather than fatal.
+ */
+async function measureWordTimings(scene: any, processedAudio: string, speechStart: number): Promise<void> {
+  const text = String(scene?.caption_text || scene?.narration_text || '').trim();
+  if (!text) return;
+  const { alignWords } = await import('../server/services/ttsSidecar.js');
+  const words = await alignWords(processedAudio, text);
+  // Leave nothing behind on failure rather than a marker, so the next render tries
+  // again. An aligner that was down for one render should not condemn the scene to
+  // even division until somebody edits its script.
+  if (!words.length) { delete scene.word_timings; return; }
+  // faster-whisper reports the first word of a file at 0.000 whatever the leading
+  // silence is; detectSpeechSpan measured that silence on this same file and agrees
+  // with the burned captions to within 9ms, so it wins for the one word it covers.
+  const first = words[0];
+  if (first.start < speechStart) first.start = Math.min(speechStart, first.end);
+  scene.word_timings = words;
+}
 
 /**
  * Produce the segment's audio track and measure its speech span.
@@ -1172,7 +1230,16 @@ export async function prepareSceneAudio(
   if (isFreshOutput(processedAudio, audioValid ? audioPath : undefined)
       && Number(scene.speech_end) > Number(scene.speech_start)) {
     const known = await getAudioDuration(processedAudio);
-    if (known > 0) return { processedAudio, segmentDuration: known };
+    if (known > 0) {
+      // The span was measured on a previous run but the word timings may not have
+      // been — a scene rendered before alignment existed, or one whose aligner was
+      // down at the time. The audio is right here and unchanged, so measure now
+      // rather than shipping the even division for the life of the project.
+      if (!Array.isArray(scene.word_timings)) {
+        await measureWordTimings(scene, processedAudio, Number(scene.speech_start) || 0);
+      }
+      return { processedAudio, segmentDuration: known };
+    }
   }
 
   const audioInputArg = audioValid ? `-i "${audioPath}"` : `-f lavfi -i anullsrc=r=44100:cl=stereo`;
@@ -1202,9 +1269,11 @@ export async function prepareSceneAudio(
       const span = await detectSpeechSpan(processedAudio, segmentDuration);
       scene.speech_start = Number(span.start.toFixed(3));
       scene.speech_end = Number(span.end.toFixed(3));
+      await measureWordTimings(scene, processedAudio, span.start);
       console.log(
         `[RenderService] Scene ${scene.scene_id} segment ${segmentDuration.toFixed(3)}s, ` +
-        `speech ${span.start.toFixed(3)}→${span.end.toFixed(3)}s (captions anchored to the speech)`
+        `speech ${span.start.toFixed(3)}→${span.end.toFixed(3)}s ` +
+        `(${scene.word_timings?.length ? `${scene.word_timings.length} words aligned` : 'captions divided evenly'})`
       );
     }
     return { processedAudio, segmentDuration };
@@ -1652,7 +1721,7 @@ export const stitchScenes = async (scenes: any, project: any, signal?: AbortSign
      //
      // sfxVolume is the trim, and 0 is the way to turn the layer off for a comparison
      // render without touching the code that decides where the effects go.
-     const sfxVolume = Number(project?.settings?.sfxVolume ?? project?.sfx_volume ?? 1);
+     const sfxVolume = resolveSfxVolume(project);
      const sfxPath = path.join(tmpDir, `sfx_${Date.now()}.wav`);
      const usable = stitched.every((s) => Number.isFinite(s.duration) && s.duration > 0);
      const sfxCues = usable && sfxVolume > 0

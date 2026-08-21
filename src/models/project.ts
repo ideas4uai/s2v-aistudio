@@ -164,6 +164,8 @@ export interface Project {
   };
   music_track?: string;
   music_volume?: number;
+  /** Operator's trim on the whole sound-effects layer. 1 is the tuned level, 0 is off. */
+  sfx_volume?: number;
   thumbnail_path?: string;
   projectType?: 'educational' | 'story_episode' | 'standard';
   universe?: Universe;

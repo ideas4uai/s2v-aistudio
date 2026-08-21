@@ -163,6 +163,27 @@ export async function sidecarRequest(
   });
 }
 
+/**
+ * When each word of `text` is actually spoken in `wav`, or [] if it cannot be measured.
+ *
+ * Runs in the Kokoro sidecar because that process is already alive for the whole
+ * render — see the `align` op for why the timings are measured rather than divided.
+ * Never throws: captions that are slightly out beat a render that failed, so the
+ * caller keeps its own even division whenever this comes back empty.
+ */
+export async function alignWords(wav: string, text: string): Promise<WordTiming[]> {
+  try {
+    const reply = await sidecarRequest('kokoro', { op: 'align', wav, text }, 180_000);
+    const words = Array.isArray(reply?.words) ? reply.words : [];
+    return words.filter((w: any) => Number.isFinite(w?.start) && Number.isFinite(w?.end));
+  } catch (err: any) {
+    console.warn('[Align] Word alignment unavailable, captions fall back to even division:', err?.message);
+    return [];
+  }
+}
+
+export type WordTiming = { word: string; start: number; end: number };
+
 /** True if a sidecar can be started and answers. Used by the health check and the UI. */
 export async function sidecarAvailable(kind: SidecarKind): Promise<{ ok: boolean; error?: string }> {
   try {

@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import {
   synthesize, planSfxCues, renderSfxBed, sfxHeadroom, SFX_SAMPLE_RATE, WHOOSH_LEAD, TICK_LEAD,
-  SFX_DURATION,
+  SFX_DURATION, SFX_VOLUME_DEFAULT, SFX_VOLUME_MAX, resolveSfxVolume,
 } from '../src/services/sfx.js';
 import { planOverlay } from '../src/services/overlayPlan.js';
 import { speechWindow } from '../src/services/captionService.js';
@@ -426,6 +426,101 @@ describe('the rendered bed', () => {
     // (-10 dBFS) and no higher; the duck bus is what keeps it off a line.
     expect(sfxHeadroom(cues)).toBeCloseTo(-10, 1);
     expect(sfxHeadroom([])).toBe(-Infinity);
+  });
+});
+
+describe('the operator trim', () => {
+  let dir: string;
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sfxvol-')); });
+  afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+
+  const cues = () => planSfxCues(episode(), projectOf(episode()), evenly(episode()));
+  const bed = (gain: number) => {
+    const p = path.join(dir, `bed-${gain}.wav`);
+    const wrote = renderSfxBed(cues(), 36, p, gain);
+    return wrote ? fs.readFileSync(p) : null;
+  };
+
+  it('defaults to exactly the level the analysis landed on', () => {
+    // The control must change nothing until it is moved.
+    expect(SFX_VOLUME_DEFAULT).toBe(1);
+    expect(resolveSfxVolume({})).toBe(1);
+    expect(resolveSfxVolume(undefined)).toBe(1);
+    expect(resolveSfxVolume({ settings: {} })).toBe(1);
+  });
+
+  it('reads the setting the editor writes, and the legacy field too', () => {
+    expect(resolveSfxVolume({ sfx_volume: 0.6 })).toBeCloseTo(0.6, 6);
+    expect(resolveSfxVolume({ settings: { sfxVolume: 0.4 } })).toBeCloseTo(0.4, 6);
+    // settings wins, same precedence the music volume already uses
+    expect(resolveSfxVolume({ settings: { sfxVolume: 0.4 }, sfx_volume: 0.9 })).toBeCloseTo(0.4, 6);
+  });
+
+  it('clamps to what the control can ask for', () => {
+    expect(resolveSfxVolume({ sfx_volume: 99 })).toBe(SFX_VOLUME_MAX);
+    expect(resolveSfxVolume({ sfx_volume: -3 })).toBe(0);
+    expect(resolveSfxVolume({ sfx_volume: 'loud' })).toBe(SFX_VOLUME_DEFAULT);
+    expect(SFX_VOLUME_MAX).toBe(1.5);
+  });
+
+  it('is ONE multiplier — it moves the layer and keeps its shape', () => {
+    // The whole argument for a single slider. Halving the trim must halve every sample of
+    // every sound by the same factor, so the balance the masking analysis found between
+    // whoosh, tick and riser survives whatever the operator picks.
+    const full = bed(1)!;
+    const half = bed(0.5)!;
+    expect(full).toBeTruthy();
+    expect(half.length).toBe(full.length);
+    // Counted in a plain loop, asserted once: a million expect() calls is a timeout, not
+    // a stronger test.
+    let compared = 0; let worst = 0; let silenceBroken = 0;
+    for (let i = 44; i + 1 < full.length; i += 2) {
+      const a = full.readInt16LE(i);
+      const b = half.readInt16LE(i);
+      if (a === 0) { if (b !== 0) silenceBroken++; continue; }
+      worst = Math.max(worst, Math.abs(b - a / 2));
+      compared++;
+    }
+    expect(silenceBroken).toBe(0);
+    expect(compared).toBeGreaterThan(1000);
+    expect(worst).toBeLessThanOrEqual(1);   // 16-bit rounding, nothing more
+  });
+
+  it('reports the trimmed peak, not the untrimmed one', () => {
+    expect(sfxHeadroom(cues(), 1)).toBeCloseTo(-10, 1);
+    expect(sfxHeadroom(cues(), 0.5)).toBeCloseTo(-16, 1);
+  });
+
+  it('turns the layer off completely at zero', () => {
+    expect(bed(0)).toBeNull();
+    expect(renderSfxBed(cues(), 36, path.join(dir, 'none.wav'), 0)).toBe(false);
+    // ...and the render skips planning entirely rather than writing a silent file
+    const render = fs.readFileSync(path.join(process.cwd(), 'src/services/renderService.ts'), 'utf-8');
+    expect(render).toMatch(/usable && sfxVolume > 0/);
+  });
+
+  it('is wired to the editor and persists like every other project setting', () => {
+    const editor = fs.readFileSync(path.join(process.cwd(), 'src/pages/ProjectEditor.tsx'), 'utf-8');
+    // the control, with the range this file's constants define
+    expect(editor).toMatch(/type="range" min=\{0\} max=\{150\} step=\{5\}/);
+    expect(editor).toMatch(/value=\{Math\.round\(sfxVolume \* 100\)\}/);
+    // default and ceiling agree with the engine's, which is the thing that could drift
+    expect(editor).toMatch(/useState<number>\(1\)/);
+    expect(150 / 100).toBe(SFX_VOLUME_MAX);
+    // loaded from the project on mount, so a reload shows what was saved
+    expect(editor).toMatch(/setSfxVolume\(project\.sfx_volume \?\? 1\)/);
+    // and saved through the same endpoint the music volume uses
+    expect(editor).toMatch(/sfx_volume: volume/);
+    const routes = fs.readFileSync(path.join(process.cwd(), 'src/server/routes/projects.ts'), 'utf-8');
+    expect(routes).toMatch(/if \(sfx_volume !== undefined\) project\.sfx_volume = Number\(sfx_volume\);/);
+  });
+
+  it('never lets one audio field clobber the other', () => {
+    // Both sliders PATCH the same route, so each save has to carry the other's current
+    // value or moving the music volume would reset the effects trim.
+    const editor = fs.readFileSync(path.join(process.cwd(), 'src/pages/ProjectEditor.tsx'), 'utf-8');
+    expect(editor).toMatch(/music_volume: volume, sfx_volume: sfxVolume/);
+    expect(editor).toMatch(/music_volume: musicVolume, sfx_volume: volume/);
   });
 });
 

@@ -30,6 +30,23 @@ import sys
 import time
 import traceback
 
+# The protocol is UTF-8 JSON; Python is not, unless it is told so.
+#
+# On Windows sys.stdin defaults to the *locale* codepage — cp1252 on this machine,
+# measured — while Node writes the request line as UTF-8 bytes. Every non-ASCII
+# character in a script therefore arrived here as mojibake: an em dash (U+2014,
+# E2 80 94) was decoded as "â€”", and Kokoro's G2P dutifully pronounced it, putting
+# ~1.9s of spoken "a circumflex euro" into the middle of the narration. It is not a
+# cosmetic bug: that phantom speech sits inside the measured speech span, so the
+# captions — which only ever see the clean text — were spread across it and ran up
+# to a second late on exactly the scenes whose script contained a dash.
+#
+# Set on the streams rather than via PYTHONIOENCODING in the spawn, so the script is
+# correct however it is started. Anything a script can contain, this has to carry:
+# curly quotes and ellipses come out of every LLM as often as dashes do.
+sys.stdin.reconfigure(encoding="utf-8")
+sys.stdout.reconfigure(encoding="utf-8")
+
 # Keep every framework single-machine friendly. This box is a 4-core/8-thread
 # i5-8250U; letting torch spawn more threads than that only adds contention.
 os.environ.setdefault("OMP_NUM_THREADS", "4")
@@ -182,10 +199,129 @@ def synth_chatterbox(req):
             "peak_rss_mb": peak_rss_mb()}
 
 
+_aligner = [None]
+
+
+def aligner():
+    """faster-whisper base.en, int8 on CPU. Loaded once, on first alignment.
+
+    Lives in this process because it is already the long-lived one: a per-scene spawn
+    would pay the 3.2s model load nine times an episode for ~4s of actual work.
+    """
+    if _aligner[0] is None:
+        from faster_whisper import WhisperModel
+        _aligner[0] = WhisperModel("base.en", device="cpu", compute_type="int8")
+    return _aligner[0]
+
+
+def _key(word):
+    """Comparison form of a word: letters, digits and apostrophes only."""
+    import unicodedata
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", word).lower()
+        if c.isalnum() or c == "'"
+    )
+
+
+def align_words(req):
+    """When each word of `text` is actually spoken in `wav`.
+
+    Returns one entry per word of the caller's text, in order, always — the captions
+    and the kinetic overlay both index into this list, so a short answer would be
+    worse than no answer. Words the transcript did not match are interpolated between
+    the neighbours that did.
+
+    Why measure rather than divide: the caption timeline used to spread the words
+    evenly across the measured speech span, which assumes every word takes the same
+    time to say. Measured against forced alignment on nine real scenes, that ran the
+    captions up to 0.47s late even on scenes with no other defect, because real word
+    durations vary about threefold and the span's -40dB end overshoots the last word
+    by ~0.39s. No weighting heuristic closed it: character- and syllable-weighted
+    division were measured too and left the worst case at 0.42-0.47s.
+
+    The alignment runs on the PROCESSED segment audio, not the raw narration, so
+    whatever the filter chain did to the timeline — silenceremove deletes 0.2-1.6s of
+    internal pauses per scene — is already baked into what is measured.
+    """
+    text = str(req.get("text") or "")
+    words = [w for w in text.split() if w.strip()]
+    if not words:
+        return {"words": []}
+
+    segments, _info = aligner().transcribe(
+        req["wav"], word_timestamps=True, beam_size=1,
+        vad_filter=False, condition_on_previous_text=False,
+    )
+    heard = [(w.word.strip(), float(w.start), float(w.end))
+             for seg in segments for w in (seg.words or [])]
+
+    # Monotonic match: each word may only take a transcript word after the one its
+    # predecessor took, so a repeated word ("real or not, real or not") cannot pull
+    # the timeline backwards. A near window first, then a forward scan for a word the
+    # transcript dropped or merged.
+    out, cursor = [], 0
+    for word in words:
+        k = _key(word)
+        hit = None
+        if k:
+            for j in range(cursor, min(cursor + 6, len(heard))):
+                if _key(heard[j][0]) == k:
+                    hit = j
+                    break
+            if hit is None:
+                for j in range(cursor, len(heard)):
+                    if _key(heard[j][0]) == k:
+                        hit = j
+                        break
+        if hit is None:
+            out.append(None)
+        else:
+            out.append((heard[hit][1], heard[hit][2]))
+            cursor = hit + 1
+
+    matched = sum(1 for x in out if x is not None)
+    if matched < 2:
+        # Nothing usable — say so rather than hand back an invented timeline. The
+        # caller keeps its own even division, which is wrong by a fraction of a second
+        # rather than wrong by the length of the scene.
+        return {"words": [], "matched": matched, "heard": len(heard)}
+
+    # Fill the gaps by even division between the neighbours that did match, and give
+    # unmatched words at either end the same treatment against the span's edges.
+    first = next(i for i, x in enumerate(out) if x is not None)
+    last = len(out) - 1 - next(i for i, x in enumerate(reversed(out)) if x is not None)
+    span_start, span_end = out[first][0], out[last][1]
+    for i in range(first):
+        out[i] = (span_start, span_start)
+    for i in range(last + 1, len(out)):
+        out[i] = (span_end, span_end)
+    i = first
+    while i <= last:
+        if out[i] is not None:
+            i += 1
+            continue
+        j = i
+        while out[j] is None:
+            j += 1
+        lo, hi = out[i - 1][1], out[j][0]
+        step = (hi - lo) / (j - i + 1)
+        for n in range(j - i):
+            out[i + n] = (lo + n * step, lo + (n + 1) * step)
+        i = j
+
+    return {
+        "words": [{"word": w, "start": round(s, 3), "end": round(e, 3)}
+                  for w, (s, e) in zip(words, out)],
+        "matched": matched,
+        "heard": len(heard),
+    }
+
+
 OPS = {
     "synth_kokoro": synth_kokoro,
     "synth_chatterbox": synth_chatterbox,
     "clone": do_clone,
+    "align": align_words,
     "ping": lambda req: {"pong": True},
 }
 
