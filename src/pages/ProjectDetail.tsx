@@ -305,7 +305,14 @@ function PublishPanel({ project, onPublished }: { project: any; onPublished: () 
     <div className="mt-6 rounded-2xl border border-neutral-200 bg-white p-5">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-bold uppercase tracking-wider text-neutral-700">Publish to YouTube</span>
-        {status?.channelTitle && <span className="text-xs text-neutral-500">{status.channelTitle}</span>}
+        {/* Deliberately NOT status.channelTitle. That field is the first connected
+            channel, kept only so older callers keep working; with three connected it
+            named a different channel than the banner below was about to publish to —
+            two channels on screen at once, which is the exact confusion this panel
+            exists to remove. The banner is the single authority. */}
+        {(status?.channels?.length ?? 0) > 1 && (
+          <span className="text-xs text-neutral-500">{status.channels.length} channels connected</span>
+        )}
       </div>
 
       {published ? (
