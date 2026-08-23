@@ -179,7 +179,15 @@ projectsRouter.get('/:id', async (req, res) => {
     const response = {
       ...project,
       id: project.project_id || project.id,
-      title: project.topic || project.title,
+      // Title first, topic only as the fallback. Both are set to the same string at
+      // creation and diverge only when a project is renamed — which is exactly what
+      // cloning does — so preferring topic here served the ORIGINAL subject as the
+      // name of every copy: three projects whose cards read "TTS compare KOKORO/
+      // PIPER/CLONED" all opened a detail page headed "What is a REST API?".
+      // Every other site that needs a display name already reads it this way (the
+      // download filename below, the YouTube metadata, the dashboard list); this was
+      // the one that had it backwards.
+      title: project.title || project.topic,
       output_path: toUrl(project.output_path || ''),
       previewVideoPath: toUrl(project.previewVideoPath || ''),
       outputPath: toUrl(project.output_path || ''),
