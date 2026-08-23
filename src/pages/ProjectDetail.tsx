@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Video, ArrowLeft } from 'lucide-react';
+import { Video, ArrowLeft, Pencil } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 
 export function ProjectDetail() {
@@ -78,7 +78,23 @@ export function ProjectDetail() {
       </button>
 
       <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm mb-8">
-        <h1 className="text-3xl font-bold text-neutral-900 mb-2">{project.title}</h1>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-2">
+          <h1 className="text-3xl font-bold text-neutral-900">{project.title}</h1>
+          {/* The only way into the editor from here. The dashboard sends completed
+              projects to this page and everything else straight to the editor, so
+              without this a finished video had no route back to the thing that made
+              it. Not gated on status: this page is also reached by direct URL and by
+              back-navigation, and a degraded or failed render is exactly the one you
+              want to open and re-run. Re-rendering from there reuses the existing
+              staleness checks, so approved scenes are not regenerated. */}
+          <button
+            type="button"
+            onClick={() => navigate(`/projects/${project.project_id || project.id || id}/edit`)}
+            className="shrink-0 self-start flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          >
+            <Pencil className="w-4 h-4" /> Edit
+          </button>
+        </div>
         <p className="text-neutral-500 mb-8 max-w-3xl">{project.description || 'No description provided.'}</p>
         
         <div className="bg-neutral-900 rounded-2xl overflow-hidden aspect-video flex items-center justify-center">
