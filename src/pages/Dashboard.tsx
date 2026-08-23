@@ -3,6 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Video, Clock, ChevronRight, Trash2, Search, BookOpen } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
+import { filterProjects, statusOptions, statusLabel, ALL_STATUSES, ProjectSort } from '../utils/projectFilter';
+
+/**
+ * The status filter survives leaving the dashboard and coming back, which is the whole
+ * point of setting it — the list is long enough that re-picking "failed" every time you
+ * open a project and return would defeat it. sessionStorage rather than a URL param or
+ * a context: it is one string, it should not outlive the tab, and a throw here (private
+ * mode, blocked site data) must not take the dashboard down with it.
+ */
+const FILTER_KEY = 's2v.dashboard.status';
+const rememberedStatus = (): string => {
+  try { return sessionStorage.getItem(FILTER_KEY) || ALL_STATUSES; } catch { return ALL_STATUSES; }
+};
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -11,7 +24,8 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'latest' | 'oldest' | 'name'>('latest');
+  const [sortBy, setSortBy] = useState<ProjectSort>('latest');
+  const [statusFilter, setStatusFilter] = useState<string>(rememberedStatus);
   const [universes, setUniverses] = useState<any[]>([]);
 
   // Delete project state
@@ -44,6 +58,10 @@ export function Dashboard() {
   useEffect(() => {
     fetchProjects();
   }, [user]);
+
+  useEffect(() => {
+    try { sessionStorage.setItem(FILTER_KEY, statusFilter); } catch { /* not worth failing over */ }
+  }, [statusFilter]);
 
   const handleDeleteUniverse = async (id: string) => {
     try {
@@ -172,8 +190,19 @@ export function Dashboard() {
             />
           </div>
           <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            aria-label="Filter by status"
+            className="px-4 py-2.5 rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+          >
+            <option value={ALL_STATUSES}>All statuses ({projects.length})</option>
+            {statusOptions(projects).map(o => (
+              <option key={o.value} value={o.value}>{o.label} ({o.count})</option>
+            ))}
+          </select>
+          <select
             value={sortBy}
-            onChange={e => setSortBy(e.target.value as 'latest' | 'oldest' | 'name')}
+            onChange={e => setSortBy(e.target.value as ProjectSort)}
             className="px-4 py-2.5 rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
           >
             <option value="latest">Latest First</option>
@@ -204,17 +233,7 @@ export function Dashboard() {
           </button>
         </div>
       ) : (() => {
-        const filteredProjects = projects
-          .filter(p =>
-            (p.title || p.topic || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (p.status || '').toLowerCase().includes(searchQuery.toLowerCase())
-          )
-          .sort((a, b) => {
-            if (sortBy === 'latest') return new Date(b.createdAt || b.created_at || 0).getTime() - new Date(a.createdAt || a.created_at || 0).getTime();
-            if (sortBy === 'oldest') return new Date(a.createdAt || a.created_at || 0).getTime() - new Date(b.createdAt || b.created_at || 0).getTime();
-            if (sortBy === 'name') return (a.title || a.topic || '').localeCompare(b.title || b.topic || '');
-            return 0;
-          });
+        const filteredProjects = filterProjects(projects, { query: searchQuery, status: statusFilter, sortBy });
         return (
         <>
           <p className="text-xs text-neutral-400 mb-4">
@@ -222,7 +241,10 @@ export function Dashboard() {
           </p>
           {filteredProjects.length === 0 ? (
             <div className="bg-white rounded-2xl border border-neutral-200 p-12 text-center">
-              <p className="text-neutral-500">No projects match "{searchQuery}"</p>
+              <p className="text-neutral-500">
+                No {statusFilter === ALL_STATUSES ? '' : `${statusLabel(statusFilter).toLowerCase()} `}projects
+                {searchQuery ? ` match "${searchQuery}"` : ''}.
+              </p>
             </div>
           ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
