@@ -136,14 +136,18 @@ projectsRouter.get('/', async (req, res) => {
     for (const p of remoteProjects) byId.set(p.id || p.project_id, p);
     for (const p of localProjects) byId.set(p.project_id!, p);
 
-    const allProjects = [...byId.values()];
-    const mappedProjects = allProjects.map((p: any) => {
+    const mappedProjects = [...byId.entries()].map(([id, p]: [string, any]) => {
       const charDesc = (p as any).characterDescription || (p as any).character_description || '';
       return {
         ...p,
-        // The dashboard navigates on `id`; locally-stored records only reliably carry
-        // `project_id`, and a card without an id is a dead tile.
-        id: p.id || p.project_id,
+        // The key this record was deduped under IS its identity, and it is unique by
+        // construction. `p.id || p.project_id` was not: cloning a project copies the
+        // whole record, `id` included, so three separate local projects on disk came
+        // back sharing one stale id (six across two clusters, measured on 131). The
+        // dashboard navigates on this field, so two of those three cards opened a
+        // different project than the one clicked, and React saw duplicate keys and
+        // left stale cards on screen whenever the list was filtered down.
+        id,
         output_path: toUrl(p.output_path || ''),
         previewVideoPath: toUrl(p.previewVideoPath || ''),
         character_description: charDesc,
