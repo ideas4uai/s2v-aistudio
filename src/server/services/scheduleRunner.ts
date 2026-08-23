@@ -3,6 +3,7 @@ import {
 } from './scheduleService.js';
 import { loadProject, patchProject, runPipeline } from '../../pipeline/orchestrator.js';
 import { buildMetadata, uploadVideo } from './youtubeService.js';
+import { resolveChannel } from './channelStore.js';
 import { resolveOutputFile } from '../routes/projects.js';
 import { logEvent } from '../../services/logService.js';
 import * as fs from 'fs';
@@ -37,7 +38,15 @@ async function publish(job: ScheduledJob, project: any): Promise<Record<string, 
   const filePath = resolveOutputFile(project.output_path);
   if (!fs.existsSync(filePath)) throw new Error(`Rendered file is missing from disk: ${filePath}`);
 
-  const result = await uploadVideo(filePath, buildMetadata(project), job.privacyStatus);
+  // Same order as the interactive publish route: the project's own tag decides, and
+  // last-used is only ever the fallback. Omitting this made the scheduler resolve to
+  // last-used alone, so an unattended publish of a project tagged to one channel
+  // followed whatever was published manually last — the precise mistake the tag exists
+  // to prevent, on the one path with nobody watching.
+  const target = resolveChannel({ projectChannelId: project.channel_id });
+  if (!target) throw new Error('No YouTube channel is connected.');
+
+  const result = await uploadVideo(filePath, buildMetadata(project), job.privacyStatus, target.channelId);
   await patchProject(job.projectId, (p: any) => {
     p.youtube = {
       videoId: result.videoId, url: result.url, privacyStatus: result.privacyStatus,
