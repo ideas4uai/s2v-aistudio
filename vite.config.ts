@@ -56,6 +56,40 @@ const logFullReload = {
 const API_PORT = Number(process.env.API_PORT) || 3001;
 const API_PATHS = ['/api', '/v1', '/outputs', '/uploads', '/cache', '/music'];
 
+/**
+ * Say which half is down when the API is not running.
+ *
+ * The two halves are separate processes precisely so the backend can be restarted
+ * freely, which means "the backend is not up right now" is a normal state to hit. The
+ * default proxy behaviour answers it with a bare `500 Internal Server Error` and an
+ * EMPTY body, so the dashboard reports a 500 it did not cause and the actual reason —
+ * ECONNREFUSED on :3001 — appears nowhere the browser can see. That is a genuine
+ * server error and a dead upstream rendered identically, which cost a full debugging
+ * session to tell apart.
+ *
+ * 503 with the reason in JSON: the client's `.json()` still parses, the status says
+ * "try again", and the message says what to start.
+ */
+const explainDeadApi = (proxy: any) => {
+  proxy.on('error', (err: NodeJS.ErrnoException, _req: any, res: any) => {
+    const refused = err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET';
+    console.error(
+      `[proxy] ${err.code || err.message} reaching the API on :${API_PORT}`
+      + (refused ? ' — is it running? start it with: npm run dev:api' : ''),
+    );
+    // `res` is a plain ServerResponse here, and on a socket-level failure it may
+    // already be gone or half-written.
+    if (!res || res.headersSent || res.writableEnded) return;
+    res.writeHead(refused ? 503 : 502, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      error: refused
+        ? `The API server is not running on port ${API_PORT}. Start it with "npm run dev:api" (or "npm run dev" for both halves).`
+        : `Could not reach the API server on port ${API_PORT}: ${err.code || err.message}`,
+      code: err.code || 'EPROXY',
+    }));
+  });
+};
+
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
@@ -85,7 +119,10 @@ export default defineConfig(({mode}) => {
       port: 3000,
       strictPort: true,
       proxy: Object.fromEntries(
-        API_PATHS.map((p) => [p, { target: `http://localhost:${API_PORT}` }]),
+        API_PATHS.map((p) => [p, {
+          target: `http://localhost:${API_PORT}`,
+          configure: explainDeadApi,
+        }]),
       ),
 
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
