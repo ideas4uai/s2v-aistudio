@@ -29,6 +29,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { toUrl } from '../../utils/path.js';
 import { isTrashed } from '../../utils/projectFilter.js';
+import { getChannel, resolveChannel } from '../services/channelStore.js';
 import { projectVideoFileName } from '../../utils/filename.js';
 
 import { AIService } from '../../services/aiService.js';
@@ -332,7 +333,7 @@ projectsRouter.post('/', async (req, res) => {
   const {
     title, description, script, settings,
     projectType, universe, universeId, episodeNumber,
-    featuredCharacterIds, featuredLocationId
+    featuredCharacterIds, featuredLocationId, channelId
   } = req.body;
   const id = uuidv4();
   const userId = (req as any).user?.uid;
@@ -351,6 +352,11 @@ projectsRouter.post('/', async (req, res) => {
       description,
       script,
       settings: settings || {},
+      // Which channel this is FOR, chosen now rather than at publish, so the render can
+      // burn the right watermark. Only stored when it names a channel that is actually
+      // connected — a tag pointing at nothing would silently disable the watermark and
+      // look like a bug in the render.
+      ...(getChannel(channelId) ? { channel_id: String(channelId) } : {}),
       ...pipelineFieldsFromSettings(settings),
       status: 'draft',
       characterDescription: '',
@@ -573,11 +579,25 @@ projectsRouter.post('/:id/publish/youtube', async (req, res) => {
       });
     }
 
+    // Which channel, most specific first: what this request asked for, then the channel
+    // the project was tagged with at creation, then last-used. resolveChannel owns that
+    // order — see its comment for why last-used can only ever be a fallback.
+    const target = resolveChannel({
+      requested: req.body?.channelId,
+      projectChannelId: project.channel_id,
+    });
+    if (!target) {
+      return res.status(409).json({
+        error: 'No YouTube channel is connected. Connect one at /api/youtube/auth first.',
+      });
+    }
+
     const meta = buildMetadata(project);
-    console.log(`[Publish] ${id} -> YouTube as "${meta.title}" (${privacyStatus}, ${(fs.statSync(filePath).size / 1e6).toFixed(1)} MB)`);
+    console.log(`[Publish] ${id} -> "${target.title}" (${target.channelId}) as "${meta.title}" `
+      + `(${privacyStatus}, ${(fs.statSync(filePath).size / 1e6).toFixed(1)} MB)`);
 
     const started = Date.now();
-    const result = await uploadVideo(filePath, meta, privacyStatus);
+    const result = await uploadVideo(filePath, meta, privacyStatus, target.channelId);
     const durationSec = Number(((Date.now() - started) / 1000).toFixed(1));
 
     await patchProject(id, (p: any) => {
@@ -588,11 +608,16 @@ projectsRouter.post('/:id/publish/youtube', async (req, res) => {
         title: result.title,
         publishedAt: new Date().toISOString(),
         forcedPastQualityGate: !gate.passed,
+        // Recorded from the upload RESPONSE, not from what was requested — so the
+        // project says which channel the video is actually on.
+        channelId: result.channelId,
+        channelTitle: result.channelTitle,
       };
     }, 'youtube-publish');
 
     logEvent('publish_uploaded', id, {
       videoId: result.videoId, privacyStatus: result.privacyStatus, durationSec,
+      channelId: result.channelId, channelTitle: result.channelTitle,
       qualityScore: gate.score, forced: !gate.passed,
     });
     console.log(`[Publish] ${id} published: ${result.url}`);

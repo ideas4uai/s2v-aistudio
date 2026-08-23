@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import {
   buildAuthUrl, exchangeCode, connectionStatus, disconnect,
   YouTubeNotConfiguredError, missingConfig,
 } from '../services/youtubeService.js';
+import { getChannel, listChannels, logoDir, setLastUsed, updateChannel } from '../services/channelStore.js';
 import { logEvent } from '../../services/logService.js';
 
 export const youtubeRouter = Router();
@@ -91,8 +94,106 @@ ${body}</body>`;
   }
 });
 
-youtubeRouter.post('/disconnect', (_req, res) => {
-  const removed = disconnect();
-  logEvent('youtube_disconnected');
-  res.json({ ok: true, removed });
+/**
+ * Every connected channel.
+ *
+ * Its own endpoint rather than only a field on /status because the project creation
+ * page needs the list and has no interest in whether OAuth is configured.
+ */
+youtubeRouter.get('/channels', (_req, res) => {
+  res.json(listChannels().map((c) => ({
+    channelId: c.channelId,
+    title: c.title,
+    connectedAt: c.connectedAt,
+    hasLogo: !!(c.logoPath && fs.existsSync(c.logoPath)),
+  })));
+});
+
+/** The channel's watermark, or 404. Served so the UI can show what it will burn in. */
+youtubeRouter.get('/channels/:channelId/logo', (req, res) => {
+  const rec = getChannel(req.params.channelId);
+  if (!rec?.logoPath || !fs.existsSync(rec.logoPath)) {
+    return res.status(404).json({ error: 'This channel has no logo' });
+  }
+  res.sendFile(rec.logoPath);
+});
+
+const LOGO_TYPES: Record<string, string> = {
+  'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp',
+};
+const LOGO_MAX_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Upload a watermark for one channel.
+ *
+ * Takes a data URL in JSON rather than multipart: there is no multipart middleware in
+ * this app, a logo is a handful of kilobytes, and adding an upload parser for one
+ * endpoint is more moving parts than the feature is worth.
+ *
+ * PNG is what you want here — the watermark is composited with its own alpha, and a
+ * JPEG logo brings a white box with it. JPEG and WebP are accepted anyway because
+ * refusing the file someone actually has is worse than a slightly worse watermark.
+ */
+youtubeRouter.post('/channels/:channelId/logo', (req, res) => {
+  const rec = getChannel(req.params.channelId);
+  if (!rec) return res.status(404).json({ error: 'Channel not connected' });
+
+  const dataUrl = String(req.body?.dataUrl || '');
+  const m = /^data:([^;,]+);base64,(.+)$/s.exec(dataUrl);
+  if (!m) return res.status(400).json({ error: 'Expected { dataUrl: "data:image/png;base64,..." }' });
+
+  const ext = LOGO_TYPES[m[1].toLowerCase()];
+  if (!ext) {
+    return res.status(415).json({ error: `Unsupported image type ${m[1]}. Use PNG (preferred), JPEG or WebP.` });
+  }
+
+  const bytes = Buffer.from(m[2], 'base64');
+  if (!bytes.length) return res.status(400).json({ error: 'The image is empty' });
+  if (bytes.length > LOGO_MAX_BYTES) {
+    return res.status(413).json({ error: `Logo is ${(bytes.length / 1e6).toFixed(1)}MB; the limit is 4MB.` });
+  }
+
+  const dir = logoDir();
+  fs.mkdirSync(dir, { recursive: true });
+  // Named for the channel, so the file on disk says which channel it brands. A new
+  // upload REPLACES the old file at the same path, which is what makes the render's
+  // mtime staleness check notice: isFreshOutput compares the output against its
+  // sources, and a newer logo makes every render that used the old one stale.
+  const file = path.join(dir, `${rec.channelId}${ext}`);
+  for (const other of Object.values(LOGO_TYPES)) {
+    if (other !== ext) { try { fs.unlinkSync(path.join(dir, `${rec.channelId}${other}`)); } catch { /* absent */ } }
+  }
+  fs.writeFileSync(file, bytes);
+  updateChannel(rec.channelId, (c) => { c.logoPath = file; });
+  logEvent('youtube_channel_logo_set', undefined, { channelId: rec.channelId, bytes: bytes.length });
+  res.json({ channelId: rec.channelId, bytes: bytes.length, path: file });
+});
+
+youtubeRouter.delete('/channels/:channelId/logo', (req, res) => {
+  const rec = getChannel(req.params.channelId);
+  if (!rec) return res.status(404).json({ error: 'Channel not connected' });
+  if (rec.logoPath) { try { fs.unlinkSync(rec.logoPath); } catch { /* already gone */ } }
+  updateChannel(rec.channelId, (c) => { c.logoPath = undefined; });
+  res.json({ ok: true });
+});
+
+/** Remember what the operator picked last, so the publish panel can default to it. */
+youtubeRouter.post('/channels/:channelId/last-used', (req, res) => {
+  if (!getChannel(req.params.channelId)) return res.status(404).json({ error: 'Channel not connected' });
+  setLastUsed(req.params.channelId);
+  res.json({ ok: true, lastUsedChannelId: req.params.channelId });
+});
+
+/**
+ * Disconnect one channel, or all of them when no id is given.
+ *
+ * Per channel by default: with three connected, a disconnect button that silently took
+ * all three would be a very expensive click — each one costs a separate consent flow to
+ * get back.
+ */
+youtubeRouter.post('/disconnect', (req, res) => {
+  const channelId = req.body?.channelId ? String(req.body.channelId) : undefined;
+  const removed = disconnect(channelId);
+  logEvent('youtube_disconnected', undefined, { channelId: channelId || 'all' });
+  res.json({ ok: true, removed, channelId: channelId || null });
 });

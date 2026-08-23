@@ -12,6 +12,7 @@ import {
 import { planSfxCues, renderSfxBed, sfxHeadroom, resolveSfxVolume } from './sfx.js';
 import { arcPosition, NO_ARC } from './colourArc.js';
 import { progressBus, ProgressStage } from '../server/progressBus.js';
+import { getChannel as getChannelSync } from '../server/services/channelStore.js';
 
 const execAsync = promisify(exec);
 
@@ -89,6 +90,76 @@ function emitStep(project: any, scene: any, stage: ProgressStage, message: strin
     sceneIndex: idx > 0 ? idx : undefined,
     sceneTotal: scenes.length || undefined,
   });
+}
+
+/**
+ * The channel watermark for a project, or null when there is nothing to burn in.
+ *
+ * ── Where it goes, and why there ──────────────────────────────────────────────
+ * Bottom LEFT. The other three candidates are taken:
+ *   bottom-right   the entity-image attribution credit (0.96W, 0.982H) — a licence
+ *                  requirement, so it cannot move and must not be covered
+ *   bottom-centre  the captions (ASS Alignment 2, MarginV 22% of H)
+ *   top            where kinetic text and the diagram/comparison overlays play
+ * Bottom-left sits at the credit's own baseline, mirrored across the frame, ~20% of
+ * the height below the caption band. Nothing else draws there.
+ *
+ * ── How big, how faint ───────────────────────────────────────────────────────
+ * Deliberately the same restraint the credit already uses: alpha 0.30 against the
+ * credit's 0.28, and 9% of frame width. On a 1080x1920 short that is a 97px logo at
+ * just under a third opacity — legible when looked for, invisible when not, which is
+ * the point of a watermark rather than a logo bug.
+ */
+export const WATERMARK = { widthFrac: 0.09, alpha: 0.30, marginXFrac: 0.04, bottomFrac: 0.982 };
+
+export function channelWatermarkPath(project: any): string | null {
+  const id = project?.channel_id;
+  if (!id) return null;
+  try {
+    // Required lazily: renderService is imported by tests that never touch YouTube, and
+    // the store reads config/ at call time rather than at module load.
+    const rec = getChannelSync(id);
+    if (rec?.logoPath && fs.existsSync(rec.logoPath)) return rec.logoPath;
+  } catch { /* no channel store on this install */ }
+  return null;
+}
+
+/**
+ * The filter graph for one encode, with the watermark composited in if there is one.
+ *
+ * Returns the extra `-i` and a -filter_complex, or the plain -vf when there is no
+ * watermark — an unbranded project must produce byte-comparable output to what it
+ * produced before this existed, so the no-watermark path is left exactly as it was.
+ *
+ * The captions are applied AFTER the overlay so a watermark can never sit on top of a
+ * caption, even if a future size change made the two regions meet.
+ */
+export function buildVideoFilter(
+  logoPath: string | null, sizeFilter: string, assFilter: string, capW: number,
+): { inputArg: string; filterArg: string; mapArgs: string } {
+  if (!logoPath) {
+    return {
+      inputArg: '',
+      filterArg: `-vf "setpts=PTS-STARTPTS${sizeFilter}${assFilter}"`,
+      mapArgs: '',
+    };
+  }
+  const w = Math.max(24, Math.round(capW * WATERMARK.widthFrac));
+  const x = `${WATERMARK.marginXFrac}*W`;
+  // Anchored by its BOTTOM edge at the same 0.982H the credit uses, so logos of
+  // different aspect ratios all sit on one line rather than floating at different heights.
+  const y = `${WATERMARK.bottomFrac}*H-h`;
+  const ass = assFilter ? assFilter.replace(/^,/, '') : '';
+  const chain = [
+    `[2:v]scale=${w}:-1,format=rgba,colorchannelmixer=aa=${WATERMARK.alpha}[wm]`,
+    `[0:v]setpts=PTS-STARTPTS${sizeFilter}[base]`,
+    ass ? `[base][wm]overlay=${x}:${y}[ov];[ov]${ass}[v]` : `[base][wm]overlay=${x}:${y}[v]`,
+  ].join(';');
+  return {
+    inputArg: `-i "${logoPath}"`,
+    filterArg: `-filter_complex "${chain}"`,
+    mapArgs: '-map "[v]" -map 1:a',
+  };
 }
 
 export function isFreshOutput(output: string, ...sources: (string | undefined | null)[]): boolean {
@@ -1315,7 +1386,11 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
   // silenceremove has not run yet. Checking freshness after it meant a reused scene got
   // its stored duration overwritten with the wrong number (measured: 6.88s -> 8.05s) on
   // every subsequent render, with nothing rebuilt that would put it back.
-  if (isFreshOutput(finalPath, visualPath, audioValid ? audioPath : undefined)) {
+  // The logo is a SOURCE of this segment, so a channel that changes its watermark makes
+  // every segment built with the old one stale by mtime — the same rule that already
+  // rebuilds a segment when its visual or narration changes. No parallel cache.
+  const logoPath = channelWatermarkPath(project);
+  if (isFreshOutput(finalPath, visualPath, audioValid ? audioPath : undefined, logoPath)) {
     console.log('[RenderService] Segment still fresh — reusing:', path.basename(finalPath));
     emitStep(project, scene, 'segment', 'Video segment already built', true);
     return finalPath;
@@ -1446,7 +1521,12 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
      // scene: old two-pass 7.15 MB / SSIM 0.96902, this 7.24 MB / SSIM 0.97018 — better
      // picture at the same size. crf 18 here doubles the file for no visible gain
      // (15.6 MB), and crf 22 drops below the old quality.
-     await guardedExec(`"${ffmpeg}" ${loopArg} -i "${visualPath}" -i "${processedAudio}" -vf "setpts=PTS-STARTPTS${sizeFilter}${assFilter}" -c:v libx264 -preset ${preset} -crf 20 -c:a aac -ar 44100 -ac 2 -b:a 192k ${lengthArg} -y "${finalPath}"`, signal);
+     // The channel watermark rides along in this same encode rather than getting a pass
+     // of its own — a second encode would cost another generation of quality on every
+     // scene to composite a 97px logo. buildVideoFilter returns the untouched -vf when
+     // the project has no channel logo, so unbranded renders are unchanged.
+     const wm = buildVideoFilter(logoPath, sizeFilter, assFilter, capW);
+     await guardedExec(`"${ffmpeg}" ${loopArg} -i "${visualPath}" -i "${processedAudio}" ${wm.inputArg} ${wm.filterArg} ${wm.mapArgs} -c:v libx264 -preset ${preset} -crf 20 -c:a aac -ar 44100 -ac 2 -b:a 192k ${lengthArg} -y "${finalPath}"`, signal);
 
      // A truncated encode that ffmpeg still exited 0 on would be cached as valid by the
      // freshness check above and shipped. Cheap to rule out; expensive to miss.

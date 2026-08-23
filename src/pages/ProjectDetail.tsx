@@ -247,6 +247,10 @@ export function ProjectDetail() {
 function PublishPanel({ project, onPublished }: { project: any; onPublished: () => void }) {
   const [status, setStatus] = useState<any>(null);
   const [privacy, setPrivacy] = useState<'private' | 'unlisted' | 'public'>('unlisted');
+  // Which channel this upload will go to. Resolved once status arrives, in the same
+  // order the server uses: the project's own tag first, then last-used. Held in state
+  // so it is always an explicit value on screen rather than an implicit server default.
+  const [channelId, setChannelId] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<{ failures: string[]; score: number } | null>(null);
@@ -254,9 +258,20 @@ function PublishPanel({ project, onPublished }: { project: any; onPublished: () 
   useEffect(() => {
     authenticatedFetch('/api/youtube/status')
       .then((r) => (r.ok ? r.json() : null))
-      .then(setStatus)
+      .then((s) => {
+        setStatus(s);
+        const known = new Set((s?.channels || []).map((c: any) => c.channelId));
+        // The project's tag wins over last-used, and last-used is only a convenience.
+        // A tag pointing at a disconnected channel falls through rather than selecting
+        // nothing, which would leave the button enabled with no target.
+        const tagged = project.channel_id;
+        const pick = (known.has(tagged) && tagged)
+          || (known.has(s?.lastUsedChannelId) && s?.lastUsedChannelId)
+          || (s?.channels?.[0]?.channelId ?? '');
+        setChannelId(pick || '');
+      })
       .catch(() => setStatus(null));
-  }, []);
+  }, [project.channel_id]);
 
   const published = project.youtube;
 
@@ -266,7 +281,7 @@ function PublishPanel({ project, onPublished }: { project: any; onPublished: () 
       const res = await authenticatedFetch(`/api/projects/${project.project_id || project.id}/publish/youtube`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ privacyStatus: privacy, force }),
+        body: JSON.stringify({ privacyStatus: privacy, force, channelId: channelId || undefined }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -295,7 +310,8 @@ function PublishPanel({ project, onPublished }: { project: any; onPublished: () 
 
       {published ? (
         <p className="text-sm text-green-700">
-          Published as <strong>{published.privacyStatus}</strong> —{' '}
+          Published to <strong>{published.channelTitle || 'your channel'}</strong> as{' '}
+          <strong>{published.privacyStatus}</strong> —{' '}
           <a className="underline" href={published.url} target="_blank" rel="noreferrer">{published.url}</a>
           {published.forcedPastQualityGate && (
             <span className="block mt-1 text-xs text-amber-700">Published past a failing quality gate.</span>
@@ -312,6 +328,65 @@ function PublishPanel({ project, onPublished }: { project: any; onPublished: () 
           <a className="text-indigo-600 underline" href="/api/youtube/auth">Connect a YouTube channel</a>.
         </p>
       ) : (
+        <div className="space-y-4">
+          {/* The channel, stated as a banner rather than offered as a dropdown.
+              Publishing to the wrong one of three similarly-named channels is the
+              expensive mistake here, and it is not caught by a control that reads as a
+              default. It says the name, shows the watermark that will be on the video,
+              and says WHY that channel was chosen. */}
+          {(status?.channels?.length ?? 0) > 0 && (() => {
+            const sel = status.channels.find((c: any) => c.channelId === channelId);
+            const why = project.channel_id === channelId ? 'tagged on this project at creation'
+              : status.lastUsedChannelId === channelId ? 'the channel you published to last'
+              : 'the only connected channel';
+            return (
+              <div className="rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-4">
+                <div className="flex items-center gap-3">
+                  {sel?.hasLogo ? (
+                    <img src={`/api/youtube/channels/${sel.channelId}/logo`} alt=""
+                         className="w-11 h-11 rounded-full object-cover bg-white" />
+                  ) : (
+                    <span className="w-11 h-11 rounded-full bg-white flex items-center justify-center text-base font-bold text-indigo-700">
+                      {String(sel?.title || '?').slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-[11px] uppercase tracking-wider font-bold text-indigo-700">Publishing to</p>
+                    <p className="text-lg font-bold text-indigo-900 truncate">{sel?.title || 'Select a channel'}</p>
+                    <p className="text-xs text-indigo-700">{sel ? why : 'no channel selected'}</p>
+                  </div>
+                </div>
+                {status.channels.length > 1 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {status.channels.map((c: any) => (
+                      <button
+                        key={c.channelId}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setChannelId(c.channelId)}
+                        aria-pressed={c.channelId === channelId}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors disabled:opacity-50 ${
+                          c.channelId === channelId
+                            ? 'border-indigo-600 bg-indigo-600 text-white'
+                            : 'border-indigo-200 bg-white text-indigo-800 hover:border-indigo-400'
+                        }`}
+                      >
+                        {c.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {project.channel_id && project.channel_id !== channelId && (
+                  <p className="mt-3 text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg px-3 py-2">
+                    This project was created for{' '}
+                    {status.channels.find((c: any) => c.channelId === project.channel_id)?.title || 'another channel'},
+                    and its watermark is that channel&apos;s. You are about to publish it somewhere else.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+
         <div className="flex items-center gap-3">
           <select
             className="px-3 py-2 rounded-xl border border-neutral-300 bg-white text-sm"
@@ -331,6 +406,7 @@ function PublishPanel({ project, onPublished }: { project: any; onPublished: () 
           >
             {busy ? 'Uploading…' : 'Publish'}
           </button>
+        </div>
         </div>
       )}
 
