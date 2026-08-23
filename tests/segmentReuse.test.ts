@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -19,6 +19,18 @@ import { assembleSceneSegment } from '../src/services/renderService.js';
 //
 // Both are asserted below against the real functions — no mocks, since the bug lived
 // entirely in path construction and an fs.existsSync check.
+
+// This suite asserts a file-mtime staleness guard and a path-scoping rule. It never
+// needs a word measured — but prepareSceneAudio now runs forced alignment, so leaving
+// the aligner reachable made every case here load Kokoro (~15s) and faster-whisper on
+// top of the ffmpeg spawns it already pays for. Measured on this machine: the last test
+// went over its 30s budget with the aligner up and the four pass in 17.8s without it.
+//
+// Unsetting the interpreter is the honest way to switch it off rather than a mock:
+// alignWords() is built to warn and return [] when nothing answers, which is the exact
+// path a render takes on a machine with no TTS environment installed.
+beforeAll(() => { vi.stubEnv('TTS_PYTHON', 'segment-reuse-test-no-aligner'); });
+afterAll(() => { vi.unstubAllEnvs(); });
 
 const RENDER_DIR = path.join(os.tmpdir(), 'ais-renderer');
 const SCENE_ID = 'seg-reuse-test-scene';
