@@ -1,5 +1,14 @@
-opencv-python==4.9.0.80
-Pillow==10.3.0
-librosa==0.10.1
-numpy==1.26.4
-soundfile==0.12.1
+# The render interpreter only — the `py` launcher, Python 3.11 on this machine.
+# renderService spawns metro_engine_v4, motion_overlay and rembg_worker with `py`,
+# so these are the versions a render actually runs on.
+#
+# The two TTS environments are deliberately NOT here. TTS_PYTHON carries
+# kokoro + soundfile + faster-whisper and CLONE_PYTHON carries chatterbox-tts,
+# which pins torch 2.6 / numpy 1.26 and breaks Kokoro if merged into one env.
+# See README and the header of src/server/services/ttsSidecar.ts.
+opencv-python==4.13.0.92
+Pillow==12.2.0
+librosa==0.11.0
+numpy==2.4.4
+soundfile==0.13.1
+rembg==2.0.76
