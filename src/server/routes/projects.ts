@@ -30,6 +30,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { toUrl } from '../../utils/path.js';
 import { isTrashed } from '../../utils/projectFilter.js';
 import { getChannel, resolveChannel } from '../services/channelStore.js';
+import { mayModifyProject } from '../utils/ownership.js';
 import { projectVideoFileName } from '../../utils/filename.js';
 
 import { AIService } from '../../services/aiService.js';
@@ -259,10 +260,9 @@ async function setTrashed(req: any, res: any, deleted_at: string | null) {
     }
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
-    const userId = req.user?.uid;
-    // Same ownership rule as DELETE: locally-created projects predate per-user
-    // ownership and carry no userId, and an unowned local record is the caller's.
-    if (project.userId && project.userId !== userId) {
+    // Same ownership rule as DELETE — see mayModifyProject for why a local-disk
+    // record in a single-operator install is the caller's whichever uid it carries.
+    if (!mayModifyProject(project, req.user?.uid, id)) {
       return res.status(403).json({ error: 'Unauthorized to modify this project' });
     }
 
@@ -298,10 +298,10 @@ projectsRouter.delete('/:id', async (req, res) => {
     }
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
-    const userId = (req as any).user?.uid;
-    // Locally-created projects predate per-user ownership and carry no userId. Treat an
-    // unowned local record as the caller's rather than making it undeletable forever.
-    if (project.userId && project.userId !== userId) {
+    // Locally-created projects predate per-user ownership and carry no userId, and a
+    // local-disk record in a single-operator install is the caller's whatever uid it
+    // carries — otherwise half this machine's own outputs/ is undeletable forever.
+    if (!mayModifyProject(project, (req as any).user?.uid, id)) {
       return res.status(403).json({ error: 'Unauthorized to delete this project' });
     }
 
