@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Video, ArrowLeft, Pencil } from 'lucide-react';
+import { Video, ArrowLeft, Pencil, Undo2, Trash2 } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 
 export function ProjectDetail() {
@@ -12,6 +12,7 @@ export function ProjectDetail() {
   // full refetch without calling the loader directly (which would be a setState
   // reachable synchronously from an effect body).
   const [reloadKey, setReloadKey] = useState(0);
+  const [restoring, setRestoring] = useState(false);
 
   // Initial load + re-fetch when the window regains focus (user navigates back).
   // The request is the external system; setProject runs from its .then callback,
@@ -36,6 +37,9 @@ export function ProjectDetail() {
   // Poll status while a render is in progress; apply output_path as soon as it lands
   useEffect(() => {
     if (!project) return;
+    // Nothing is running on a trashed project — trashing aborts its processes — so
+    // polling one would be a request every three seconds forever.
+    if (project.deleted_at) return;
     if (['completed', 'degraded', 'failed', 'cancelled'].includes(project.status)) return;
 
     const interval = setInterval(async () => {
@@ -64,7 +68,7 @@ export function ProjectDetail() {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [project?.status, id]);
+  }, [project?.status, project?.deleted_at, id]);
 
   if (!project) return <div className="p-8 text-center text-neutral-500 animate-pulse">Loading project details...</div>;
 
@@ -78,6 +82,43 @@ export function ProjectDetail() {
       </button>
 
       <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm mb-8">
+        {/* A trashed project stays readable by direct URL rather than 404ing.
+            Deliberate: the record is intact, the video still plays, and 404 would make
+            the one thing you came here to do — get it back — impossible. What it must
+            not do is look like a live project, so the state is stated plainly, Restore
+            is offered here, and the Edit button below is withheld: editing something
+            the dashboard has already hidden is how you lose an afternoon's work to a
+            render nobody can find. */}
+        {project.deleted_at && (
+          <div className="mb-5 flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+            <div className="flex items-start gap-3">
+              <Trash2 className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-amber-900">This project is in Trash</p>
+                <p className="text-sm text-amber-800">
+                  Deleted {new Date(project.deleted_at).toLocaleString()}. It is hidden from the
+                  dashboard and cannot be edited until you restore it. Nothing has been removed.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={restoring}
+              onClick={async () => {
+                setRestoring(true);
+                try {
+                  const res = await authenticatedFetch(`/api/projects/${project.project_id || project.id || id}/restore`, { method: 'POST' });
+                  if (res.ok) setReloadKey((k) => k + 1);
+                  else console.error('Restore failed', await res.text());
+                } finally { setRestoring(false); }
+              }}
+              className="shrink-0 sm:ml-auto flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 disabled:opacity-50"
+            >
+              <Undo2 className="w-4 h-4" /> {restoring ? 'Restoring…' : 'Restore'}
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-2">
           <h1 className="text-3xl font-bold text-neutral-900">{project.title}</h1>
           {/* The only way into the editor from here. The dashboard sends completed
@@ -87,6 +128,7 @@ export function ProjectDetail() {
               back-navigation, and a degraded or failed render is exactly the one you
               want to open and re-run. Re-rendering from there reuses the existing
               staleness checks, so approved scenes are not regenerated. */}
+          {!project.deleted_at && (
           <button
             type="button"
             onClick={() => navigate(`/projects/${project.project_id || project.id || id}/edit`)}
@@ -94,6 +136,7 @@ export function ProjectDetail() {
           >
             <Pencil className="w-4 h-4" /> Edit
           </button>
+          )}
         </div>
         <p className="text-neutral-500 mb-8 max-w-3xl">{project.description || 'No description provided.'}</p>
         
@@ -204,6 +247,10 @@ export function ProjectDetail() {
 function PublishPanel({ project, onPublished }: { project: any; onPublished: () => void }) {
   const [status, setStatus] = useState<any>(null);
   const [privacy, setPrivacy] = useState<'private' | 'unlisted' | 'public'>('unlisted');
+  // Which channel this upload will go to. Resolved once status arrives, in the same
+  // order the server uses: the project's own tag first, then last-used. Held in state
+  // so it is always an explicit value on screen rather than an implicit server default.
+  const [channelId, setChannelId] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<{ failures: string[]; score: number } | null>(null);
@@ -211,9 +258,20 @@ function PublishPanel({ project, onPublished }: { project: any; onPublished: () 
   useEffect(() => {
     authenticatedFetch('/api/youtube/status')
       .then((r) => (r.ok ? r.json() : null))
-      .then(setStatus)
+      .then((s) => {
+        setStatus(s);
+        const known = new Set((s?.channels || []).map((c: any) => c.channelId));
+        // The project's tag wins over last-used, and last-used is only a convenience.
+        // A tag pointing at a disconnected channel falls through rather than selecting
+        // nothing, which would leave the button enabled with no target.
+        const tagged = project.channel_id;
+        const pick = (known.has(tagged) && tagged)
+          || (known.has(s?.lastUsedChannelId) && s?.lastUsedChannelId)
+          || (s?.channels?.[0]?.channelId ?? '');
+        setChannelId(pick || '');
+      })
       .catch(() => setStatus(null));
-  }, []);
+  }, [project.channel_id]);
 
   const published = project.youtube;
 
@@ -223,7 +281,7 @@ function PublishPanel({ project, onPublished }: { project: any; onPublished: () 
       const res = await authenticatedFetch(`/api/projects/${project.project_id || project.id}/publish/youtube`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ privacyStatus: privacy, force }),
+        body: JSON.stringify({ privacyStatus: privacy, force, channelId: channelId || undefined }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -247,12 +305,20 @@ function PublishPanel({ project, onPublished }: { project: any; onPublished: () 
     <div className="mt-6 rounded-2xl border border-neutral-200 bg-white p-5">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-bold uppercase tracking-wider text-neutral-700">Publish to YouTube</span>
-        {status?.channelTitle && <span className="text-xs text-neutral-500">{status.channelTitle}</span>}
+        {/* Deliberately NOT status.channelTitle. That field is the first connected
+            channel, kept only so older callers keep working; with three connected it
+            named a different channel than the banner below was about to publish to —
+            two channels on screen at once, which is the exact confusion this panel
+            exists to remove. The banner is the single authority. */}
+        {(status?.channels?.length ?? 0) > 1 && (
+          <span className="text-xs text-neutral-500">{status.channels.length} channels connected</span>
+        )}
       </div>
 
       {published ? (
         <p className="text-sm text-green-700">
-          Published as <strong>{published.privacyStatus}</strong> —{' '}
+          Published to <strong>{published.channelTitle || 'your channel'}</strong> as{' '}
+          <strong>{published.privacyStatus}</strong> —{' '}
           <a className="underline" href={published.url} target="_blank" rel="noreferrer">{published.url}</a>
           {published.forcedPastQualityGate && (
             <span className="block mt-1 text-xs text-amber-700">Published past a failing quality gate.</span>
@@ -269,6 +335,65 @@ function PublishPanel({ project, onPublished }: { project: any; onPublished: () 
           <a className="text-indigo-600 underline" href="/api/youtube/auth">Connect a YouTube channel</a>.
         </p>
       ) : (
+        <div className="space-y-4">
+          {/* The channel, stated as a banner rather than offered as a dropdown.
+              Publishing to the wrong one of three similarly-named channels is the
+              expensive mistake here, and it is not caught by a control that reads as a
+              default. It says the name, shows the watermark that will be on the video,
+              and says WHY that channel was chosen. */}
+          {(status?.channels?.length ?? 0) > 0 && (() => {
+            const sel = status.channels.find((c: any) => c.channelId === channelId);
+            const why = project.channel_id === channelId ? 'tagged on this project at creation'
+              : status.lastUsedChannelId === channelId ? 'the channel you published to last'
+              : 'the only connected channel';
+            return (
+              <div className="rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-4">
+                <div className="flex items-center gap-3">
+                  {sel?.hasLogo ? (
+                    <img src={`/api/youtube/channels/${sel.channelId}/logo`} alt=""
+                         className="w-11 h-11 rounded-full object-cover bg-white" />
+                  ) : (
+                    <span className="w-11 h-11 rounded-full bg-white flex items-center justify-center text-base font-bold text-indigo-700">
+                      {String(sel?.title || '?').slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-[11px] uppercase tracking-wider font-bold text-indigo-700">Publishing to</p>
+                    <p className="text-lg font-bold text-indigo-900 truncate">{sel?.title || 'Select a channel'}</p>
+                    <p className="text-xs text-indigo-700">{sel ? why : 'no channel selected'}</p>
+                  </div>
+                </div>
+                {status.channels.length > 1 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {status.channels.map((c: any) => (
+                      <button
+                        key={c.channelId}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setChannelId(c.channelId)}
+                        aria-pressed={c.channelId === channelId}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors disabled:opacity-50 ${
+                          c.channelId === channelId
+                            ? 'border-indigo-600 bg-indigo-600 text-white'
+                            : 'border-indigo-200 bg-white text-indigo-800 hover:border-indigo-400'
+                        }`}
+                      >
+                        {c.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {project.channel_id && project.channel_id !== channelId && (
+                  <p className="mt-3 text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg px-3 py-2">
+                    This project was created for{' '}
+                    {status.channels.find((c: any) => c.channelId === project.channel_id)?.title || 'another channel'},
+                    and its watermark is that channel&apos;s. You are about to publish it somewhere else.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+
         <div className="flex items-center gap-3">
           <select
             className="px-3 py-2 rounded-xl border border-neutral-300 bg-white text-sm"
@@ -288,6 +413,7 @@ function PublishPanel({ project, onPublished }: { project: any; onPublished: () 
           >
             {busy ? 'Uploading…' : 'Publish'}
           </button>
+        </div>
         </div>
       )}
 

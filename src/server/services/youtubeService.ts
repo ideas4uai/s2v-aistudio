@@ -1,5 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+  addChannel, getChannel, listChannels, readStore, removeChannel, resolveChannel,
+  setLastUsed, storePath, updateChannel, LEGACY_CHANNEL_KEY,
+} from './channelStore.js';
 
 /**
  * YouTube Data API v3: connect a channel, upload a rendered video.
@@ -33,9 +37,8 @@ type StoredTokens = {
   scopes: string[];
 };
 
-export function tokenStorePath(): string {
-  return process.env.YOUTUBE_TOKEN_PATH || path.join(process.cwd(), 'config', 'youtube-tokens.json');
-}
+/** Kept for callers and tests that predate the multi-channel store. */
+export function tokenStorePath(): string { return storePath(); }
 
 export function clientId(): string | undefined { return process.env.YOUTUBE_CLIENT_ID; }
 export function clientSecret(): string | undefined { return process.env.YOUTUBE_CLIENT_SECRET; }
@@ -87,24 +90,30 @@ export class YouTubeUploadError extends Error {
   }
 }
 
-export function readTokens(): StoredTokens | null {
-  try {
-    return JSON.parse(fs.readFileSync(tokenStorePath(), 'utf-8'));
-  } catch {
-    return null;
-  }
+/**
+ * The channel a bare call means when no channel is named.
+ *
+ * Everything below takes an optional channelId so the single-channel callers that
+ * predate this — the health check, the status endpoint, an old publish request with no
+ * channel in its body — keep working unchanged against whatever is connected.
+ */
+export function readTokens(channelId?: string): StoredTokens | null {
+  const rec = channelId ? getChannel(channelId) : resolveChannel({});
+  if (!rec) return null;
+  return {
+    refreshToken: rec.refreshToken,
+    accessToken: rec.accessToken,
+    expiresAtMs: rec.expiresAtMs,
+    connectedAt: rec.connectedAt,
+    scopes: rec.scopes || [],
+    channelId: rec.channelId,
+    channelTitle: rec.title,
+  };
 }
 
-function writeTokens(tokens: StoredTokens): void {
-  const file = tokenStorePath();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(tokens, null, 2));
-  // The refresh token is a long-lived credential to publish on someone's channel.
-  // chmod is a no-op on Windows but costs nothing and matters everywhere else.
-  try { fs.chmodSync(file, 0o600); } catch { /* not POSIX */ }
-}
-
-export function disconnect(): boolean {
+/** Forgets one channel, or every channel when called with nothing. */
+export function disconnect(channelId?: string): boolean {
+  if (channelId) return removeChannel(channelId);
   try {
     fs.unlinkSync(tokenStorePath());
     return true;
@@ -183,10 +192,36 @@ export async function exchangeCode(code: string): Promise<StoredTokens> {
     console.warn('[YouTube] Connected, but could not read the channel name:', err?.message);
   }
 
-  writeTokens(tokens);
+  if (!tokens.channelId) {
+    // Without a channel id there is nothing to key the record on and no way to show the
+    // operator what they just connected — which is the whole point of the exercise.
+    throw new Error(
+      'Connected, but YouTube did not say which channel this is for. '
+      + 'Try again and pick a channel on the Google consent screen.',
+    );
+  }
+
+  addChannel({
+    channelId: tokens.channelId,
+    title: tokens.channelTitle || tokens.channelId,
+    refreshToken: tokens.refreshToken,
+    accessToken: tokens.accessToken,
+    expiresAtMs: tokens.expiresAtMs,
+    scopes: tokens.scopes,
+    connectedAt: tokens.connectedAt,
+  });
   return tokens;
 }
 
+/**
+ * The channel this consent was granted for.
+ *
+ * `mine=true` and not `managedByMe=true`: the latter is what would return every channel
+ * the Google account owns, and it requires onBehalfOfContentOwner — a YouTube CMS
+ * credential issued to multi-channel networks, not to ordinary creators. So one consent
+ * yields one channel, and connecting three channels means running this flow three times
+ * and picking a different channel each time. See the header of channelStore.ts.
+ */
 async function fetchChannel(accessToken: string): Promise<any> {
   const res = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -197,11 +232,12 @@ async function fetchChannel(accessToken: string): Promise<any> {
 }
 
 /** A valid access token, refreshing if the stored one is expired or nearly so. */
-export async function getAccessToken(): Promise<string> {
+export async function getAccessToken(channelId?: string): Promise<string> {
   const missing = missingConfig();
   if (missing.length) throw new YouTubeNotConfiguredError(missing);
-  const tokens = readTokens();
-  if (!tokens?.refreshToken) throw new YouTubeNotConnectedError();
+  const rec = channelId ? getChannel(channelId) : resolveChannel({});
+  if (!rec?.refreshToken) throw new YouTubeNotConnectedError();
+  const tokens = readTokens(rec.channelId)!;
 
   if (tokens.accessToken && tokens.expiresAtMs && Date.now() < tokens.expiresAtMs) {
     return tokens.accessToken;
@@ -219,20 +255,37 @@ export async function getAccessToken(): Promise<string> {
     // A revoked or expired refresh token can only be fixed by reconnecting, so say that
     // rather than letting it surface as an opaque 400 on every future publish.
     throw new Error(
-      `${err.message}. The saved YouTube authorisation is no longer valid — reconnect the channel at /api/youtube/auth.`,
+      `${err.message}. The saved authorisation for "${rec.title}" is no longer valid — reconnect that channel at /api/youtube/auth.`,
     );
   }
 
-  tokens.accessToken = json.access_token;
-  tokens.expiresAtMs = Date.now() + (Number(json.expires_in || 3600) - 60) * 1000;
-  writeTokens(tokens);
-  return tokens.accessToken!;
+  const accessToken = json.access_token as string;
+  const expiresAtMs = Date.now() + (Number(json.expires_in || 3600) - 60) * 1000;
+  // Only this channel's entry is touched; the other channels' tokens are untouched by
+  // a refresh, which is the whole reason the store merges rather than replaces.
+  updateChannel(rec.channelId, (c) => { c.accessToken = accessToken; c.expiresAtMs = expiresAtMs; });
+  return accessToken;
 }
+
+export type ChannelSummary = {
+  channelId: string;
+  title: string;
+  connectedAt: string;
+  hasLogo: boolean;
+};
 
 export type ConnectionStatus = {
   configured: boolean;
   connected: boolean;
   missingConfig: string[];
+  /** Every connected channel. Empty when nothing is connected. */
+  channels: ChannelSummary[];
+  lastUsedChannelId?: string;
+  /**
+   * The first channel, repeated. Kept because the existing publish panel and the health
+   * check read these two fields directly, and a status shape that dropped them would
+   * break them on the release that adds channels rather than on one anybody expects.
+   */
   channelId?: string;
   channelTitle?: string;
   connectedAt?: string;
@@ -241,14 +294,23 @@ export type ConnectionStatus = {
 
 export function connectionStatus(): ConnectionStatus {
   const missing = missingConfig();
-  const tokens = readTokens();
+  const store = readStore();
+  const channels = listChannels();
+  const first = channels[0];
   return {
     configured: missing.length === 0,
-    connected: !!tokens?.refreshToken,
+    connected: channels.length > 0,
     missingConfig: missing,
-    channelId: tokens?.channelId,
-    channelTitle: tokens?.channelTitle,
-    connectedAt: tokens?.connectedAt,
+    channels: channels.map((c) => ({
+      channelId: c.channelId,
+      title: c.title,
+      connectedAt: c.connectedAt,
+      hasLogo: !!(c.logoPath && fs.existsSync(c.logoPath)),
+    })),
+    lastUsedChannelId: store.lastUsedChannelId,
+    channelId: first?.channelId,
+    channelTitle: first?.title,
+    connectedAt: first?.connectedAt,
     redirectUri: redirectUri(),
   };
 }
@@ -331,7 +393,11 @@ function uploadError(status: number, body: any): YouTubeUploadError {
   return new YouTubeUploadError(`YouTube upload failed (${status}, ${reason}): ${detail}`, status, status >= 500, reason);
 }
 
-export type UploadResult = { videoId: string; url: string; privacyStatus: YouTubePrivacy; title: string };
+export type UploadResult = {
+  videoId: string; url: string; privacyStatus: YouTubePrivacy; title: string;
+  /** Which channel YouTube actually put it on, read back from the response. */
+  channelId: string; channelTitle: string;
+};
 
 /**
  * Uploads one file, resumably.
@@ -347,12 +413,15 @@ export async function uploadVideo(
   filePath: string,
   meta: UploadMetadata,
   privacyStatus: YouTubePrivacy = 'private',
+  channelId?: string,
 ): Promise<UploadResult> {
   if (!fs.existsSync(filePath)) throw new Error(`Video file not found: ${filePath}`);
   const size = fs.statSync(filePath).size;
   if (size === 0) throw new Error(`Video file is empty: ${filePath}`);
 
-  const accessToken = await getAccessToken();
+  const target = channelId ? getChannel(channelId) : resolveChannel({});
+  if (!target) throw new YouTubeNotConnectedError();
+  const accessToken = await getAccessToken(target.channelId);
 
   const initRes = await fetch(
     'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
@@ -386,10 +455,28 @@ export async function uploadVideo(
   if (!uploadRes.ok) throw uploadError(uploadRes.status, body);
   if (!body.id) throw new Error('YouTube reported success but returned no video id.');
 
+  // Trust the response, not the request. The token decides which channel a video lands
+  // on, and a stale or mis-keyed token would put AI QA Engineer content on another
+  // channel while still returning 200. Saying so afterwards is the only way to know.
+  const landedOn = body.snippet?.channelId;
+  // Skipped for a migrated pre-channels connection: its stored id is a placeholder, not
+  // a channel, so comparing it would reject every upload from an install that upgraded.
+  if (landedOn && target.channelId !== LEGACY_CHANNEL_KEY && landedOn !== target.channelId) {
+    throw new YouTubeUploadError(
+      `Uploaded to the wrong channel: asked for "${target.title}" (${target.channelId}) `
+      + `but YouTube put the video on ${landedOn}. The video exists at `
+      + `https://www.youtube.com/watch?v=${body.id} — delete it and reconnect that channel.`,
+      200, false, 'channelMismatch',
+    );
+  }
+  setLastUsed(target.channelId);
+
   return {
     videoId: body.id,
     url: `https://www.youtube.com/watch?v=${body.id}`,
     privacyStatus: body.status?.privacyStatus || privacyStatus,
     title: body.snippet?.title || meta.title,
+    channelId: landedOn || target.channelId,
+    channelTitle: target.title,
   };
 }

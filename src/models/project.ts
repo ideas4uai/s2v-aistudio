@@ -73,6 +73,27 @@ export interface Project {
   pacing_intensity: string;
   style_profile: string;
   status: 'draft' | 'scripting' | 'scene_parsing' | 'generating_assets' | 'stitching_video' | 'completed' | 'failed' | 'cancelled' | 'hook_selection' | string;
+  /**
+   * Which YouTube channel this project is FOR, chosen when it was created.
+   *
+   * Set at creation rather than only at publish so everything downstream can be
+   * channel-aware — the watermark burned into the render, and later trending topics and
+   * analytics — none of which can wait until someone clicks Publish. It is a default,
+   * not a lock: the publish action still shows which channel it will use and lets it be
+   * changed. Absent on every project created before channels existed, which is why
+   * nothing may treat it as required.
+   */
+  channel_id?: string;
+
+  /**
+   * When this project was moved to Trash, as an ISO string. Absent or null means live.
+   *
+   * Deliberately separate from `status`: a trashed project keeps whatever status it
+   * had, so restoring it puts a completed render back as completed rather than having
+   * to guess what it was. Deleting from the dashboard sets this; only Trash's
+   * "Delete permanently" calls DELETE /:id and actually removes anything.
+   */
+  deleted_at?: string | null;
   current_action?: string;
   progress_percent?: number;
   logs?: string[];

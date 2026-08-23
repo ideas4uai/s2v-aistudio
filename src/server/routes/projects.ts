@@ -28,6 +28,9 @@ import {
 } from '../../controllers/projectController.js';
 import { v4 as uuidv4 } from 'uuid';
 import { toUrl } from '../../utils/path.js';
+import { isTrashed } from '../../utils/projectFilter.js';
+import { getChannel, resolveChannel } from '../services/channelStore.js';
+import { mayModifyProject } from '../utils/ownership.js';
 import { projectVideoFileName } from '../../utils/filename.js';
 
 import { AIService } from '../../services/aiService.js';
@@ -136,6 +139,15 @@ projectsRouter.get('/', async (req, res) => {
     for (const p of remoteProjects) byId.set(p.id || p.project_id, p);
     for (const p of localProjects) byId.set(p.project_id!, p);
 
+    // Trash is a view of the same list, not a separate store. `?deleted=true` returns
+    // only trashed projects and the default returns only live ones, so every existing
+    // caller — the dashboard's status filters, its search, "All statuses" — stops
+    // seeing a deleted project without any of them knowing the field exists.
+    const wantTrashed = String(req.query.deleted) === 'true';
+    for (const [id, p] of [...byId.entries()]) {
+      if (isTrashed(p) !== wantTrashed) byId.delete(id);
+    }
+
     const mappedProjects = [...byId.entries()].map(([id, p]: [string, any]) => {
       const charDesc = (p as any).characterDescription || (p as any).character_description || '';
       return {
@@ -223,6 +235,55 @@ projectsRouter.get('/:id', async (req, res) => {
   }
 });
 
+/**
+ * Move to Trash, and back.
+ *
+ * Soft delete is a field on the record, not a separate collection, so it costs nothing
+ * to restore and cannot lose a render: the project keeps its status, its scenes, its
+ * images and its output_path, and restoring is one more patch. Only DELETE /:id below
+ * removes anything, and only Trash's "Delete permanently" calls it.
+ *
+ * patchProject rather than FirestoreService, for the same reason the delete and music
+ * routes use it: under DISABLE_FIRESTORE=true a local-only project is absent from
+ * Firestore, and a route that goes there directly can never touch it. patchProject
+ * goes through loadProject/saveProjectState, which resolve either source, so one
+ * implementation covers both.
+ */
+async function setTrashed(req: any, res: any, deleted_at: string | null) {
+  const { id } = req.params;
+  try {
+    let project: any;
+    try {
+      project = await loadProject(id);
+    } catch {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    // Same ownership rule as DELETE — see mayModifyProject for why a local-disk
+    // record in a single-operator install is the caller's whichever uid it carries.
+    if (!mayModifyProject(project, req.user?.uid, id)) {
+      return res.status(403).json({ error: 'Unauthorized to modify this project' });
+    }
+
+    // A render still writing to a project we are hiding would keep saving itself back.
+    // Restoring does not need this — nothing is running on a trashed project.
+    if (deleted_at) abortProjectProcesses(id);
+
+    const saved = await patchProject(id, (p: any) => { p.deleted_at = deleted_at; },
+      deleted_at ? 'trash' : 'restore');
+    if (!saved) return res.status(500).json({ error: 'Could not persist the change' });
+
+    res.json({ project_id: id, deleted_at });
+  } catch (error) {
+    console.error(`Error ${deleted_at ? 'trashing' : 'restoring'} project:`, error);
+    res.status(500).json({ error: `Failed to ${deleted_at ? 'trash' : 'restore'} project` });
+  }
+}
+
+projectsRouter.post('/:id/trash', (req, res) => setTrashed(req, res, new Date().toISOString()));
+projectsRouter.post('/:id/restore', (req, res) => setTrashed(req, res, null));
+
 projectsRouter.delete('/:id', async (req, res) => {
   const { id } = req.params;
   try {
@@ -237,10 +298,10 @@ projectsRouter.delete('/:id', async (req, res) => {
     }
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
-    const userId = (req as any).user?.uid;
-    // Locally-created projects predate per-user ownership and carry no userId. Treat an
-    // unowned local record as the caller's rather than making it undeletable forever.
-    if (project.userId && project.userId !== userId) {
+    // Locally-created projects predate per-user ownership and carry no userId, and a
+    // local-disk record in a single-operator install is the caller's whatever uid it
+    // carries — otherwise half this machine's own outputs/ is undeletable forever.
+    if (!mayModifyProject(project, (req as any).user?.uid, id)) {
       return res.status(403).json({ error: 'Unauthorized to delete this project' });
     }
 
@@ -272,7 +333,7 @@ projectsRouter.post('/', async (req, res) => {
   const {
     title, description, script, settings,
     projectType, universe, universeId, episodeNumber,
-    featuredCharacterIds, featuredLocationId
+    featuredCharacterIds, featuredLocationId, channelId
   } = req.body;
   const id = uuidv4();
   const userId = (req as any).user?.uid;
@@ -291,6 +352,11 @@ projectsRouter.post('/', async (req, res) => {
       description,
       script,
       settings: settings || {},
+      // Which channel this is FOR, chosen now rather than at publish, so the render can
+      // burn the right watermark. Only stored when it names a channel that is actually
+      // connected — a tag pointing at nothing would silently disable the watermark and
+      // look like a bug in the render.
+      ...(getChannel(channelId) ? { channel_id: String(channelId) } : {}),
       ...pipelineFieldsFromSettings(settings),
       status: 'draft',
       characterDescription: '',
@@ -513,11 +579,25 @@ projectsRouter.post('/:id/publish/youtube', async (req, res) => {
       });
     }
 
+    // Which channel, most specific first: what this request asked for, then the channel
+    // the project was tagged with at creation, then last-used. resolveChannel owns that
+    // order — see its comment for why last-used can only ever be a fallback.
+    const target = resolveChannel({
+      requested: req.body?.channelId,
+      projectChannelId: project.channel_id,
+    });
+    if (!target) {
+      return res.status(409).json({
+        error: 'No YouTube channel is connected. Connect one at /api/youtube/auth first.',
+      });
+    }
+
     const meta = buildMetadata(project);
-    console.log(`[Publish] ${id} -> YouTube as "${meta.title}" (${privacyStatus}, ${(fs.statSync(filePath).size / 1e6).toFixed(1)} MB)`);
+    console.log(`[Publish] ${id} -> "${target.title}" (${target.channelId}) as "${meta.title}" `
+      + `(${privacyStatus}, ${(fs.statSync(filePath).size / 1e6).toFixed(1)} MB)`);
 
     const started = Date.now();
-    const result = await uploadVideo(filePath, meta, privacyStatus);
+    const result = await uploadVideo(filePath, meta, privacyStatus, target.channelId);
     const durationSec = Number(((Date.now() - started) / 1000).toFixed(1));
 
     await patchProject(id, (p: any) => {
@@ -528,11 +608,16 @@ projectsRouter.post('/:id/publish/youtube', async (req, res) => {
         title: result.title,
         publishedAt: new Date().toISOString(),
         forcedPastQualityGate: !gate.passed,
+        // Recorded from the upload RESPONSE, not from what was requested — so the
+        // project says which channel the video is actually on.
+        channelId: result.channelId,
+        channelTitle: result.channelTitle,
       };
     }, 'youtube-publish');
 
     logEvent('publish_uploaded', id, {
       videoId: result.videoId, privacyStatus: result.privacyStatus, durationSec,
+      channelId: result.channelId, channelTitle: result.channelTitle,
       qualityScore: gate.score, forced: !gate.passed,
     });
     console.log(`[Publish] ${id} published: ${result.url}`);

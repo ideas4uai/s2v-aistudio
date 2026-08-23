@@ -15,6 +15,33 @@ export type ProjectSort = 'latest' | 'oldest' | 'name';
 /** The sentinel for "don't filter". Not a real status, so it can never collide. */
 export const ALL_STATUSES = 'all';
 
+/**
+ * True if this project is in Trash.
+ *
+ * One predicate, used by the server to split the list and by the client to prune a
+ * selection, so the two can never disagree about what "deleted" means. Any non-empty
+ * `deleted_at` counts — a record that has been through JSON carries a string, and an
+ * explicit null (what restore writes) has to read as live.
+ */
+export const isTrashed = (p: any): boolean => Boolean(p?.deleted_at);
+
+/**
+ * Keep only the ids that survive the current view.
+ *
+ * The selection is held as ids, and the visible list changes under it whenever the
+ * status filter, the search box or the Trash toggle changes. Without this, narrowing
+ * to "Failed" and hitting Delete would also delete the completed projects ticked a
+ * moment earlier and no longer on screen — the user would be acting on a list they
+ * cannot see. Applied on every render of the list, so what is ticked is always a
+ * subset of what is shown.
+ */
+export const pruneSelection = (selected: Iterable<string>, visible: any[]): Set<string> => {
+  const onScreen = new Set(visible.map((p) => p?.id));
+  const kept = new Set<string>();
+  for (const id of selected) if (onScreen.has(id)) kept.add(id);
+  return kept;
+};
+
 const titleOf = (p: any) => String(p?.title || p?.topic || '');
 const createdAt = (p: any) => new Date(p?.createdAt || p?.created_at || 0).getTime();
 const statusOf = (p: any) => String(p?.status || 'unknown');

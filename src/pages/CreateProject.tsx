@@ -13,6 +13,8 @@ export function CreateProject() {
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [projectType, setProjectType] = useState<'educational' | 'story_episode' | 'standard'>('educational');
   const [universes, setUniverses] = useState<any[]>([]);
+  const [channels, setChannels] = useState<any[]>([]);
+  const [channelId, setChannelId] = useState<string>('');
   const [episodeData, setEpisodeData] = useState({
     universeId: '',
     episodeNumber: 1,
@@ -107,13 +109,26 @@ export function CreateProject() {
     }));
   };
 
+  useEffect(() => {
+    authenticatedFetch('/api/youtube/channels')
+      .then(r => (r.ok ? r.json() : []))
+      .then((list) => {
+        setChannels(Array.isArray(list) ? list : []);
+        // Preselect only when there is no ambiguity. With three channels connected the
+        // operator has to say which one — guessing here is how AI QA Engineer content
+        // gets tagged for a different channel and watermarked wrong before anyone looks.
+        if (Array.isArray(list) && list.length === 1) setChannelId(list[0].channelId);
+      })
+      .catch(() => setChannels([]));
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     // `automate` is set by the second button below, which submits the same form.
     const automate = ((e.nativeEvent as SubmitEvent)?.submitter as HTMLButtonElement | null)?.value === 'automate';
     try {
-      const payload: any = { ...formData, projectType };
+      const payload: any = { ...formData, projectType, channelId: channelId || undefined };
       if (projectType === 'story_episode') {
         payload.episodeNumber = episodeData.episodeNumber;
         payload.featuredCharacterIds = episodeData.featuredCharacterIds;
@@ -308,6 +323,64 @@ export function CreateProject() {
         )}
 
         <form onSubmit={handleSubmit} className="p-4 md:p-8 space-y-8">
+          {/* Which channel this is for, chosen first and shown as cards rather than a
+              dropdown. Three real channels with similar names and one wrong pick puts AI
+              QA Engineer content on a personal channel — that risk does not belong behind
+              a control you can tab past without reading. The choice drives the watermark
+              burned into the render, so it has to be made before the render, not at
+              publish. */}
+          {channels.length > 0 && (
+            <div>
+              <label className="block text-sm font-bold text-neutral-700 mb-1">Publish to channel</label>
+              <p className="text-xs text-neutral-500 mb-3">
+                Sets this project&apos;s channel watermark and the channel it publishes to. You can still change it before uploading.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {channels.map((c: any) => {
+                  const active = channelId === c.channelId;
+                  return (
+                    <button
+                      type="button"
+                      key={c.channelId}
+                      onClick={() => setChannelId(active ? '' : c.channelId)}
+                      aria-pressed={active}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-2xl border-2 text-left transition-all ${
+                        active
+                          ? 'border-indigo-600 bg-indigo-50 shadow-sm'
+                          : 'border-neutral-200 bg-white hover:border-indigo-300'
+                      }`}
+                    >
+                      {c.hasLogo ? (
+                        <img
+                          src={`/api/youtube/channels/${c.channelId}/logo`}
+                          alt=""
+                          className="w-9 h-9 rounded-full object-cover bg-neutral-100"
+                        />
+                      ) : (
+                        <span className="w-9 h-9 rounded-full bg-neutral-100 flex items-center justify-center text-sm font-bold text-neutral-500">
+                          {String(c.title || '?').slice(0, 1).toUpperCase()}
+                        </span>
+                      )}
+                      <span>
+                        <span className={`block text-sm font-bold ${active ? 'text-indigo-800' : 'text-neutral-800'}`}>
+                          {c.title}
+                        </span>
+                        <span className="block text-[11px] text-neutral-400">
+                          {c.hasLogo ? 'watermark set' : 'no watermark'}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {!channelId && channels.length > 1 && (
+                <p className="mt-2 text-xs text-amber-700">
+                  No channel selected — this project will have no watermark, and you will have to pick a channel when you publish.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="space-y-6">
             <div>
               <label className="block text-sm font-bold text-neutral-700 mb-2">Project Title</label>
