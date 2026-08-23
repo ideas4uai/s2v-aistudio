@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Video, ArrowLeft, Pencil } from 'lucide-react';
+import { Video, ArrowLeft, Pencil, Undo2, Trash2 } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 
 export function ProjectDetail() {
@@ -12,6 +12,7 @@ export function ProjectDetail() {
   // full refetch without calling the loader directly (which would be a setState
   // reachable synchronously from an effect body).
   const [reloadKey, setReloadKey] = useState(0);
+  const [restoring, setRestoring] = useState(false);
 
   // Initial load + re-fetch when the window regains focus (user navigates back).
   // The request is the external system; setProject runs from its .then callback,
@@ -36,6 +37,9 @@ export function ProjectDetail() {
   // Poll status while a render is in progress; apply output_path as soon as it lands
   useEffect(() => {
     if (!project) return;
+    // Nothing is running on a trashed project — trashing aborts its processes — so
+    // polling one would be a request every three seconds forever.
+    if (project.deleted_at) return;
     if (['completed', 'degraded', 'failed', 'cancelled'].includes(project.status)) return;
 
     const interval = setInterval(async () => {
@@ -64,7 +68,7 @@ export function ProjectDetail() {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [project?.status, id]);
+  }, [project?.status, project?.deleted_at, id]);
 
   if (!project) return <div className="p-8 text-center text-neutral-500 animate-pulse">Loading project details...</div>;
 
@@ -78,6 +82,43 @@ export function ProjectDetail() {
       </button>
 
       <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm mb-8">
+        {/* A trashed project stays readable by direct URL rather than 404ing.
+            Deliberate: the record is intact, the video still plays, and 404 would make
+            the one thing you came here to do — get it back — impossible. What it must
+            not do is look like a live project, so the state is stated plainly, Restore
+            is offered here, and the Edit button below is withheld: editing something
+            the dashboard has already hidden is how you lose an afternoon's work to a
+            render nobody can find. */}
+        {project.deleted_at && (
+          <div className="mb-5 flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+            <div className="flex items-start gap-3">
+              <Trash2 className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-amber-900">This project is in Trash</p>
+                <p className="text-sm text-amber-800">
+                  Deleted {new Date(project.deleted_at).toLocaleString()}. It is hidden from the
+                  dashboard and cannot be edited until you restore it. Nothing has been removed.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={restoring}
+              onClick={async () => {
+                setRestoring(true);
+                try {
+                  const res = await authenticatedFetch(`/api/projects/${project.project_id || project.id || id}/restore`, { method: 'POST' });
+                  if (res.ok) setReloadKey((k) => k + 1);
+                  else console.error('Restore failed', await res.text());
+                } finally { setRestoring(false); }
+              }}
+              className="shrink-0 sm:ml-auto flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 disabled:opacity-50"
+            >
+              <Undo2 className="w-4 h-4" /> {restoring ? 'Restoring…' : 'Restore'}
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-2">
           <h1 className="text-3xl font-bold text-neutral-900">{project.title}</h1>
           {/* The only way into the editor from here. The dashboard sends completed
@@ -87,6 +128,7 @@ export function ProjectDetail() {
               back-navigation, and a degraded or failed render is exactly the one you
               want to open and re-run. Re-rendering from there reuses the existing
               staleness checks, so approved scenes are not regenerated. */}
+          {!project.deleted_at && (
           <button
             type="button"
             onClick={() => navigate(`/projects/${project.project_id || project.id || id}/edit`)}
@@ -94,6 +136,7 @@ export function ProjectDetail() {
           >
             <Pencil className="w-4 h-4" /> Edit
           </button>
+          )}
         </div>
         <p className="text-neutral-500 mb-8 max-w-3xl">{project.description || 'No description provided.'}</p>
         

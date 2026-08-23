@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Video, Clock, ChevronRight, Trash2, Search, BookOpen } from 'lucide-react';
+import { Plus, Video, Clock, ChevronRight, Trash2, Search, BookOpen, CheckSquare, Square, Undo2, X } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
-import { filterProjects, statusOptions, statusLabel, ALL_STATUSES, ProjectSort } from '../utils/projectFilter';
+import { filterProjects, statusOptions, statusLabel, pruneSelection, ALL_STATUSES, ProjectSort } from '../utils/projectFilter';
 
 /**
  * The status filter survives leaving the dashboard and coming back, which is the whole
@@ -31,13 +31,28 @@ export function Dashboard() {
   // Delete project state
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchProjects = async () => {
+  // Trash is a view of the same list, fetched with ?deleted=true. Not persisted the
+  // way the status filter is: landing in Trash on a fresh visit because of something
+  // you did yesterday would be alarming, and it is one click to get back to.
+  const [showTrash, setShowTrash] = useState(false);
+  const [trashCount, setTrashCount] = useState(0);
+
+  // Selection lives as ids rather than indices — the list re-sorts under it.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkConfirm, setBulkConfirm] = useState<null | 'trash' | 'purge' | 'restore'>(null);
+  const [busy, setBusy] = useState(false);
+
+  const fetchProjects = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [projectsRes, universesRes] = await Promise.all([
-        authenticatedFetch('/api/projects'),
+      // The trash count is fetched even when looking at the live list, because the
+      // Trash tab has to show how much is in it before you go there.
+      const [projectsRes, universesRes, trashRes] = await Promise.all([
+        authenticatedFetch(`/api/projects${showTrash ? '?deleted=true' : ''}`),
         authenticatedFetch('/api/universes'),
+        authenticatedFetch('/api/projects?deleted=true'),
       ]);
       if (projectsRes.ok) {
         setProjects(await projectsRes.json());
@@ -47,17 +62,21 @@ export function Dashboard() {
       if (universesRes.ok) {
         setUniverses(await universesRes.json());
       }
+      if (trashRes.ok) {
+        setTrashCount((await trashRes.json()).length);
+      }
     } catch (error) {
       console.error('Error fetching projects:', error);
       setError('Failed to connect to server. Please try refreshing.');
     } finally {
       setLoading(false);
     }
-  };
+    // Rebuilt when the view changes, because which list it asks for depends on it.
+  }, [showTrash]);
 
   useEffect(() => {
     fetchProjects();
-  }, [user]);
+  }, [user, fetchProjects]);
 
   useEffect(() => {
     try { sessionStorage.setItem(FILTER_KEY, statusFilter); } catch { /* not worth failing over */ }
@@ -77,23 +96,86 @@ export function Dashboard() {
     setDeletingId(id);
   };
 
+  /**
+   * One project, one action. `act` is the endpoint verb — see runOnIds for why the
+   * bulk path reuses exactly this call rather than a batch endpoint of its own.
+   */
+  const applyTo = async (id: string, act: 'trash' | 'restore' | 'purge') => {
+    const res = act === 'purge'
+      ? await authenticatedFetch(`/api/projects/${id}`, { method: 'DELETE' })
+      : await authenticatedFetch(`/api/projects/${id}/${act}`, { method: 'POST' });
+    if (res.ok) return;
+    const err: any = new Error(`${act} ${id} failed: ${res.status} ${await res.text()}`);
+    err.status = res.status;
+    throw err;
+  };
+
+  /**
+   * Run one action across a set of ids and report honestly.
+   *
+   * allSettled rather than all: with twenty projects selected, one 403 must not
+   * abandon the other nineteen in an unknown state. Whatever the outcome the list is
+   * refetched, so what is on screen is what the server actually holds rather than what
+   * the client hoped it did.
+   *
+   * No bulk endpoint on purpose. These are independent records and the per-project
+   * routes already carry the ownership check, the process abort and the write-race
+   * retry; a batch route would have to repeat all three and invent its own partial
+   * failure shape.
+   */
+  const runOnIds = async (ids: string[], act: 'trash' | 'restore' | 'purge') => {
+    setBusy(true);
+    try {
+      const results = await Promise.allSettled(ids.map(id => applyTo(id, act)));
+      const failed = results.filter(r => r.status === 'rejected') as PromiseRejectedResult[];
+      if (failed.length) {
+        console.error(`[Dashboard] ${failed.length} of ${ids.length} failed`, failed);
+        // Say WHY, not just how many. Every project this dashboard lists belongs to
+        // somebody, and the routes refuse to touch one owned by another account — so
+        // "5 failed" on a shared machine is a permissions answer, not a broken button,
+        // and a user who cannot tell the two apart will retry forever.
+        const denied = failed.filter(f => (f.reason as any)?.status === 403).length;
+        const verb = { trash: 'moved to Trash', restore: 'restored', purge: 'deleted' }[act];
+        alert(
+          `${ids.length - failed.length} of ${ids.length} ${verb}.`
+          + (denied ? `
+
+${denied} belong to a different account and cannot be changed from this session.` : '')
+          + (failed.length - denied ? `
+
+${failed.length - denied} failed for another reason — see the console.` : ''),
+        );
+      }
+      setSelected(new Set());
+      setSelectMode(false);
+      await fetchProjects();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Deleting from the dashboard is always soft. The only call that removes anything is
+  // Trash's "Delete permanently", which is the 'purge' branch of applyTo.
   const confirmDelete = async () => {
     if (!deletingId) return;
     try {
-      const res = await authenticatedFetch(`/api/projects/${deletingId}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        setProjects(projects.filter(p => p.id !== deletingId));
-      } else {
-        console.error('Delete failed', await res.text());
-      }
+      await runOnIds([deletingId], showTrash ? 'purge' : 'trash');
     } catch (e) {
       console.error('Network error during delete:', e);
     } finally {
       setDeletingId(null);
     }
   };
+
+  const toggleSelected = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const leaveSelectMode = () => { setSelectMode(false); setSelected(new Set()); };
 
   if (error) {
     return (
@@ -177,6 +259,34 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* Projects / Trash. A view of the same list, not a separate page: the cards, the
+          status filter, the search and the sort all work identically on both sides. */}
+      <div className="flex items-center gap-1 mb-4 border-b border-neutral-200">
+        {[
+          { key: false, label: 'Projects', count: showTrash ? null : projects.length },
+          { key: true, label: 'Trash', count: trashCount },
+        ].map(tab => (
+          <button
+            key={String(tab.key)}
+            onClick={() => { if (showTrash !== tab.key) { leaveSelectMode(); setShowTrash(tab.key as boolean); } }}
+            className={`px-4 py-2.5 text-sm font-bold border-b-2 -mb-px transition-colors ${
+              showTrash === tab.key
+                ? 'border-indigo-600 text-indigo-700'
+                : 'border-transparent text-neutral-500 hover:text-neutral-800'
+            }`}
+          >
+            {tab.label}{tab.count != null && tab.count > 0 ? ` (${tab.count})` : ''}
+          </button>
+        ))}
+      </div>
+
+      {showTrash && projects.length > 0 && (
+        <p className="text-xs text-neutral-500 mb-4 bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5">
+          Projects here are kept until you act on them — nothing is removed on a timer.
+          Restore puts one back exactly as it was; Delete permanently cannot be undone.
+        </p>
+      )}
+
       {!loading && projects.length > 0 && (
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <div className="relative flex-1">
@@ -209,6 +319,17 @@ export function Dashboard() {
             <option value="oldest">Oldest First</option>
             <option value="name">Name A-Z</option>
           </select>
+          <button
+            type="button"
+            onClick={() => (selectMode ? leaveSelectMode() : setSelectMode(true))}
+            className={`px-4 py-2.5 rounded-xl border text-sm font-bold transition-colors whitespace-nowrap ${
+              selectMode
+                ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                : 'border-neutral-200 bg-white text-neutral-600 hover:text-neutral-900'
+            }`}
+          >
+            {selectMode ? 'Cancel' : 'Select'}
+          </button>
         </div>
       )}
 
@@ -221,23 +342,79 @@ export function Dashboard() {
       ) : projects.length === 0 ? (
         <div className="bg-white rounded-2xl border-2 border-dashed border-neutral-200 p-12 text-center">
           <div className="w-16 h-16 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Video className="w-8 h-8 text-neutral-300" />
+            {showTrash ? <Trash2 className="w-8 h-8 text-neutral-300" /> : <Video className="w-8 h-8 text-neutral-300" />}
           </div>
-          <h3 className="text-lg font-bold text-neutral-900 mb-2">No projects yet</h3>
-          <p className="text-neutral-500 mb-6 max-w-xs mx-auto">Create your first project to start turning scripts into videos.</p>
-          <button
-            onClick={() => navigate('/projects/new')}
-            className="text-indigo-600 font-bold hover:text-indigo-700 transition-colors"
-          >
-            Get started &rarr;
-          </button>
+          <h3 className="text-lg font-bold text-neutral-900 mb-2">
+            {showTrash ? 'Trash is empty' : 'No projects yet'}
+          </h3>
+          <p className="text-neutral-500 mb-6 max-w-xs mx-auto">
+            {showTrash
+              ? 'Projects you delete from the dashboard land here, and stay until you restore or permanently delete them.'
+              : 'Create your first project to start turning scripts into videos.'}
+          </p>
+          {!showTrash && (
+            <button
+              onClick={() => navigate('/projects/new')}
+              className="text-indigo-600 font-bold hover:text-indigo-700 transition-colors"
+            >
+              Get started &rarr;
+            </button>
+          )}
         </div>
       ) : (() => {
         const filteredProjects = filterProjects(projects, { query: searchQuery, status: statusFilter, sortBy });
+        // What is ticked is always a subset of what is on screen. Narrowing the filter
+        // with items already selected must not leave them queued for deletion off-view.
+        const visibleSelected = pruneSelection(selected, filteredProjects);
+        const allVisibleSelected = filteredProjects.length > 0 && visibleSelected.size === filteredProjects.length;
         return (
         <>
+          {selectMode && (
+            <div className="sticky top-2 z-30 mb-4 flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setSelected(allVisibleSelected ? new Set() : new Set(filteredProjects.map(p => p.id)))}
+                className="flex items-center gap-2 text-sm font-bold text-indigo-800 hover:text-indigo-900"
+              >
+                {allVisibleSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                {allVisibleSelected ? 'Clear' : 'Select all'} ({filteredProjects.length} shown)
+              </button>
+              <span className="text-sm text-indigo-900 font-medium sm:ml-2">
+                {visibleSelected.size} selected
+              </span>
+              <div className="flex items-center gap-2 sm:ml-auto">
+                {showTrash && (
+                  <button
+                    type="button"
+                    disabled={!visibleSelected.size || busy}
+                    onClick={() => setBulkConfirm('restore')}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-neutral-300 text-sm font-bold text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
+                  >
+                    <Undo2 className="w-4 h-4" /> Restore
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={!visibleSelected.size || busy}
+                  onClick={() => setBulkConfirm(showTrash ? 'purge' : 'trash')}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 disabled:opacity-40"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {showTrash ? 'Delete permanently' : 'Delete selected'}
+                </button>
+                <button
+                  type="button"
+                  onClick={leaveSelectMode}
+                  aria-label="Leave selection mode"
+                  className="p-2 rounded-xl text-indigo-700 hover:bg-indigo-100"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
           <p className="text-xs text-neutral-400 mb-4">
-            Showing {filteredProjects.length} of {projects.length} project{projects.length !== 1 ? 's' : ''}
+            Showing {filteredProjects.length} of {projects.length} {showTrash ? 'deleted ' : ''}project{projects.length !== 1 ? 's' : ''}
           </p>
           {filteredProjects.length === 0 ? (
             <div className="bg-white rounded-2xl border border-neutral-200 p-12 text-center">
@@ -252,14 +429,33 @@ export function Dashboard() {
             <div
               key={project.id}
               onClick={() => {
+                // In selection mode the whole card is the checkbox — clicking through
+                // to a project while ticking a dozen of them is never what was meant.
+                if (selectMode) { toggleSelected(project.id); return; }
                 if (project.status === 'completed') {
                   navigate(`/projects/${project.id}`);
                 } else {
                   navigate(`/projects/${project.id}/edit`);
                 }
               }}
-              className="bg-white rounded-2xl border border-neutral-200 overflow-hidden hover:shadow-lg hover:border-indigo-200 transition-all cursor-pointer group"
+              className={`relative bg-white rounded-2xl border overflow-hidden transition-all cursor-pointer group ${
+                visibleSelected.has(project.id)
+                  ? 'border-indigo-500 ring-2 ring-indigo-200 shadow-md'
+                  : 'border-neutral-200 hover:shadow-lg hover:border-indigo-200'
+              }`}
             >
+              {selectMode && (
+                <div className="absolute top-3 left-3 z-10">
+                  <input
+                    type="checkbox"
+                    checked={visibleSelected.has(project.id)}
+                    onChange={() => toggleSelected(project.id)}
+                    onClick={e => e.stopPropagation()}
+                    aria-label={`Select ${project.title || 'project'}`}
+                    className="w-5 h-5 accent-indigo-600 rounded cursor-pointer"
+                  />
+                </div>
+              )}
               {project.thumbnail_path ? (
                 <img src={project.thumbnail_path} alt={project.title} className="w-full h-32 object-cover" />
               ) : (
@@ -283,14 +479,27 @@ export function Dashboard() {
 
                 <div className="flex justify-between items-start mb-2 mt-4">
                   <h3 className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors mr-2">{project.title}</h3>
-                  <button
-                    onClick={(e) => handleDelete(project.id, e)}
-                    className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-200"
-                    aria-label="Delete project"
-                    title="Delete project"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center shrink-0">
+                    {showTrash && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); runOnIds([project.id], 'restore'); }}
+                        disabled={busy}
+                        className="p-2 text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:opacity-40"
+                        aria-label="Restore project"
+                        title="Restore project"
+                      >
+                        <Undo2 className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => handleDelete(project.id, e)}
+                      className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-200"
+                      aria-label={showTrash ? 'Delete permanently' : 'Move to Trash'}
+                      title={showTrash ? 'Delete permanently' : 'Move to Trash'}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <p className="text-sm text-neutral-500 mb-6 line-clamp-2">{project.description || 'No description provided.'}</p>
@@ -311,31 +520,79 @@ export function Dashboard() {
       })()}
 
       {/* Delete Confirmation Modal */}
+      {/* Single project. The wording is not shared between the two views on purpose:
+          from the dashboard this is recoverable and should not read like a warning,
+          and from Trash it is final and must. */}
       {deletingId && (
         <div className="fixed inset-0 bg-neutral-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 animate-in fade-in zoom-in-95 duration-200">
-            <h3 className="text-xl font-bold text-neutral-900 mb-2">Delete Project?</h3>
+            <h3 className="text-xl font-bold text-neutral-900 mb-2">
+              {showTrash ? 'Delete permanently?' : 'Move to Trash?'}
+            </h3>
             <p className="text-neutral-500 mb-6">
-              This action cannot be undone. All generated videos, audio, and scripts will be permanently removed.
-              Any running generation processes will be immediately stopped.
+              {showTrash
+                ? 'This cannot be undone. The project record, its generated video, audio and scripts are removed for good.'
+                : 'The project moves to Trash and leaves the dashboard. Nothing is deleted — you can restore it with everything intact. Any running generation is stopped.'}
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setDeletingId(null)}
-                className="px-4 py-2 font-medium text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"
+                disabled={busy}
+                className="px-4 py-2 font-medium text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                disabled={busy}
+                className="px-4 py-2 font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50"
               >
-                Yes, Delete
+                {busy ? 'Working…' : showTrash ? 'Delete permanently' : 'Move to Trash'}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Bulk. Always confirmed, including the recoverable case: the count is the whole
+          point — it is what tells you the filter selected more than you thought. */}
+      {bulkConfirm && (() => {
+        const ids = [...pruneSelection(selected, filterProjects(projects, { query: searchQuery, status: statusFilter, sortBy }))];
+        const noun = `${ids.length} project${ids.length === 1 ? '' : 's'}`;
+        const copy = {
+          trash: { title: `Move ${noun} to Trash?`, body: 'They leave the dashboard but nothing is deleted — restore them from Trash with everything intact.', cta: 'Move to Trash' },
+          restore: { title: `Restore ${noun}?`, body: 'They return to the dashboard exactly as they were, with their status, scenes and renders unchanged.', cta: 'Restore' },
+          purge: { title: `Permanently delete ${noun}?`, body: 'This cannot be undone. Every selected project record, and its generated video, audio and scripts, are removed for good.', cta: 'Delete permanently' },
+        }[bulkConfirm];
+        return (
+          <div className="fixed inset-0 bg-neutral-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 animate-in fade-in zoom-in-95 duration-200">
+              <h3 className="text-xl font-bold text-neutral-900 mb-2">{copy.title}</h3>
+              <p className="text-neutral-500 mb-6">{copy.body}</p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setBulkConfirm(null)}
+                  disabled={busy}
+                  className="px-4 py-2 font-medium text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => { const act = bulkConfirm; setBulkConfirm(null); await runOnIds(ids, act); }}
+                  disabled={busy || !ids.length}
+                  className={`px-4 py-2 font-medium text-white rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 ${
+                    bulkConfirm === 'restore'
+                      ? 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
+                      : 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
+                  }`}
+                >
+                  {busy ? 'Working…' : copy.cta}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

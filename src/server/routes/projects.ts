@@ -28,6 +28,7 @@ import {
 } from '../../controllers/projectController.js';
 import { v4 as uuidv4 } from 'uuid';
 import { toUrl } from '../../utils/path.js';
+import { isTrashed } from '../../utils/projectFilter.js';
 import { projectVideoFileName } from '../../utils/filename.js';
 
 import { AIService } from '../../services/aiService.js';
@@ -136,6 +137,15 @@ projectsRouter.get('/', async (req, res) => {
     for (const p of remoteProjects) byId.set(p.id || p.project_id, p);
     for (const p of localProjects) byId.set(p.project_id!, p);
 
+    // Trash is a view of the same list, not a separate store. `?deleted=true` returns
+    // only trashed projects and the default returns only live ones, so every existing
+    // caller — the dashboard's status filters, its search, "All statuses" — stops
+    // seeing a deleted project without any of them knowing the field exists.
+    const wantTrashed = String(req.query.deleted) === 'true';
+    for (const [id, p] of [...byId.entries()]) {
+      if (isTrashed(p) !== wantTrashed) byId.delete(id);
+    }
+
     const mappedProjects = [...byId.entries()].map(([id, p]: [string, any]) => {
       const charDesc = (p as any).characterDescription || (p as any).character_description || '';
       return {
@@ -222,6 +232,56 @@ projectsRouter.get('/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch project', details: error instanceof Error ? error.message : String(error) });
   }
 });
+
+/**
+ * Move to Trash, and back.
+ *
+ * Soft delete is a field on the record, not a separate collection, so it costs nothing
+ * to restore and cannot lose a render: the project keeps its status, its scenes, its
+ * images and its output_path, and restoring is one more patch. Only DELETE /:id below
+ * removes anything, and only Trash's "Delete permanently" calls it.
+ *
+ * patchProject rather than FirestoreService, for the same reason the delete and music
+ * routes use it: under DISABLE_FIRESTORE=true a local-only project is absent from
+ * Firestore, and a route that goes there directly can never touch it. patchProject
+ * goes through loadProject/saveProjectState, which resolve either source, so one
+ * implementation covers both.
+ */
+async function setTrashed(req: any, res: any, deleted_at: string | null) {
+  const { id } = req.params;
+  try {
+    let project: any;
+    try {
+      project = await loadProject(id);
+    } catch {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const userId = req.user?.uid;
+    // Same ownership rule as DELETE: locally-created projects predate per-user
+    // ownership and carry no userId, and an unowned local record is the caller's.
+    if (project.userId && project.userId !== userId) {
+      return res.status(403).json({ error: 'Unauthorized to modify this project' });
+    }
+
+    // A render still writing to a project we are hiding would keep saving itself back.
+    // Restoring does not need this — nothing is running on a trashed project.
+    if (deleted_at) abortProjectProcesses(id);
+
+    const saved = await patchProject(id, (p: any) => { p.deleted_at = deleted_at; },
+      deleted_at ? 'trash' : 'restore');
+    if (!saved) return res.status(500).json({ error: 'Could not persist the change' });
+
+    res.json({ project_id: id, deleted_at });
+  } catch (error) {
+    console.error(`Error ${deleted_at ? 'trashing' : 'restoring'} project:`, error);
+    res.status(500).json({ error: `Failed to ${deleted_at ? 'trash' : 'restore'} project` });
+  }
+}
+
+projectsRouter.post('/:id/trash', (req, res) => setTrashed(req, res, new Date().toISOString()));
+projectsRouter.post('/:id/restore', (req, res) => setTrashed(req, res, null));
 
 projectsRouter.delete('/:id', async (req, res) => {
   const { id } = req.params;
