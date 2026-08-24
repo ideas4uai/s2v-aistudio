@@ -178,15 +178,24 @@ export const FirestoreService = {
          body: JSON.stringify({
            structuredQuery: {
              from: [{ collectionId: 'projects' }],
-             ...(userId !== 'dev-user' && {
-               where: {
-                 fieldFilter: {
-                   field: { fieldPath: 'userId' },
-                   op: 'EQUAL',
-                   value: { stringValue: userId }
-                 }
+             // Always filtered by owner, dev-user included.
+             //
+             // dev-user used to be exempt, which made it a superuser for READING and a
+             // nobody for WRITING: the dashboard listed every cloud project in the
+             // database, and the mutation routes then refused the ones it did not own.
+             // Selecting a dozen and hitting delete returned a row of 403s — the local
+             // half went, the cloud half did not, and the button looked broken.
+             //
+             // The exemption cannot be paid for on the write side without handing a
+             // local session the power to delete other accounts' cloud records, so the
+             // read side is what gives way. Nothing listed is now unmodifiable.
+             where: {
+               fieldFilter: {
+                 field: { fieldPath: 'userId' },
+                 op: 'EQUAL',
+                 value: { stringValue: userId }
                }
-             })
+             }
            }
          })
       });
