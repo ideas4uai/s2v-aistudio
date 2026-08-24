@@ -4,7 +4,7 @@ import {
 import { loadProject, patchProject, runPipeline } from '../../pipeline/orchestrator.js';
 import { buildMetadata, uploadVideo } from './youtubeService.js';
 import { resolveChannel } from './channelStore.js';
-import { ensureThumbnail, thumbnailTextOf } from './thumbnailService.js';
+import { ensureThumbnail } from './thumbnailService.js';
 import { resolveOutputFile } from '../routes/projects.js';
 import { logEvent } from '../../services/logService.js';
 import * as fs from 'fs';
@@ -52,7 +52,7 @@ async function publish(job: ScheduledJob, project: any): Promise<Record<string, 
   // not be drawn, but it also must not quietly differ from what a manual publish does.
   let thumbFile: string | undefined;
   try {
-    thumbFile = (await ensureThumbnail(job.projectId, filePath, thumbnailTextOf(project))).path;
+    thumbFile = (await ensureThumbnail(job.projectId, project, filePath)).path;
   } catch (e: any) {
     console.warn(`[Schedule] ${job.id} no custom thumbnail: ${e?.message || e}`);
   }

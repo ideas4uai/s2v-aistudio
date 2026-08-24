@@ -31,7 +31,7 @@ import { toUrl } from '../../utils/path.js';
 import { isTrashed } from '../../utils/projectFilter.js';
 import { getChannel, resolveChannel } from '../services/channelStore.js';
 import { mayModifyProject } from '../utils/ownership.js';
-import { ensureThumbnail, thumbnailTextOf } from '../services/thumbnailService.js';
+import { ensureThumbnail } from '../services/thumbnailService.js';
 import { projectVideoFileName } from '../../utils/filename.js';
 
 import { AIService } from '../../services/aiService.js';
@@ -604,7 +604,7 @@ projectsRouter.post('/:id/publish/youtube', async (req, res) => {
     let thumbFile: string | undefined;
     let thumbNote: string | undefined;
     try {
-      const thumb = await ensureThumbnail(id, filePath, thumbnailTextOf(project));
+      const thumb = await ensureThumbnail(id, project, filePath);
       thumbFile = thumb.path;
       thumbNote = thumb.note;
     } catch (thumbErr: any) {
@@ -692,7 +692,7 @@ projectsRouter.get('/:id/thumbnail', async (req, res) => {
       return res.status(409).json({ error: 'This project has not been rendered yet, so there is no frame to use.' });
     }
 
-    const thumb = await ensureThumbnail(id, resolveOutputFile(project.output_path), thumbnailTextOf(project));
+    const thumb = await ensureThumbnail(id, project, resolveOutputFile(project.output_path));
 
     if (String(req.query.download) === '1') {
       const name = projectVideoFileName(project.title, id, '-thumbnail').replace(/\.mp4$/i, '.jpg');
@@ -703,6 +703,9 @@ projectsRouter.get('/:id/thumbnail', async (req, res) => {
     // thumbnail from two renders ago.
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('X-Thumbnail-Has-Text', String(thumb.hasText));
+    // 'scene' means it was built from the episode's own generated art; 'frame' means
+    // the project had none on disk and a video frame stood in.
+    res.setHeader('X-Thumbnail-Source', thumb.source);
     if (thumb.note) res.setHeader('X-Thumbnail-Note', thumb.note.replace(/[^\x20-\x7E]/g, ' ').slice(0, 300));
     res.type('image/jpeg').sendFile(thumb.path);
   } catch (err: any) {
