@@ -21,10 +21,16 @@ import { getOutputsDir } from '../../pipeline/projectDiskStore.js';
  *
  * ── Why relaxing this is not a hole ───────────────────────────────────────────
  * The list route already treats local disk as single-operator: `listLocalProjects()`
- * is returned unfiltered, so every local project is visible to every session, while
- * the Firestore half goes through `getProjects(uid)` and IS filtered by owner. The
+ * is returned unfiltered, so every local project is visible to every session. The
  * mutation check was the odd one out — applying a multi-tenant rule to a store the
  * read path had already declared single-tenant. You could see all 81 and delete 27.
+ *
+ * The Firestore half is filtered by owner in `getProjects(uid)` and is NOT relaxed
+ * here. That filter used to exempt dev-user, which left the same read/write
+ * contradiction on the cloud records — listed by a session that could not touch them,
+ * so a bulk delete came back a row of 403s. The exemption was removed rather than
+ * matched here: relaxing this for Firestore would let a local session delete another
+ * account's cloud projects, which is the one thing this check exists to prevent.
  *
  * So the relaxation is scoped to exactly that store, and every condition below is
  * load-bearing:
