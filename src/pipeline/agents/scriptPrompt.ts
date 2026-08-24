@@ -318,7 +318,17 @@ Output ONLY valid JSON, no markdown fence:
 // No trailing \b after `%`: it is a non-word character, so "40%." has no boundary
 // there and the match would silently never fire.
 export const PERCENT_RE = /\b\d+(?:\.\d+)?\s*(?:%|percent\b)/gi;
-export const MULTIPLIER_RE = /\b\d+(?:\.\d+)?\s*x\s+(?:faster|slower|more|less|better|cheaper)\b/gi;
+/**
+ * Numbers a script says out loud. A narrator reads "200x" as "two hundred times", and a
+ * model writing FOR the ear spells it that way — which is how "discover new exploits two
+ * hundred times faster" walked past a pattern that only knew digits.
+ */
+const NUMBER_WORD = '(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|dozens?|scores?)';
+const COMPARATIVE = '(?:faster|slower|more|less|better|cheaper|quicker|higher|lower|greater|bigger|smaller|stronger|weaker|worse|longer|shorter)';
+export const MULTIPLIER_RE = new RegExp(
+  `\\b(?:\\d[\\d,]*(?:\\.\\d+)?|${NUMBER_WORD}(?:[\\s-]+${NUMBER_WORD})*)\\s*(?:x|times|fold|-fold)\\s+${COMPARATIVE}\\b`,
+  'gi',
+);
 
 /**
  * The figure shapes worth putting on screen, strongest first. Shares the percent and
@@ -418,6 +428,51 @@ export function adjectiveStack(sentence: string): string {
 }
 
 /**
+ * A comparison frame: the sentence that hands the subject over to something else.
+ */
+const COMPARISON_FRAME = /\b(?:think of \w+ as|imagine (?:a|an|the)\b|it'?s like|its like|like (?:a|an) \w+ (?:that|who|navigating|walking|driving)|picture (?:a|an)\b|is (?:a|the) (?:sleek|shiny|humble|digital|virtual) )/i;
+
+/** Words from the topic worth matching on, stemmed crudely so "retrieval" reaches "retrieves". */
+const topicStems = (topic: string): string[] =>
+  (topic.toLowerCase().match(/[a-z]{5,}/g) ?? []).map((w) => w.slice(0, 6));
+
+const mentionsSubject = (sentence: string, stems: string[]): boolean => {
+  const lower = sentence.toLowerCase();
+  return stems.some((s) => lower.includes(s));
+};
+
+/**
+ * A metaphor that runs on after the subject has left the room.
+ *
+ * A regex cannot judge whether a comparison teaches anything — "like a perfectly indexed
+ * library" genuinely explains retrieval, and no pattern separates it from "a digital
+ * child navigating an infinite house" by looking at the words. What IS measurable is how
+ * long the script stays inside the vehicle: an analogy that earns its place lands and
+ * returns to the subject, while a decorative one keeps going.
+ *
+ * So this counts consecutive sentences after a comparison frame that never name the
+ * subject. Two or more and the script is describing the metaphor rather than the thing.
+ * Warn-only, like everything else here.
+ */
+export function extendedMetaphor(script: string, topic = ''): string[] {
+  const sentences = (script.match(/[^.!?]+[.!?]*/g) ?? []).map((s) => s.trim()).filter(Boolean);
+  const stems = topicStems(topic);
+  if (!stems.length) return [];
+  const out: string[] = [];
+  for (let i = 0; i < sentences.length; i++) {
+    if (!COMPARISON_FRAME.test(sentences[i])) continue;
+    let run = 0;
+    for (let j = i + 1; j < sentences.length && !mentionsSubject(sentences[j], stems); j++) run++;
+    if (run >= 2) {
+      const shown = sentences[i].length > 60 ? `${sentences[i].slice(0, 57)}…` : sentences[i];
+      out.push(`extended metaphor (${run + 1} sentences without naming the subject): "${shown}"`);
+    }
+    i += run;
+  }
+  return out;
+}
+
+/**
  * A casualty or displacement figure stated as flat fact.
  *
  * Warn-only and deliberately one-directional: it asks for a human to check a number, and
@@ -492,6 +547,7 @@ export function flagCraftIssues(script: string, topic = ''): string[] {
     const stack = adjectiveStack(s);
     if (stack) issues.push(`stacked adjectives (${stack}): "${short(s)}"`);
   }
+  issues.push(...extendedMetaphor(script, topic));
 
   for (const s of sentences) {
     const hit = GUARANTEE.exec(s);

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildScriptSections, flagCraftIssues, flagSensitiveClaims, flagHookLength, adjectiveStack,
+  flagUnverifiedClaims, extendedMetaphor,
   isSensitiveSubject, HOOK_MAX_WORDS, hookMaxSeconds,
 } from '../src/pipeline/agents/scriptPrompt.js';
 import { WORDS_PER_SECOND } from '../src/utils/targetLength.js';
@@ -204,5 +205,84 @@ describe('the new constraints compose with the old ones', () => {
   it('still flags the unsourced figure in the real Selenium script', () => {
     // The percentage was always caught. It is warn-only, which is why it still shipped.
     expect(flagCraftIssues(SELENIUM, 'Playwright').length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * A second real script, reported after the constraints were written and found to walk
+ * past two of them. Both gaps are fixed here; the script is the regression case.
+ */
+const AI_AGENTS = `What if AI agents hacking our systems was already happening? `
+  + `Recent breakthroughs in AI autonomy allow advanced agents to learn and adapt. `
+  + `But autonomous AI agents can discover new exploits two hundred times faster. `
+  + `Imagine a sophisticated digital child navigating an infinite house. `
+  + `It's not malicious, just ceaselessly exploring. `
+  + `It finds every unlocked door, every hidden switch, every weak point. `
+  + `This profound shift is already upon us.`;
+const AI_TOPIC = 'AI agents are starting to act autonomously and hack real systems';
+
+describe('a spoken multiplier is still a statistic', () => {
+  it('catches the number spelled the way a narrator says it', () => {
+    // The pattern knew "200x faster" and not "two hundred times faster", which is the
+    // form a model writing for the ear reaches for.
+    expect(flagUnverifiedClaims(AI_AGENTS, '')).toContain('two hundred times faster');
+  });
+
+  it('still catches the digit forms it always did', () => {
+    expect(flagUnverifiedClaims('It runs 10x faster than before.', '')).toContain('10x faster');
+    expect(flagUnverifiedClaims('Tests get 3 times slower with that plugin.', '')).toContain('3 times slower');
+    expect(flagUnverifiedClaims('A 40% drop in flakes.', '')).toContain('40%');
+  });
+
+  it('leaves a number that is not a comparison alone', () => {
+    // "three stages" is structure, not a claim. Flagging it would make the warning noise.
+    expect(flagUnverifiedClaims('RAG has three stages you should know.', '')).toEqual([]);
+    expect(flagUnverifiedClaims('It ships two browser builds.', '')).toEqual([]);
+  });
+
+  it('treats a figure quoted from the material as sourced', () => {
+    expect(flagUnverifiedClaims(AI_AGENTS, 'benchmark: two hundred times faster on this corpus')).toEqual([]);
+  });
+});
+
+describe('a metaphor that outstays the subject', () => {
+  it('catches the new shape, which the adjective rule never could', () => {
+    // Structurally nothing like "dynamic, intricate, constantly evolving" — no comma
+    // stack at all — and equally decorative.
+    expect(adjectiveStack('Imagine a sophisticated digital child navigating an infinite house.')).toBe('');
+    const issues = extendedMetaphor(AI_AGENTS, AI_TOPIC);
+    expect(issues).toHaveLength(1);
+    // 4 in this abridged fixture: the closing line does not name the subject either.
+    expect(issues[0]).toMatch(/\d+ sentences without naming the subject/);
+    expect(issues[0]).toMatch(/digital child/);
+  });
+
+  it('generalises to the original car metaphor it was not built against', () => {
+    const selenium = 'Think of Selenium as a robust, customizable classic car. '
+      + 'It needs constant manual tuning to perform optimally. '
+      + 'Playwright, conversely, is a sleek electric vehicle. '
+      + 'Integrated and optimized for today’s high-speed demands. '
+      + 'A different machine entirely.';
+    expect(extendedMetaphor(selenium, 'Selenium vs Playwright: where to start?').length).toBeGreaterThan(0);
+  });
+
+  it('leaves an analogy that lands and returns to the subject alone', () => {
+    // The RAG library analogy really does explain retrieval, and the script comes
+    // straight back to RAG. No rule here is allowed to call that a defect.
+    const rag = 'Enter RAG: Retrieval-Augmented Generation. '
+      + 'It’s like giving an AI instant access to a vast, perfectly indexed library. '
+      + 'First, RAG retrieves the most relevant facts from your knowledge base. '
+      + 'Then it augments the answer, grounding it in truth.';
+    expect(extendedMetaphor(rag, 'What is RAG (Retrieval-Augmented Generation)?')).toEqual([]);
+  });
+
+  it('says nothing about prose with no comparison in it', () => {
+    const plain = 'Database indexes can slow some queries. They introduce a processing overhead. '
+      + 'Every insert must also update the index.';
+    expect(extendedMetaphor(plain, 'Why database indexes make some queries slower')).toEqual([]);
+  });
+
+  it('needs a topic to have something to be off', () => {
+    expect(extendedMetaphor(AI_AGENTS, '')).toEqual([]);
   });
 });
