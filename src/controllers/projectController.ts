@@ -484,13 +484,15 @@ export async function saveSceneImage(req: Request, res: Response) {
                 prompt: 'User provided image',
                 asset_type: 'image',
                 status: 'completed',
-                rendered_path: url,
+                // Same field, same reason as generateSceneImage: an image a person
+                // chose is the one thing that must survive the next render.
+                asset_path: url,
                 duration_target: scene.duration_target || 5,
                 motion_instruction: 'none',
                 cache_key: `user-${assetId}`
             });
         } else {
-            scene.visuals[0].rendered_path = url;
+            scene.visuals[0].asset_path = url;
             scene.visuals[0].status = 'completed';
         }
     } else {
@@ -560,13 +562,22 @@ export async function generateSceneImage(req: Request, res: Response) {
         prompt,
         asset_type: 'image',
         status: 'completed',
-        rendered_path: url,
+        // asset_path, NOT rendered_path — see the else branch below.
+        asset_path: url,
         duration_target: scene.duration_target || 5,
         motion_instruction: 'none',
         cache_key: `gen-${assetId}`
       });
     } else {
-      scene.visuals[0].rendered_path = url;
+      // A generated image is an ASSET. rendered_path holds the compositor's mp4 for a
+      // shot, which the pre-render sweep deliberately discards ("Clear local .mp4
+      // intermediate — not an asset to preserve"), and it discards it by local path,
+      // not by extension. Writing the jpg there meant every generated image was thrown
+      // away on the next render: the file stayed on disk and scene.image_path still
+      // pointed at it, but the visual came back empty and reset to pending, so the
+      // renderer saw a scene with no shot and the UI showed nothing. That is what
+      // "the images disappeared" was.
+      scene.visuals[0].asset_path = url;
       scene.visuals[0].status = 'completed';
       // Write the prompt back. The image was generated from `prompt`, which may have
       // come from the request body while the stored one was empty — leaving a scene
