@@ -4,6 +4,7 @@ import {
 import { loadProject, patchProject, runPipeline } from '../../pipeline/orchestrator.js';
 import { buildMetadata, uploadVideo } from './youtubeService.js';
 import { resolveChannel } from './channelStore.js';
+import { ensureThumbnail, thumbnailTextOf } from './thumbnailService.js';
 import { resolveOutputFile } from '../routes/projects.js';
 import { logEvent } from '../../services/logService.js';
 import * as fs from 'fs';
@@ -46,16 +47,34 @@ async function publish(job: ScheduledJob, project: any): Promise<Record<string, 
   const target = resolveChannel({ projectChannelId: project.channel_id });
   if (!target) throw new Error('No YouTube channel is connected.');
 
-  const result = await uploadVideo(filePath, buildMetadata(project), job.privacyStatus, target.channelId);
+  // Same thumbnail the interactive route and the download button produce. Built
+  // best-effort: an unattended publish must not be abandoned because a headline could
+  // not be drawn, but it also must not quietly differ from what a manual publish does.
+  let thumbFile: string | undefined;
+  try {
+    thumbFile = (await ensureThumbnail(job.projectId, filePath, thumbnailTextOf(project))).path;
+  } catch (e: any) {
+    console.warn(`[Schedule] ${job.id} no custom thumbnail: ${e?.message || e}`);
+  }
+
+  const result = await uploadVideo(filePath, buildMetadata(project), job.privacyStatus, target.channelId, thumbFile);
   await patchProject(job.projectId, (p: any) => {
     p.youtube = {
       videoId: result.videoId, url: result.url, privacyStatus: result.privacyStatus,
       title: result.title, publishedAt: new Date().toISOString(), scheduledJobId: job.id,
+      channelId: result.channelId, channelTitle: result.channelTitle,
+      thumbnailSet: result.thumbnail?.set ?? false,
+      thumbnailError: result.thumbnail?.error,
     };
   }, 'scheduled-publish');
   logEvent('publish_uploaded', job.projectId, {
     videoId: result.videoId, privacyStatus: result.privacyStatus, scheduled: true,
+    channelId: result.channelId, thumbnailSet: result.thumbnail?.set ?? false,
+    thumbnailReason: result.thumbnail?.reason,
   });
+  if (result.thumbnail && !result.thumbnail.set) {
+    console.warn(`[Schedule] ${job.id} published but the thumbnail did not stick: ${result.thumbnail.error}`);
+  }
   return result as unknown as Record<string, unknown>;
 }
 

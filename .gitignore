@@ -66,6 +66,8 @@ Thumbs.db
 
 outputs/*.txt
 outputs/**/*.json
+# Composited thumbnails: derived from the render, rebuilt on demand.
+outputs/thumbnails/
 policy*.yaml
 **/__pycache__/
 *.pyc
