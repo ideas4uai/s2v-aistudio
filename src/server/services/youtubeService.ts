@@ -397,7 +397,88 @@ export type UploadResult = {
   videoId: string; url: string; privacyStatus: YouTubePrivacy; title: string;
   /** Which channel YouTube actually put it on, read back from the response. */
   channelId: string; channelTitle: string;
+  /**
+   * What became of the custom thumbnail. Absent when none was offered.
+   *
+   * Deliberately part of the upload result rather than thrown: the video is already
+   * public by the time the thumbnail is set, so a thumbnail failure must never read as
+   * a failed publish — but it must never be silent either, or the operator is left with
+   * a live video wearing YouTube's auto-generated frame and no idea why.
+   */
+  thumbnail?: ThumbnailOutcome;
 };
+
+export type ThumbnailOutcome = {
+  set: boolean;
+  /** Present when set is false. Written for the person who has to fix it. */
+  error?: string;
+  reason?: string;
+};
+
+/**
+ * Attaches a custom thumbnail to a video that is already uploaded.
+ *
+ * A separate API and a separate call — YouTube has no way to set a thumbnail as part of
+ * videos.insert — which is also why it fails separately, and why the two most common
+ * refusals have nothing to do with the upload that just succeeded:
+ *
+ *   - the channel has never been phone-verified, so custom thumbnails are not a feature
+ *     it has (403 forbidden). Nothing about the image is wrong.
+ *   - the file is over YouTube's 2MB ceiling (413).
+ *
+ * Returns an outcome instead of throwing, so the caller can report a published video
+ * with an unset thumbnail as exactly that.
+ */
+export async function setThumbnail(
+  videoId: string,
+  imagePath: string,
+  channelId?: string,
+): Promise<ThumbnailOutcome> {
+  try {
+    if (!fs.existsSync(imagePath)) return { set: false, error: `Thumbnail file not found: ${imagePath}`, reason: 'missingFile' };
+    const size = fs.statSync(imagePath).size;
+    if (size === 0) return { set: false, error: 'The thumbnail file is empty.', reason: 'emptyFile' };
+    if (size > 2 * 1024 * 1024) {
+      return { set: false, reason: 'tooLarge', error: `The thumbnail is ${(size / 1048576).toFixed(2)}MB and YouTube's limit is 2MB.` };
+    }
+
+    const target = channelId ? getChannel(channelId) : resolveChannel({});
+    if (!target) return { set: false, error: 'No YouTube channel is connected.', reason: 'notConnected' };
+    const accessToken = await getAccessToken(target.channelId);
+
+    const res = await fetch(
+      `https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${encodeURIComponent(videoId)}&uploadType=media`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'image/jpeg',
+          'Content-Length': String(size),
+        },
+        body: fs.readFileSync(imagePath),
+      },
+    );
+
+    const body: any = await res.json().catch(() => ({}));
+    if (res.ok) return { set: true };
+
+    const err = body?.error || {};
+    const reason = err.errors?.[0]?.reason || err.status || String(res.status);
+    const detail = err.message || JSON.stringify(body).slice(0, 200);
+
+    if (res.status === 403) {
+      return {
+        set: false, reason,
+        error: `YouTube refused the thumbnail: ${detail}. Custom thumbnails require a phone-verified `
+          + `channel — check youtube.com/verify for "${target.title}". The video itself published fine; `
+          + 'set the thumbnail manually in YouTube Studio, or download it from this project.',
+      };
+    }
+    return { set: false, reason, error: `Setting the thumbnail failed (${res.status}, ${reason}): ${detail}` };
+  } catch (e: any) {
+    return { set: false, reason: 'exception', error: e?.message || String(e) };
+  }
+}
 
 /**
  * Uploads one file, resumably.
@@ -414,6 +495,7 @@ export async function uploadVideo(
   meta: UploadMetadata,
   privacyStatus: YouTubePrivacy = 'private',
   channelId?: string,
+  thumbnailPath?: string,
 ): Promise<UploadResult> {
   if (!fs.existsSync(filePath)) throw new Error(`Video file not found: ${filePath}`);
   const size = fs.statSync(filePath).size;
@@ -471,6 +553,17 @@ export async function uploadVideo(
   }
   setLastUsed(target.channelId);
 
+  // Set here rather than by the caller, and with the channel THIS upload resolved to.
+  // Passing the id again from outside would be a second chance to name a different
+  // channel; taking it from `target` makes video and thumbnail the same channel by
+  // construction. Only reached once the mismatch check above has passed.
+  const thumbnail = thumbnailPath
+    ? await setThumbnail(body.id, thumbnailPath, target.channelId)
+    : undefined;
+  if (thumbnail && !thumbnail.set) {
+    console.warn(`[YouTube] ${body.id} published, thumbnail NOT set: ${thumbnail.error}`);
+  }
+
   return {
     videoId: body.id,
     url: `https://www.youtube.com/watch?v=${body.id}`,
@@ -478,5 +571,6 @@ export async function uploadVideo(
     title: body.snippet?.title || meta.title,
     channelId: landedOn || target.channelId,
     channelTitle: target.title,
+    ...(thumbnail ? { thumbnail } : {}),
   };
 }

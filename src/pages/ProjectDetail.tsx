@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Video, ArrowLeft, Pencil, Undo2, Trash2 } from 'lucide-react';
+import { Video, ArrowLeft, Pencil, Undo2, Trash2, Download, Image as ImageIcon } from 'lucide-react';
 import { authenticatedFetch } from '../utils/api';
 
 export function ProjectDetail() {
@@ -155,6 +155,8 @@ export function ProjectDetail() {
           )}
         </div>
 
+        <ThumbnailPanel project={project} />
+
         {/* Cloud backup. Separate from the quality gate on purpose: a failed upload says
             nothing about the video, which is finished and playing above from local disk.
             It is shown because the alternative — a console line — is how three weeks of
@@ -232,6 +234,98 @@ export function ProjectDetail() {
 
         <PublishPanel project={project} onPublished={() => setReloadKey((k) => k + 1)} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The custom thumbnail, and a way to take it away with you.
+ *
+ * Shown whether or not the project has been published, for the two cases that matter:
+ * looking at the thumbnail BEFORE committing to it, and having a route to it when
+ * YouTube refuses to accept one through the API — an unverified channel cannot set a
+ * custom thumbnail, but a human can still upload this file in Studio.
+ *
+ * The image is fetched by the browser straight from the endpoint rather than through a
+ * blob: it renders inline, it revalidates on its own, and the download link is the same
+ * URL with one parameter. What the publish flow uploads is the same file this shows.
+ */
+function ThumbnailPanel({ project }: { project: any }) {
+  const id = project.project_id || project.id;
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [error, setError] = useState('');
+  const published = project.youtube;
+
+  // The endpoint composites on demand, so a hit here is what builds the file. Asking
+  // for it once up front means the download button is never the first request — the
+  // slow path (ffmpeg seek + compositor) is already paid by the time it is clicked.
+  const src = `/api/projects/${id}/thumbnail`;
+
+  useEffect(() => {
+    if (!project.output_path) return;
+    let cancelled = false;
+    // No setState here: 'loading' is the initial state, and setting it synchronously in
+    // the effect body is the cascading-render the lint rule catches. The fetch is the
+    // external system; every transition below runs from its callback.
+    fetch(src)
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.ok) return setState('ready');
+        const body = await res.json().catch(() => ({}));
+        setError(body.error || `Could not build a thumbnail (${res.status})`);
+        setState('error');
+      })
+      .catch((e) => { if (!cancelled) { setError(String(e)); setState('error'); } });
+    return () => { cancelled = true; };
+  }, [src, project.output_path]);
+
+  if (!project.output_path) return null;
+
+  return (
+    <div className="mt-6 rounded-2xl border border-neutral-200 p-4">
+      <div className="flex items-center gap-2">
+        <ImageIcon className="w-4 h-4 text-neutral-500" />
+        <span className="text-sm font-bold uppercase tracking-wider text-neutral-700">Thumbnail</span>
+      </div>
+
+      {state === 'error' ? (
+        <p className="mt-2 text-sm text-red-800">{error}</p>
+      ) : (
+        <div className="mt-3 flex flex-wrap items-start gap-4">
+          <img
+            src={src}
+            alt="Custom thumbnail"
+            className="w-32 rounded-lg border border-neutral-200 bg-neutral-100"
+          />
+          <div className="flex-1 min-w-[16rem]">
+            <p className="text-sm text-neutral-700">
+              A frame from the render with this project&apos;s headline drawn on it. Publishing sets
+              it on the video automatically — download it to review or edit it first, or to set it
+              by hand in YouTube Studio.
+            </p>
+            <a
+              href={`${src}?download=1`}
+              className="mt-3 inline-flex items-center gap-2 rounded-lg bg-neutral-900 px-3 py-2 text-sm font-semibold text-white hover:bg-neutral-700"
+            >
+              <Download className="w-4 h-4" />
+              Download thumbnail
+            </a>
+            {/* A published video whose thumbnail did not stick is the failure this
+                feature exists to make visible — YouTube shows its own auto-generated
+                frame and nothing anywhere says why. */}
+            {published && published.thumbnailSet === false && (
+              <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                <strong>The custom thumbnail was not set on YouTube.</strong>{' '}
+                {published.thumbnailError || 'No reason was recorded.'}{' '}
+                The video is published and fine — download the image above and set it in YouTube Studio.
+              </p>
+            )}
+            {published && published.thumbnailSet === true && (
+              <p className="mt-3 text-xs text-green-800">Set on YouTube with this video.</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

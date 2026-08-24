@@ -31,6 +31,7 @@ import { toUrl } from '../../utils/path.js';
 import { isTrashed } from '../../utils/projectFilter.js';
 import { getChannel, resolveChannel } from '../services/channelStore.js';
 import { mayModifyProject } from '../utils/ownership.js';
+import { ensureThumbnail } from '../services/thumbnailService.js';
 import { projectVideoFileName } from '../../utils/filename.js';
 
 import { AIService } from '../../services/aiService.js';
@@ -596,8 +597,23 @@ projectsRouter.post('/:id/publish/youtube', async (req, res) => {
     console.log(`[Publish] ${id} -> "${target.title}" (${target.channelId}) as "${meta.title}" `
       + `(${privacyStatus}, ${(fs.statSync(filePath).size / 1e6).toFixed(1)} MB)`);
 
+    // Built before the upload starts so a compositor problem surfaces here, while
+    // nothing is published yet, rather than after a 30MB upload has already gone out.
+    // A failure to build one is not a reason to refuse to publish — the video is the
+    // deliverable and YouTube will fall back to its own frame.
+    let thumbFile: string | undefined;
+    let thumbNote: string | undefined;
+    try {
+      const thumb = await ensureThumbnail(id, project, filePath);
+      thumbFile = thumb.path;
+      thumbNote = thumb.note;
+    } catch (thumbErr: any) {
+      thumbNote = `No custom thumbnail: ${thumbErr?.message || thumbErr}`;
+      console.warn(`[Publish] ${id} ${thumbNote}`);
+    }
+
     const started = Date.now();
-    const result = await uploadVideo(filePath, meta, privacyStatus, target.channelId);
+    const result = await uploadVideo(filePath, meta, privacyStatus, target.channelId, thumbFile);
     const durationSec = Number(((Date.now() - started) / 1000).toFixed(1));
 
     await patchProject(id, (p: any) => {
@@ -612,6 +628,10 @@ projectsRouter.post('/:id/publish/youtube', async (req, res) => {
         // project says which channel the video is actually on.
         channelId: result.channelId,
         channelTitle: result.channelTitle,
+        // Recorded whether or not it worked. A video live with YouTube's auto-generated
+        // frame and no record of why is the failure this feature has to avoid.
+        thumbnailSet: result.thumbnail?.set ?? false,
+        thumbnailError: result.thumbnail?.error || thumbNote,
       };
     }, 'youtube-publish');
 
@@ -619,9 +639,12 @@ projectsRouter.post('/:id/publish/youtube', async (req, res) => {
       videoId: result.videoId, privacyStatus: result.privacyStatus, durationSec,
       channelId: result.channelId, channelTitle: result.channelTitle,
       qualityScore: gate.score, forced: !gate.passed,
+      thumbnailSet: result.thumbnail?.set ?? false,
+      thumbnailReason: result.thumbnail?.reason,
     });
-    console.log(`[Publish] ${id} published: ${result.url}`);
-    res.json(result);
+    console.log(`[Publish] ${id} published: ${result.url}`
+      + ` (thumbnail ${result.thumbnail?.set ? 'set' : 'NOT set'})`);
+    res.json({ ...result, thumbnailNote: result.thumbnail?.error || thumbNote });
   } catch (err: any) {
     // Loud, and with the next action in it — the same contract as cloud backup.
     const message = err?.message || String(err);
@@ -641,6 +664,54 @@ projectsRouter.post('/:id/publish/youtube', async (req, res) => {
       });
     }
     res.status(500).json({ error: `Publish failed: ${message}` });
+  }
+});
+
+/**
+ * The composited thumbnail, for review or for setting by hand in YouTube Studio.
+ *
+ * Available whether or not the project has been published — the point is to be able to
+ * look at the thumbnail BEFORE committing to it, and to have a way out when YouTube
+ * refuses to accept one (an unverified channel cannot set a custom thumbnail through
+ * the API, but a human can still upload it in Studio).
+ *
+ * `?download=1` attaches it; without it the image renders inline, which is what the
+ * project page's preview uses.
+ */
+projectsRouter.get('/:id/thumbnail', async (req, res) => {
+  const { id } = req.params;
+  try {
+    let project: any;
+    try {
+      project = await loadProject(id);
+    } catch {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    if (!project.output_path) {
+      return res.status(409).json({ error: 'This project has not been rendered yet, so there is no frame to use.' });
+    }
+
+    const thumb = await ensureThumbnail(id, project, resolveOutputFile(project.output_path));
+
+    if (String(req.query.download) === '1') {
+      const name = projectVideoFileName(project.title, id, '-thumbnail').replace(/\.mp4$/i, '.jpg');
+      res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+    }
+    // The file changes when the render or the headline does, and both are captured by
+    // the freshness check above — so revalidate rather than letting a browser hold a
+    // thumbnail from two renders ago.
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('X-Thumbnail-Has-Text', String(thumb.hasText));
+    // 'scene' means it was built from the episode's own generated art; 'frame' means
+    // the project had none on disk and a video frame stood in.
+    res.setHeader('X-Thumbnail-Source', thumb.source);
+    if (thumb.note) res.setHeader('X-Thumbnail-Note', thumb.note.replace(/[^\x20-\x7E]/g, ' ').slice(0, 300));
+    res.type('image/jpeg').sendFile(thumb.path);
+  } catch (err: any) {
+    const message = err?.message || String(err);
+    console.error(`[Thumbnail] FAILED for ${id}: ${message}`);
+    res.status(500).json({ error: message });
   }
 });
 
