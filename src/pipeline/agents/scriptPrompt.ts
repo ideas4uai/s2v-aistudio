@@ -1,5 +1,6 @@
 import {
   WORDS_PER_SECOND,
+  countWords,
   targetWordCount,
   sceneCountRange,
   TARGET_TOLERANCE,
@@ -74,6 +75,36 @@ export interface ScriptSections {
 const clean = (v?: string): string => (v ?? '').trim();
 
 /**
+ * The first line's word budget.
+ *
+ * Short-form retention is decided in the first few seconds, and at the speech rate this
+ * project already uses everywhere else, six words is about two and a half of them. The
+ * number is here rather than in targetLength.ts because it is a craft rule about one
+ * sentence, not a property of how long speech takes — the SECONDS are derived from the
+ * shared constant so the two can never drift.
+ */
+export const HOOK_MAX_WORDS = 6;
+export const hookMaxSeconds = (): number => Number((HOOK_MAX_WORDS / WORDS_PER_SECOND).toFixed(1));
+
+/**
+ * Subject matter where the entertainment grammar of a short — hook, curiosity gap,
+ * payoff — is the wrong instrument.
+ *
+ * Matched against the topic and the supplied material rather than the finished script,
+ * so the caution reaches the prompt before anything is written. Deliberately narrow:
+ * these are words that in a topic line almost always mean real people were killed or
+ * displaced. It will miss euphemistic topics — "The first day of Independent India" does
+ * not contain one of these words, and the material it came with is what catches it —
+ * which is why the post-hoc flag below exists as well.
+ */
+const SENSITIVE_TOPIC = /\b(genocide|holocaust|massacre|atrocit(?:y|ies)|partition|famine|ethnic cleansing|war crimes?|terroris[mt]|casualt(?:y|ies)|refugees?|displacement|displaced|massacred|mass graves?|slaver(?:y|ies)|lynch(?:ing|ings)?|assassinat(?:ion|ed)|bombing|shooting|suicides?|abuse|trafficking|epidemic|pandemic deaths?)\b/i;
+
+/** Does this brief concern real human suffering? Topic plus everything handed in with it. */
+export function isSensitiveSubject(...parts: (string | undefined)[]): boolean {
+  return SENSITIVE_TOPIC.test(parts.filter(Boolean).join(' '));
+}
+
+/**
  * The four sections, separately, so tests can assert each one responds to the
  * brief rather than eyeballing one concatenated blob.
  */
@@ -97,6 +128,7 @@ export function buildScriptSections(brief: ScriptBrief): ScriptSections {
   // is how every scene ended up the same length. Kept as a floor against a scene
   // that is a single word, not as a second way of specifying the average.
   const perSceneFloor = Math.max(3, Math.round(perScene * 0.45));
+  const hookSeconds = hookMaxSeconds();
 
   // ── ROLE: who is writing. Comes off the brand, then the cast, then a default
   // that assumes nothing about subject matter beyond "explains things".
@@ -191,10 +223,28 @@ export function buildScriptSections(brief: ScriptBrief): ScriptSections {
     // we have seen; this handles the ones we have not.
     `Everything above describes the script — it is not material to quote. Project titles, identifiers, codes, setting names and section labels are how this job was filed, not things the subject is. Never speak a label, a slug or an internal name, and never treat one as a product, person, company or feature. If a title carries a prefix or code you cannot explain from the material, it is filing, so ignore it.`,
     `No generic dramatic opener. A first line that is a bare intensifier — "Shocking." "Insane." "You won't believe this." "This changes everything." — would fit any video on any subject, and a viewer reads it as bait before hearing the second line. Open hard, but let the force come from the specific thing at stake rather than from adjectives about it.`,
+    // Three real scripts opened at 11, 12 and 14 words. Whatever the first line is
+    // doing, it is doing it after the point most viewers have already decided.
+    `First line: at most ${HOOK_MAX_WORDS} words — about ${hookSeconds} seconds spoken — and those words must carry the subject or the tension, not set up for it. "Why do powerful AI models sometimes invent facts or give outdated answers?" spends twelve words arriving at a question; "AI models invent facts." spends four and has already landed. This is a cap on the FIRST sentence only; the second can breathe.`,
+    // The measured failure. Every example below is lifted from a real generated script.
+    `No stacked adjectives and no decorative comparison. Three modifiers in a row — "dynamic, intricate, constantly evolving" — is the shape of a sentence written before deciding what to say; put the one specific fact it is standing in for in its place. A comparison earns its keep only when the thing compared to does the explaining: "a sleek electric vehicle, integrated and optimized for today's high-speed demands" tells a viewer nothing about software, while "it ships its own browser, so there is no driver version to match" says the thing the metaphor was gesturing at. If you cannot say what the comparison teaches, delete it and state the fact.`,
+    // The existing close constraint already requires the question be on-topic, and all
+    // four real scripts passed it — they were on-topic AND interchangeable. This is the
+    // structural half: a question at both ends is a template a regular viewer can predict.
+    `Do not bookend with questions. If the first line is a question, the last must not be. Vary the close by what the content actually supports — the consequence stated flat, the single fact worth remembering, a specific next step, or a question naming something only this script showed. "What does this mean for us?", "Where do you start?", "What lessons does this hold?" are questions about the category, not about the thing, and they fit any script on any subject.`,
     `One core concept for the whole script. Covering three ideas shallowly is the failure mode; depth on one is the goal.`,
     `No generic pain-point preamble — "developers everywhere struggle with…", "we've all been there" — unless that struggle is literally the subject.`,
     `Plain speakable prose only: no emoji, no hashtags, no markdown, no bracketed stage directions, no URLs, no spelled-out symbols.`,
   ];
+  // A serious subject gets a different instrument, not a louder one. This ADDS caution
+  // and never licenses a number: the existing no-invented-figures constraint still
+  // stands, and this pushes the other way — toward saying the figure is disputed rather
+  // than toward saying it more confidently.
+  if (isSensitiveSubject(brief.topic, brief.knowledge, brief.notes?.join(' '), Object.values(brief.spine ?? {}).join(' '))) {
+    constraints.push(
+      `This subject involves real people who were killed, displaced or harmed. Drop the entertainment grammar: no curiosity-gap hook, no reveal held back for effect, no metaphor that makes suffering into an image — "independence arrived like a painful, necessary surgery" turns a million deaths into a figure of speech. Be plain, specific and measured. Where the material gives a casualty or displacement figure, say who estimates it and that estimates differ; where it gives none, say the scale is disputed rather than choosing a number. Never state a death toll as a flat fact. Under-claiming here costs nothing; over-claiming is the whole risk.`,
+    );
+  }
   if (clean(brief.brand?.toneRules)) {
     constraints.push(`Tone is locked by this series and is not yours to adjust: ${clean(brief.brand!.toneRules)}`);
   }
@@ -332,6 +382,84 @@ const CLICKBAIT_PHRASE = /you won'?t believe|this changes everything|nobody is t
  */
 const GUARANTEE = /\b(?:solves?|solved|eliminat(?:es|ed|ing)|guarantees?|guaranteed|never fails?|always works?|fix(?:es|ed|ing)?\s+(?:your|the|their|its|it|them|themselves|itself|these|those|broken|failing|every\w+|anything))\b/i;
 const HEDGE = /\b(attempts?|tries|trying|proposes?|proposed|suggests?|designed to|meant to|may|might|aims? to)\b/i;
+/**
+ * Closing frames that ask about the category rather than about the thing.
+ *
+ * A supplement to the on-topic check below, not a replacement: these shapes pass that
+ * check whenever they happen to reuse a topic word, which is exactly how "What profound
+ * lessons does this hold for India's journey?" got through.
+ */
+const GENERIC_CLOSE_SHAPE = /\b(?:what does (?:this|that|it) mean for|where do (?:you|we) (?:start|begin|go)|what (?:profound |real |deeper )?lessons?|how do we (?:uphold|ensure|balance|navigate)|what(?:'s| is) next for|are (?:you|we) ready for|only time will tell|the future of \w+ (?:is|remains))\b/i;
+
+/**
+ * A run of comma-separated modifiers standing in for a fact — "dynamic, intricate,
+ * constantly evolving". Returns the run for the message, or '' when the sentence is
+ * doing something else.
+ *
+ * Three or more comma-separated segments where at least two are one or two words long,
+ * ignoring the connectives that legitimately sit in commas. Without that exclusion
+ * "Playwright, conversely, is a sleek electric vehicle" trips it, and the reason it is
+ * a bad sentence has nothing to do with the word "conversely".
+ */
+const COMMA_CONNECTIVE = /^(?:conversely|however|therefore|instead|meanwhile|first|second|third|then|finally|next|though|although|yet|still|so|and|but|or|for example|of course|in fact|in short|after all|again|now|today|here|there|too|also|indeed|rather|otherwise)$/i;
+
+export function adjectiveStack(sentence: string): string {
+  const parts = sentence.replace(/[.!?]+$/, '').split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 3) return '';
+  const modifiers = parts.filter((p) => {
+    const words = p.split(/\s+/).filter(Boolean);
+    // Strictly lowercase, no trailing capitals. A stack of adjectives is lowercase;
+    // anything with a capital inside it is a name or an acronym, which is how the
+    // appositive "Retrieval-Augmented Generation, or RAG, solves this" was being read
+    // as three modifiers on a first regeneration run.
+    return words.length <= 2 && !COMMA_CONNECTIVE.test(p) && /^[a-z][a-z' -]*$/.test(p);
+  });
+  return modifiers.length >= 2 ? modifiers.join(', ') : '';
+}
+
+/**
+ * A casualty or displacement figure stated as flat fact.
+ *
+ * Warn-only and deliberately one-directional: it asks for a human to check a number, and
+ * can never produce or sharpen one. A script that already hedges — "estimates range",
+ * "historians disagree" — is left alone, because that is the thing it is asking for.
+ */
+const CASUALTY_FIGURE = /\b(?:\d[\d,.]*|one|two|three|several|many|millions?|thousands?|hundreds?|countless)\s+(?:\w+\s+){0,2}(?:people\s+)?(?:died|killed|dead|deaths|murdered|massacred|displaced|refugees|casualties|victims|perished|slaughtered)\b/i;
+const SOURCED = /\b(?:estimat\w+|approximat\w+|roughly|around|between|historians|scholars|sources|disputed|contested|varies|vary|range[sd]?|according to|thought to|believed to|as many as|at least|some say|no agreed|unknown)\b/i;
+
+/**
+ * A spoken opening line longer than the hook budget.
+ *
+ * Separate from flagCraftIssues, and deliberately not part of it, because
+ * checkScriptQuality treats those issues as a HARD GATE on the story stage — and what
+ * it gates is `storyProse(story)`, the approved beats joined together, which is not a
+ * spoken opening line and has no reason to fit in six words. Blocking a stage on a
+ * length preference would stall the automate flow on scripts that are merely less
+ * punchy than ideal. This runs where the script is actually written, as a warning.
+ */
+export function flagHookLength(script: string): string[] {
+  const sentences = (script.match(/[^.!?]+[.!?]*/g) ?? []).map((s) => s.trim()).filter(Boolean);
+  // One sentence is a fragment, not a script with a hook.
+  if (sentences.length < 2) return [];
+  const first = sentences[0];
+  const words = countWords(first);
+  if (words <= HOOK_MAX_WORDS) return [];
+  const shown = first.length > 60 ? `${first.slice(0, 57)}…` : first;
+  return [`long opener (${words} words, ${(words / WORDS_PER_SECOND).toFixed(1)}s): "${shown}"`];
+}
+
+/** Figures about human suffering that no one has been asked to check. */
+export function flagSensitiveClaims(script: string): string[] {
+  const sentences = (script.match(/[^.!?]+[.!?]*/g) ?? []).map((s) => s.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const s of sentences) {
+    if (CASUALTY_FIGURE.test(s) && !SOURCED.test(s)) {
+      out.push(`unhedged casualty figure — needs a human fact-check: "${s.length > 70 ? `${s.slice(0, 67)}…` : s}"`);
+    }
+  }
+  return out;
+}
+
 /** Words too common to prove a closing question is about anything in particular. */
 const GENERIC_CLOSE_WORDS = new Set([
   'what', 'when', 'where', 'which', 'would', 'could', 'should', 'your', 'you', 'that', 'this', 'with',
@@ -361,11 +489,25 @@ export function flagCraftIssues(script: string, topic = ''): string[] {
   }
 
   for (const s of sentences) {
+    const stack = adjectiveStack(s);
+    if (stack) issues.push(`stacked adjectives (${stack}): "${short(s)}"`);
+  }
+
+  for (const s of sentences) {
     const hit = GUARANTEE.exec(s);
     if (hit && !HEDGE.test(s)) issues.push(`overclaim "${hit[0]}": "${short(s)}"`);
   }
 
   const last = sentences[sentences.length - 1];
+  // The structural half of the close rule. The on-topic check below already passed on
+  // all four real scripts — they were on-topic AND interchangeable — because sharing a
+  // word with the topic is a low bar. A question at both ends is the template itself.
+  if (sentences.length > 1 && first.endsWith('?') && last.endsWith('?')) {
+    issues.push(`question bookend: opens "${short(first)}" and closes "${short(last)}"`);
+  }
+  if (last.endsWith('?') && GENERIC_CLOSE_SHAPE.test(last)) {
+    issues.push(`formulaic close: "${short(last)}"`);
+  }
   if (last.endsWith('?')) {
     // A closing question that shares no vocabulary with the topic or with the script
     // it closes is not a question about this video.
