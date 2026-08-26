@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "dev:api": "cross-env NODE_ENV=development PORT=3001 tsx server.ts",
+    "dev:api": "cross-env NODE_ENV=development PORT=3001 tsx watch --clear-screen=false server.ts",
     "dev:web": "vite",
     "render": "cross-env NODE_ENV=production DISABLE_FIRESTORE=true USE_METRO_V4=true tsx server.ts",
     "render:doraemon": "cross-env NODE_ENV=production DISABLE_FIRESTORE=true USE_METRO_V4=true USE_DORAEMON=true tsx server.ts",
