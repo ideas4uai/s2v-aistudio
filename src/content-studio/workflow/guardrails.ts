@@ -11,7 +11,7 @@
  * guards. The ceiling that buys is stated on each check.
  */
 
-import { flagCraftIssues, flagUnverifiedClaims } from '../../pipeline/agents/scriptPrompt.js';
+import { flagCraftIssues, flagUnverifiedClaims, flagSensitiveClaims } from '../../pipeline/agents/scriptPrompt.js';
 import { MAX_PAD_FACTOR, TARGET_TOLERANCE, targetWordCount } from '../../utils/targetLength.js';
 import { checkAudioPresent } from '../../services/qualityService.js';
 import type { Project } from '../../models/project.js';
@@ -110,6 +110,8 @@ export function checkScriptQuality(script: string, topic: string, sourceMaterial
   return [
     ...flagUnverifiedClaims(script, sourceMaterial).map((claim) => `unsourced claim: ${claim}`),
     ...flagCraftIssues(script, topic),
+    // Asks for a human, never for a different number. See flagSensitiveClaims.
+    ...flagSensitiveClaims(script),
   ];
 }
 

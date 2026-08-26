@@ -6,7 +6,7 @@ import { targetLengthSeconds, targetWordCount, TARGET_TOLERANCE } from '../../ut
 import { buildKnowledgeContext, normalizeUniverse } from '../../content-studio/knowledgeContext.js';
 import type { KnowledgeDocument } from '../../content-studio/domain/types.js';
 import {
-  buildScriptPrompt, buildScriptSections, flagUnverifiedClaims, flagCraftIssues, type ScriptBrief,
+  buildScriptPrompt, buildScriptSections, flagUnverifiedClaims, flagCraftIssues, flagSensitiveClaims, flagHookLength, type ScriptBrief,
 } from './scriptPrompt.js';
 
 /**
@@ -143,6 +143,10 @@ export const ScriptwriterAgent = {
       const issues = [
         ...flagUnverifiedClaims(spoken, prompt).map((c) => `unsourced: ${c}`),
         ...flagCraftIssues(spoken, project.topic),
+        ...flagSensitiveClaims(spoken),
+        // Warning only, and only here: see flagHookLength for why the story-stage gate
+        // does not get this one.
+        ...flagHookLength(spoken),
       ];
       if (issues.length) {
         console.warn(`[ScriptAgent] Check before publishing — ${issues.join(' | ')}`);
