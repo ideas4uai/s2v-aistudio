@@ -239,6 +239,20 @@ export const VERIFIED_IMAGEN_MODELS = [
 export const DEFAULT_IMAGEN_MODEL = 'imagen-4.0-fast-generate-001';
 
 /** Aspect ratios imageConfig accepts. Anything else is rejected by the API. */
+/**
+ * Sent to the image model itself, not to the model that writes the prompt.
+ *
+ * Phrased as a ban on the things, not as "no letterbox"-style negation of a layout:
+ * a controlled A/B on this project showed a prompt asking for "no letterbox, no black
+ * bars" produced MORE bars than one that never mentioned them, so layout is corrected
+ * after generation (see stripLetterbox) and only content is asked for here.
+ */
+export const NO_TEXT_CLAUSE =
+  'Absolutely no text, no words, no letters, no numbers, no captions, no labels, no logos and no signage anywhere in the image.';
+
+/** True when the caller already banned text, so the clause is not said twice. */
+export const hasTextBan = (prompt: string): boolean => /\bno (?:text|words|lettering|typography)\b/i.test(prompt);
+
 export const SUPPORTED_IMAGE_ASPECTS = new Set([
   '1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9', '21:9',
 ]);
@@ -491,7 +505,15 @@ export const AIService = {
       ? prompt
       : `${prompt}, photorealistic, cinematic lighting, sharp focus`;
     const orientationHint = isLandscape ? 'Horizontal 16:9 landscape orientation.' : 'Vertical 9:16 portrait orientation.';
-    const finalPrompt = `${qualityPrompt}. ${orientationHint}`;
+    // The "never render text" rule lived only in the StoryboardAgent's instructions to
+    // the prompt-WRITING model. So it shaped the prompt and never reached the image
+    // model, which adds captions, HUD labels and signage entirely on its own — and the
+    // writing model breaks the rule too ("legal document clauses dynamically assembling"
+    // is a real prompt this pipeline sent). Garbled lettering is the most recognisable
+    // AI tell there is, and it survived every craft fix because nothing ever told the
+    // model that draws the picture. The background path in the orchestrator already
+    // carries this same instruction and does not produce it; the scene path did not.
+    const finalPrompt = `${qualityPrompt}. ${orientationHint}${hasTextBan(prompt) ? '' : ` ${NO_TEXT_CLAUSE}`}`;
 
     // The prompt's own style is the style. Nothing is appended here.
     //

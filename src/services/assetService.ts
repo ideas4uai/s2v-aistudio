@@ -6,6 +6,7 @@ import { AIService } from './aiService.js';
 import { hashCode } from '../utils/hash.js';
 import { withRetry } from '../utils/retry.js';
 import { geminiRateLimiter } from '../utils/rateLimiter.js';
+import { stripLetterbox } from './letterbox.js';
 
 async function generateImageFromGemini(prompt: string, outputPath: string, project?: any, referenceImageUrl?: string, loraModelUrl?: string, loraTriggerWord?: string): Promise<string> {
   const isStoryEpisode = !!project?.universe || project?.projectType === 'story_episode';
@@ -16,7 +17,7 @@ async function generateImageFromGemini(prompt: string, outputPath: string, proje
   const base64Data = await geminiRateLimiter.schedule(() =>
     AIService.generateImageBase64(prompt, { task: 'image', aspectRatio, isStoryEpisode, referenceImageUrl, loraModelUrl, loraTriggerWord }));
 
-  const buffer = Buffer.from(base64Data, 'base64');
+  const buffer = await stripLetterbox(Buffer.from(base64Data, 'base64'));
   const dir = path.dirname(outputPath);
   if (!fs.existsSync(dir)) {
     await fs.promises.mkdir(dir, { recursive: true });
