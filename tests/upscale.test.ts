@@ -71,3 +71,30 @@ describe('the upscaled copy', () => {
     await expect(upscaleImage(src, { env: env as any })).resolves.toBe(src);
   });
 });
+
+describe('which renders pay for it', () => {
+  // A preview is pinned to the 720 class, where the 1344x768 still is enlarged 1.08x —
+  // it already covers the frame. At 1080p the same still is enlarged 1.62x, and every
+  // one of the 187 stored stills exceeds 1.6x after letterbox stripping. The pass is
+  // worth ~20 minutes on a final render and worth nothing on a draft.
+  const HEAD = 1.15;
+  const enlargement = (fw: number, fh: number, sw = 1344, sh = 768) =>
+    Math.max(fw / sw, (fh * HEAD) / sh);
+
+  it('barely enlarges anything at preview resolution', () => {
+    expect(enlargement(1280, 720)).toBeLessThan(1.1);
+  });
+
+  it('enlarges past 1.6x at 1080p, which is what the upscale is for', () => {
+    expect(enlargement(1920, 1080)).toBeGreaterThan(1.6);
+  });
+
+  it('is worst on a letterbox-stripped still, the case that needs pixels most', () => {
+    // 1344x502 is a real stripped height measured in a production render.
+    expect(enlargement(1920, 1080, 1344, 502)).toBeGreaterThan(2.4);
+  });
+
+  it('turns the enlargement into a downsample once the still is 2x', () => {
+    expect(enlargement(1920, 1080, 2688, 1536)).toBeLessThan(1);
+  });
+});

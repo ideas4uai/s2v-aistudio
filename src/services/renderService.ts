@@ -771,7 +771,16 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
   // turning the flag on did nothing until something else invalidated them. Above it, the
   // upscaled still is newer than the old clip, which is exactly what should rebuild it.
   let imagePath = visual.asset_path;
-  if (upscaleEnabled()) {
+  //
+  // Skipped for draft/preview renders, and that is arithmetic rather than caution: a
+  // preview is pinned to the 720 class, where the 1344x768 still is enlarged only 1.08x
+  // and already all but covers the frame. Twenty-odd minutes of GPU buys nothing there.
+  // At 1080p the same still is enlarged 1.62x, and after letterbox stripping the worst
+  // are past 2.4x — measured across all 187 stored stills, every single one is enlarged
+  // more than 1.6x. So the pass earns its time on a final render and not on a draft,
+  // which is also the shape of the workflow: iterate in draft, pay once at the end.
+  const isPreview = project?.quality === 'draft' || project?.preview_mode || false;
+  if (upscaleEnabled() && !isPreview) {
     const hasFace = !!(scene as any)?.character && (scene as any).character !== 'NARRATOR';
     if (imagePath) imagePath = await upscaleImage(imagePath, { face: hasFace });
     if ((scene as any)?.background_path) {

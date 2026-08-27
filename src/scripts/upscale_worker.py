@@ -104,6 +104,11 @@ def main() -> int:
     # keeps peak VRAM at whichever model is larger rather than their sum.
     upsampler = build_upsampler()
     out, _ = upsampler.enhance(img, outscale=args.scale)
+    # Split so the face pass can be costed on its own — the difference between two
+    # whole runs is buried in run-to-run variance, and that number decides whether
+    # GFPGAN earns its place at all.
+    esrgan_s = time.time() - t0
+    t_face = time.time()
     faces = 0
     face_dev = None
     if args.face:
@@ -137,12 +142,14 @@ def main() -> int:
         if restored is not None and faces:
             out = restored
 
+    gfpgan_s = (time.time() - t_face) if args.face else 0.0
     dt = time.time() - t0
     cv2.imwrite(args.dst, out)
     peak = (torch.cuda.max_memory_reserved() / 1024**3) if torch.cuda.is_available() else 0.0
     print(json.dumps({
         'ok': True, 'src': f'{w}x{h}', 'dst': f'{out.shape[1]}x{out.shape[0]}',
-        'seconds': round(dt, 1), 'peak_vram_gb': round(peak, 2),
+        'seconds': round(dt, 1), 'esrgan_seconds': round(esrgan_s, 1),
+        'gfpgan_seconds': round(gfpgan_s, 1), 'peak_vram_gb': round(peak, 2),
         'device': torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'cpu',
         'face': bool(args.face), 'faces_restored': faces,
         'face_device': str(face_dev) if args.face else None,
