@@ -758,24 +758,19 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
     tmpDir, String(project.project_id), visual.visual_id, visual.motion_instruction,
     scene ? sceneVisualKey(scene, project, clipSeconds) : '',
   );
-  // Same staleness rule as the multi-frame path: a regenerated still must invalidate the
-  // clip built from it, or an image edit never reaches the video. The motion lives in the
-  // path itself, so changing the Cinematic Effect lands on a different file.
-  if (isFreshOutput(outputPath, visual.asset_path)) {
-    emitStep(project, scene, 'synthesis', 'Animation already rendered', true);
-    return outputPath;
-  }
-  emitStep(project, scene, 'synthesis', 'Rendering animation', false);
-
-  const duration = visual.duration_target || 5;
-  let imagePath = visual.asset_path;
-
   // Sharpen the still before anything magnifies it. Off unless UPSCALE_IMAGES=true; see
-  // upscale.ts for why (~195s per image on this GPU). Done here rather than at generation
+  // upscale.ts for why (~200s per image on this GPU). Done here rather than at generation
   // so stills that already exist on disk are covered too, and so the mtime cache can skip
   // the work on every render after the first. A character scene also gets GFPGAN, decided
   // from the scene's own character field — the pipeline already knows who is on screen,
   // so no second face detector is introduced.
+  //
+  // This runs BEFORE the freshness check, and that ordering is load-bearing: the clip's
+  // staleness has to be judged against the image the clip will actually be built from.
+  // Below the check it never ran at all on a project whose clips were already cached, so
+  // turning the flag on did nothing until something else invalidated them. Above it, the
+  // upscaled still is newer than the old clip, which is exactly what should rebuild it.
+  let imagePath = visual.asset_path;
   if (upscaleEnabled()) {
     const hasFace = !!(scene as any)?.character && (scene as any).character !== 'NARRATOR';
     if (imagePath) imagePath = await upscaleImage(imagePath, { face: hasFace });
@@ -784,6 +779,17 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
         await upscaleImage((scene as any).background_path, { face: hasFace });
     }
   }
+
+  // Same staleness rule as the multi-frame path: a regenerated still must invalidate the
+  // clip built from it, or an image edit never reaches the video. The motion lives in the
+  // path itself, so changing the Cinematic Effect lands on a different file.
+  if (isFreshOutput(outputPath, imagePath, (scene as any)?.background_path)) {
+    emitStep(project, scene, 'synthesis', 'Animation already rendered', true);
+    return outputPath;
+  }
+  emitStep(project, scene, 'synthesis', 'Rendering animation', false);
+
+  const duration = visual.duration_target || 5;
 
   // Written next to the clip it belongs to, under the same key, so two scenes never
   // share a spec file and a stale one can never be picked up by the wrong render.
