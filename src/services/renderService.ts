@@ -1,4 +1,5 @@
 import { exec, spawn } from 'child_process';
+import { upscaleImage, upscaleEnabled } from './upscale.js';
 import { promisify } from 'util';
 import fs from 'fs';
 import os from 'os';
@@ -768,6 +769,21 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
 
   const duration = visual.duration_target || 5;
   let imagePath = visual.asset_path;
+
+  // Sharpen the still before anything magnifies it. Off unless UPSCALE_IMAGES=true; see
+  // upscale.ts for why (~195s per image on this GPU). Done here rather than at generation
+  // so stills that already exist on disk are covered too, and so the mtime cache can skip
+  // the work on every render after the first. A character scene also gets GFPGAN, decided
+  // from the scene's own character field — the pipeline already knows who is on screen,
+  // so no second face detector is introduced.
+  if (upscaleEnabled()) {
+    const hasFace = !!(scene as any)?.character && (scene as any).character !== 'NARRATOR';
+    if (imagePath) imagePath = await upscaleImage(imagePath, { face: hasFace });
+    if ((scene as any)?.background_path) {
+      (scene as any).background_path =
+        await upscaleImage((scene as any).background_path, { face: hasFace });
+    }
+  }
 
   // Written next to the clip it belongs to, under the same key, so two scenes never
   // share a spec file and a stale one can never be picked up by the wrong render.

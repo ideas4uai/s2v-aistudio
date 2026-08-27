@@ -10,7 +10,7 @@ export default [
     // .venv-clone is the Python environment for voice cloning. It ships vendored JS
     // (urllib3's emscripten worker and friends) that is not ours to lint — without
     // this it contributes ~12,700 no-undef errors and buries every real one.
-    ignores: ['dist/**', 'node_modules/**', 'test_*.js', 'check_env.js', 'cache/**', 'temp/**', 'outputs/**', 'uploads/**', '.venv-clone/**', 'voices/**'],
+    ignores: ['dist/**', 'node_modules/**', 'test_*.js', 'check_env.js', 'cache/**', 'temp/**', 'outputs/**', 'uploads/**', '.venv-clone/**', 'voices/**', '.venv-upscale/**', 'gfpgan/**', 'upscale-models/**'],
   },
   js.configs.recommended,
   firebaseRulesPlugin.configs['flat/recommended'],
