@@ -36,12 +36,15 @@ export const upscaledPathFor = (src: string): string =>
  * current, otherwise `src` unchanged. Never throws and never blocks a render — a missing
  * venv, a cold GPU or a timeout all fall back to the original image.
  *
- * `face` should come from the scene's own character field, which the pipeline already
- * tracks (NARRATOR means nobody is on screen). No second face detector is introduced.
+ * There is deliberately no face-restoration pass. GFPGAN was built and measured here
+ * and made things worse: it restores every face at a fixed 512x512 and pastes back, so
+ * on a 2x-upscaled still (close-up faces run ~863px) it re-enlarges the restored face
+ * 1.69x and smooths away the detail this pass just recovered — laplacian variance
+ * 310.8 -> 88.8, against 77.4 for no upscale at all.
  */
 export async function upscaleImage(
   src: string,
-  opts: { face?: boolean; env?: NodeJS.ProcessEnv } = {},
+  opts: { env?: NodeJS.ProcessEnv } = {},
 ): Promise<string> {
   const env = opts.env || process.env;
   if (!upscaleEnabled(env) || !src || !fs.existsSync(src)) return src;
@@ -58,7 +61,6 @@ export async function upscaleImage(
   }
 
   const args = [path.join(process.cwd(), 'src/scripts/upscale_worker.py'), src, out, '--scale', '2'];
-  if (opts.face) args.push('--face');
 
   const ok = await run(python, args, Number(env.UPSCALE_TIMEOUT_MS || 15 * 60 * 1000));
   if (ok && fs.existsSync(out) && fs.statSync(out).size > 1024) return out;

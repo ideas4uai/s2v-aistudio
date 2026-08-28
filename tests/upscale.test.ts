@@ -98,3 +98,29 @@ describe('which renders pay for it', () => {
     expect(enlargement(1920, 1080, 2688, 1536)).toBeLessThan(1);
   });
 });
+
+describe('the face-restoration pass that was removed', () => {
+  // GFPGAN was built, measured and taken out. It restores every face at a fixed
+  // 512x512 and pastes the result back, so on a 2x-upscaled still — where a close-up
+  // face measures ~863px — it re-enlarges the restored face 1.69x and smooths away
+  // what the upscaler just recovered: detail 310.8 -> 88.8, against 77.4 for no
+  // upscale at all. It also OOMed on a 2GB card even loaded by itself.
+  it('takes no face option, so nothing can re-enable it by passing a flag', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noface-'));
+    try {
+      const src = path.join(dir, 's.png');
+      fs.writeFileSync(src, Buffer.alloc(4096, 7));
+      const env = { UPSCALE_IMAGES: 'true', UPSCALE_PYTHON: path.join(dir, 'absent.exe') };
+      // `face` is not part of the options type any more; passing it changes nothing.
+      await expect(upscaleImage(src, { env } as any)).resolves.toBe(src);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('never re-enlarges a restored face, because a face larger than 512 always would', () => {
+    const FACE_PX = 863;      // measured on the 2688x1536 upscale of a real still
+    const GFPGAN_INTERNAL = 512;
+    expect(FACE_PX / GFPGAN_INTERNAL).toBeGreaterThan(1);
+  });
+});

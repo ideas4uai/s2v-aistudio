@@ -6,18 +6,25 @@ by ~1.6x to fill a 1080p frame, and more once letterbox bars are stripped off a 
 that was already small. So the pixels have to come from somewhere else: this runs
 Real-ESRGAN x4plus locally and hands the render a source it can DOWNsample instead.
 
-Models, both fully local after a one-time weight download:
+Model, fully local after a one-time weight download:
   RealESRGAN_x4plus  BSD 3-Clause  general photo model, every scene
-  GFPGANv1.4         Apache 2.0    face restoration, only where a scene has a character
 
 Only the official x4plus general model is used. Several popular community ESRGAN
 variants (4x-AnimeSharp, 4x-UltraSharp) are CC-BY-NC-SA and cannot be used commercially.
+
+GFPGAN face restoration was built, measured and removed. It restores every face at a
+fixed 512x512 internally and pastes the result back, so on a 2x-upscaled still — where
+a close-up face measures ~863px — it downscales the face and re-enlarges it 1.69x. On
+the sharpest test image that took detail (laplacian variance) from 310.8 back to 88.8,
+barely above the 77.4 of not upscaling at all: it smoothed away exactly what this pass
+had just recovered. It also could not fit on a 2GB card even loaded alone, so it always
+fell back to CPU. The mismatch is structural, not a tuning problem — GFPGAN exists to
+rescue small degraded faces, not to improve already-large ones.
 
 Runs on whatever is available: the 940MX here is sm_50, which has no fast fp16, so this
 stays in fp32 and tiles the image to hold VRAM down.
 """
 import argparse
-import gc
 import json
 import os
 import sys
@@ -52,26 +59,6 @@ def build_upsampler() -> RealESRGANer:
     )
 
 
-def face_device():
-    """Where to run GFPGAN.
-
-    GFPGAN wants roughly 1.2 GB for the StyleGAN2 decoder at 512x512. On a 2 GB card
-    that is already sharing with the desktop there is often not enough left even after
-    Real-ESRGAN is freed, and GFPGAN answers an OOM by returning the face UNrestored —
-    a silent no-op that looks like success. So the choice is made up front from what is
-    actually free, and the CPU path is used rather than pretending. UPSCALE_FACE_DEVICE
-    overrides for a machine with room to spare.
-    """
-    forced = os.environ.get('UPSCALE_FACE_DEVICE')
-    if forced:
-        return torch.device(forced)
-    if not torch.cuda.is_available():
-        return torch.device('cpu')
-    free, _ = torch.cuda.mem_get_info()
-    need = float(os.environ.get('UPSCALE_FACE_MIN_VRAM_GB', '1.4')) * 1024**3
-    return torch.device('cuda' if free >= need else 'cpu')
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('src')
@@ -80,8 +67,6 @@ def main() -> int:
     # 16.5 MP for no visible gain once it is resized back down, and costs the render
     # real memory and disk on every scene.
     ap.add_argument('--scale', type=float, default=2.0)
-    ap.add_argument('--face', action='store_true',
-                    help='also run GFPGAN; set by the caller when the scene has a character')
     args = ap.parse_args()
 
     img = cv2.imread(args.src, cv2.IMREAD_COLOR)
@@ -94,65 +79,16 @@ def main() -> int:
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
 
-    # Two SEQUENTIAL passes, never both models resident.
-    #
-    # The obvious wiring — GFPGANer(bg_upsampler=upsampler) — holds the StyleGAN2
-    # decoder, the RetinaFace detector, the parsing net AND the RRDBNet on the card at
-    # once. On this 2 GB 940MX that OOMs at roughly 930 MB allocated, and realesrgan
-    # swallows the error (`print('Error', error)`) and then dies on an unbound variable,
-    # so the real cause never surfaces. Upscaling first and freeing before the face pass
-    # keeps peak VRAM at whichever model is larger rather than their sum.
     upsampler = build_upsampler()
     out, _ = upsampler.enhance(img, outscale=args.scale)
-    # Split so the face pass can be costed on its own — the difference between two
-    # whole runs is buried in run-to-run variance, and that number decides whether
-    # GFPGAN earns its place at all.
-    esrgan_s = time.time() - t0
-    t_face = time.time()
-    faces = 0
-    face_dev = None
-    if args.face:
-        # RealESRGANer keeps the model and its last input/output as CUDA tensors, so
-        # `del` on the wrapper alone leaves ~865 MB resident and GFPGAN still OOMs —
-        # silently, because GFPGAN catches its own failure and pastes the UNrestored
-        # face back. Dropping the model reference and collecting is what actually
-        # returns the memory.
-        upsampler.model = None
-        upsampler.output = None
-        upsampler.img = None
-        del upsampler
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        from gfpgan import GFPGANer
-        # upscale=1: Real-ESRGAN has already resized, so GFPGAN only restores the faces
-        # it finds and pastes them back at the size they are.
-        device = face_device()
-        face_dev = device
-        restorer = GFPGANer(
-            model_path=os.path.join(MODEL_DIR, 'GFPGANv1.4.pth'),
-            upscale=1, arch='clean', channel_multiplier=2, bg_upsampler=None,
-            device=device,
-        )
-        cropped, _, restored = restorer.enhance(
-            out, has_aligned=False, only_center_face=False, paste_back=True)
-        faces = len(cropped or [])
-        # A still with no detectable face keeps the Real-ESRGAN result untouched rather
-        # than whatever a face restorer does to a frame with no face in it.
-        if restored is not None and faces:
-            out = restored
 
-    gfpgan_s = (time.time() - t_face) if args.face else 0.0
     dt = time.time() - t0
     cv2.imwrite(args.dst, out)
     peak = (torch.cuda.max_memory_reserved() / 1024**3) if torch.cuda.is_available() else 0.0
     print(json.dumps({
         'ok': True, 'src': f'{w}x{h}', 'dst': f'{out.shape[1]}x{out.shape[0]}',
-        'seconds': round(dt, 1), 'esrgan_seconds': round(esrgan_s, 1),
-        'gfpgan_seconds': round(gfpgan_s, 1), 'peak_vram_gb': round(peak, 2),
+        'seconds': round(dt, 1), 'peak_vram_gb': round(peak, 2),
         'device': torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'cpu',
-        'face': bool(args.face), 'faces_restored': faces,
-        'face_device': str(face_dev) if args.face else None,
     }))
     return 0
 
