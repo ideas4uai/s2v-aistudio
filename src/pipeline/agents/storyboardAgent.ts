@@ -170,11 +170,11 @@ RULES:
         ? 'Name the characters listed below when the narration involves them, and restate their locked appearance details. Never redesign them.'
         : 'Do NOT mention any character names or story archetypes.'}
 7. NEVER include readable text, numbers, words, logos, charts with figures, or signage in the image — rendered text gets clipped by the vertical crop and fights the burned-in captions. Convey data visually (scale, glow, contrast) instead of with written figures.
-8. When the narration is abstract — a concept, a system, a process with no person or object in it — do NOT answer it with a screen, dashboard, hologram or floating interface. Those come back as glowing panels covered in garbled lettering, which is the most obvious mark of a generated image. Anchor the beat on something physical instead: a person doing the thing, a hand, a room, an object under real light.
+8. A screen is never the answer, and this does not depend on how abstract the narration is. Do NOT make a monitor, phone, dashboard, hologram, terminal or floating interface the subject of the shot, and never describe code, text or a UI on one. Those come back as panels of garbled lettering, which is the most obvious mark of a generated image. The rule binds hardest when the narration names software directly ("the stack trace", "the test suite", "the code", "the dashboard") — answer those with the person, the hand, the room, or a physical object that stands in for the idea. A device may sit in the frame as an object — dark, glare-washed, or well out of focus — but never as the thing being read.
 
 FEW-SHOT EXAMPLES:
 Narration: "Instagram has 2 billion daily users"
-Prompt: "Close-up of smartphone screen showing Instagram feed with photos and reels, person's thumb scrolling, soft bokeh background, social media notification bubbles floating, ${styleTail}"
+Prompt: "Close-up of a person's thumb scrolling a phone held low in evening light, the screen a soft wash of glare with no detail on it, blurred crowd of faces behind them, ${styleTail}"
 
 Narration: "Most students fail because they never practice"
 Prompt: "Student sitting at desk surrounded by textbooks looking frustrated, pen down, head in hands, warm study lamp light, realistic classroom background, ${styleTail}"
@@ -224,7 +224,7 @@ Rules:
 3. Name the characters the narration involves and restate their locked appearance details in every frame that shows them.
 4. End every prompt with: "${styleTail}"
 5. Max 50 words per prompt.
-6. NEVER include readable text, numbers, words, logos, or signage in any frame — rendered text gets clipped by the vertical crop.
+6. NEVER include readable text, numbers, words, logos, or signage in any frame — rendered text gets clipped by the vertical crop. Never make a monitor, phone, dashboard or interface the subject of a frame, and never describe code or a UI on one, whatever the narration is about; a device may appear as an object, dark or out of focus, but never as the thing being read.
 
 Return ONLY a JSON array (no extra text):
 [
