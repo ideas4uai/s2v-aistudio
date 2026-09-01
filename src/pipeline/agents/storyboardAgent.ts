@@ -170,6 +170,7 @@ RULES:
         ? 'Name the characters listed below when the narration involves them, and restate their locked appearance details. Never redesign them.'
         : 'Do NOT mention any character names or story archetypes.'}
 7. NEVER include readable text, numbers, words, logos, charts with figures, or signage in the image — rendered text gets clipped by the vertical crop and fights the burned-in captions. Convey data visually (scale, glow, contrast) instead of with written figures.
+8. When the narration is abstract — a concept, a system, a process with no person or object in it — do NOT answer it with a screen, dashboard, hologram or floating interface. Those come back as glowing panels covered in garbled lettering, which is the most obvious mark of a generated image. Anchor the beat on something physical instead: a person doing the thing, a hand, a room, an object under real light.
 
 FEW-SHOT EXAMPLES:
 Narration: "Instagram has 2 billion daily users"
@@ -182,7 +183,7 @@ Narration: "The human brain processes images 60,000 times faster than text"
 Prompt: "Split screen: left side towering stack of paper documents in dim grey light, right side colorful brain with glowing neural connections, scientific visualization style, deep blue background, ${styleTail}"
 
 Narration: "Every successful YouTuber posts consistently"
-Prompt: "Content creator at modern desk setup with ring light and camera recording, multiple monitors showing YouTube analytics with upward trending graphs, motivated expression, ${styleTail}"
+Prompt: "Content creator at modern desk setup with ring light and camera recording, one monitor glowing with a rising green line and no figures on it, motivated expression, ${styleTail}"
 
 Now write the image prompt for this narration:
 "${draft.narration}"

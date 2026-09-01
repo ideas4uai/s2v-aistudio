@@ -15,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import { toUrl } from '../utils/path.js';
 import { storeSceneImage } from '../services/sceneImageStore.js';
+import { stripLetterbox } from '../services/letterbox.js';
 import { pipelineFieldsFromSettings } from '../server/routes/projects.js';
 import { loadKnowledgeDocuments } from '../content-studio/store.js';
 import { generateSeoMetadata } from '../pipeline/agents/seoAgent.js';
@@ -459,7 +460,7 @@ export async function saveSceneImage(req: Request, res: Response) {
   }
 
   try {
-    const buffer = Buffer.from(base64Data, 'base64');
+    const buffer = await stripLetterbox(Buffer.from(base64Data, 'base64'));
     const assetId = uuidv4();
     const fileName = `${sceneId}_${assetId}.jpg`;
     
@@ -536,7 +537,7 @@ export async function generateSceneImage(req: Request, res: Response) {
         isStoryEpisode: !!(project as any).universe,
         referenceImageUrl,
       });
-      buffer = Buffer.from(base64Data, 'base64');
+      buffer = await stripLetterbox(Buffer.from(base64Data, 'base64'));
     } catch (geminiErr) {
       console.warn('[generateSceneImage] Gemini failed, using Picsum fallback:', geminiErr instanceof Error ? geminiErr.message : geminiErr);
       const cleanPrompt = prompt.replace(/\[.*?\]/g, '').trim();

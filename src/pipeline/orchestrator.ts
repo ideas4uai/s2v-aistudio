@@ -45,6 +45,7 @@ import { abortManager } from './abortManager.js';
 import { requestContext } from '../server/utils/context.js';
 import { persistProjectToDisk, restoreProjectsFromDisk, deleteProjectFromDisk } from './projectDiskStore.js';
 import { seedAnchorsFromProject, recordAnchor, anchorSummary } from './anchorStore.js';
+import { stripLetterbox } from '../services/letterbox.js';
 
 
 const INDIAN_AESTHETIC_SUFFIX = 'South Asian graphic novel illustration style, Hyderabad cyberpunk city 2031, warm terracotta and saffron architecture, teal neon accents, Indian street culture, autorickshaws with holographic overlays, Hindi signage, chai stall neon lights, bold flat colour illustration, Trigger Studio quality, NOT Japanese, NOT manga, NOT Tokyo aesthetic, South Asian urban environment';
@@ -1491,7 +1492,7 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
         isStoryEpisode: !!(project as any).universeId,
       });
       if (bgBase64) {
-        const bgBuffer = Buffer.from(bgBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+        const bgBuffer = await stripLetterbox(Buffer.from(bgBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64'));
         fs.writeFileSync(bgLocalPath, bgBuffer);
         scene.background_path = bgLocalPath;
         // Upload to Supabase so the path survives server restarts.
