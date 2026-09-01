@@ -56,6 +56,14 @@ piper.tar.gz
 voices/
 .venv-clone/
 
+# Upscaling. Same "models live on local disk" rule as Piper and the cloned voices:
+# Real-ESRGAN and GFPGAN weights are ~400MB and are fetched once by setup, and the
+# venv exists because basicsr's pins fight the versions the render pipeline needs.
+.venv-upscale/
+upscale-models/
+# facexlib caches its face-detection weights here on first use.
+gfpgan/
+
 # OS files
 .DS_Store
 Thumbs.db

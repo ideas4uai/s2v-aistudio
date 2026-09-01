@@ -1,4 +1,5 @@
 import { exec, spawn } from 'child_process';
+import { upscaleImage, upscaleEnabled } from './upscale.js';
 import { promisify } from 'util';
 import fs from 'fs';
 import os from 'os';
@@ -757,17 +758,43 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
     tmpDir, String(project.project_id), visual.visual_id, visual.motion_instruction,
     scene ? sceneVisualKey(scene, project, clipSeconds) : '',
   );
+  // Sharpen the still before anything magnifies it. Off unless UPSCALE_IMAGES=true; see
+  // upscale.ts for why (~200s per image on this GPU). Done here rather than at generation
+  // so stills that already exist on disk are covered too, and so the mtime cache can skip
+  // the work on every render after the first.
+  //
+  // This runs BEFORE the freshness check, and that ordering is load-bearing: the clip's
+  // staleness has to be judged against the image the clip will actually be built from.
+  // Below the check it never ran at all on a project whose clips were already cached, so
+  // turning the flag on did nothing until something else invalidated them. Above it, the
+  // upscaled still is newer than the old clip, which is exactly what should rebuild it.
+  let imagePath = visual.asset_path;
+  //
+  // Skipped for draft/preview renders, and that is arithmetic rather than caution: a
+  // preview is pinned to the 720 class, where the 1344x768 still is enlarged only 1.08x
+  // and already all but covers the frame. Twenty-odd minutes of GPU buys nothing there.
+  // At 1080p the same still is enlarged 1.62x, and after letterbox stripping the worst
+  // are past 2.4x — measured across all 187 stored stills, every single one is enlarged
+  // more than 1.6x. So the pass earns its time on a final render and not on a draft,
+  // which is also the shape of the workflow: iterate in draft, pay once at the end.
+  const isPreview = project?.quality === 'draft' || project?.preview_mode || false;
+  if (upscaleEnabled() && !isPreview) {
+    if (imagePath) imagePath = await upscaleImage(imagePath);
+    if ((scene as any)?.background_path) {
+      (scene as any).background_path = await upscaleImage((scene as any).background_path);
+    }
+  }
+
   // Same staleness rule as the multi-frame path: a regenerated still must invalidate the
   // clip built from it, or an image edit never reaches the video. The motion lives in the
   // path itself, so changing the Cinematic Effect lands on a different file.
-  if (isFreshOutput(outputPath, visual.asset_path)) {
+  if (isFreshOutput(outputPath, imagePath, (scene as any)?.background_path)) {
     emitStep(project, scene, 'synthesis', 'Animation already rendered', true);
     return outputPath;
   }
   emitStep(project, scene, 'synthesis', 'Rendering animation', false);
 
   const duration = visual.duration_target || 5;
-  let imagePath = visual.asset_path;
 
   // Written next to the clip it belongs to, under the same key, so two scenes never
   // share a spec file and a stale one can never be picked up by the wrong render.

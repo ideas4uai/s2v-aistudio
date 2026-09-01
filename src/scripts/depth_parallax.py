@@ -93,18 +93,48 @@ def generate_depth_map(bg_path: str, cache_path: str | None = None) -> np.ndarra
 # PARALLAX HELPERS (used by metro_engine_v4 inline and standalone CLI)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def build_speed_map(depth_norm: np.ndarray) -> np.ndarray:
-    """Convert depth (0=far, 1=near) to parallax speed multiplier [0.3..1.0].
+def blur_sigma_for(amp_px: float, speed_range: float = 0.7) -> float:
+    """Smallest blur that keeps the displacement field from folding.
 
-    Far  (depth > 0.7): 0.3x — background barely moves
-    Mid  (0.3..0.7):    0.6x — midground moves moderately
-    Near (depth < 0.3): 1.0x — foreground moves the most
+    `cv2.remap` is a BACKWARD warp: dst(x) = src(x + amp*speed(x)). That mapping stops
+    being one-to-one as soon as |d(amp*speed)/dx| >= 1 — past that point neighbouring
+    destination pixels read source samples in the wrong order, which is exactly the
+    tear. A learned depth map steps almost vertically at every silhouette, so the raw
+    field is nowhere near safe: measured on a hard near/far edge it reaches 29.4 px/px.
+
+    A gaussian of width sigma turns a unit step into a ramp whose steepest slope is
+    1/(sigma*sqrt(2*pi)) ~= 0.399/sigma. Requiring amp*range*0.399/sigma < 1 gives
+    sigma > 0.399*amp*range; the 1.6 factor below is headroom, since depth maps stack
+    several edges close together and the slopes add. At the shipped amplitude that is
+    sigma ~= 27px, measured at 0.47 px/px — comfortably one-to-one.
     """
-    d = depth_norm
-    speed = np.where(d > 0.7, 0.3,
-            np.where(d > 0.3, 0.3 + (d - 0.3) / 0.4 * 0.3,   # lerp 0.3→0.6
-                               0.6 + (0.3 - d) / 0.3 * 0.4))  # lerp 0.6→1.0
-    return speed.astype(np.float32)
+    return max(6.0, 1.6 * 0.399 * amp_px * speed_range)
+
+
+def build_speed_map(depth_norm: np.ndarray, amp_px: float = None) -> np.ndarray:
+    """Convert depth (0=near, 1=far) to a parallax speed multiplier in [0.3..1.0].
+
+    Near (depth 0.0): 1.0x — foreground moves the most
+    Mid  (depth 0.3): 0.6x — midground moves moderately
+    Far  (depth 0.7+): 0.3x — background barely moves
+
+    This used to be built from nested np.where branches that did not meet at their own
+    thresholds: at depth 0.30 the speed fell 0.600 -> 0.301 and at 0.70 it fell
+    0.600 -> 0.300, two instant 18px displacement jumps at DEPTH_PAN_AMP=60. The middle
+    band also ran backwards — depth 0.69 moved at 0.592 while the nearer 0.31 moved at
+    0.308 — so the field folded over itself wherever a silhouette crossed either value.
+    That is the vertical seam that ran the full height of the frame.
+
+    The anchors above are the ones the old docstring intended; only the arithmetic
+    changed, so the tuned look is preserved. The result is monotonic in depth and
+    continuous everywhere, then blurred so that real depth edges cannot fold it either
+    (see blur_sigma_for — a continuous map alone is NOT enough).
+    """
+    d = np.clip(depth_norm, 0.0, 1.0)
+    # Piecewise-linear through (0.0, 1.0), (0.3, 0.6), (0.7, 0.3), flat beyond.
+    speed = np.interp(d, [0.0, 0.3, 0.7, 1.0], [1.0, 0.6, 0.3, 0.3]).astype(np.float32)
+    sigma = blur_sigma_for(DEPTH_PAN_AMP if amp_px is None else amp_px)
+    return cv2.GaussianBlur(speed, (0, 0), sigma)
 
 
 def apply_depth_warp(frame: np.ndarray,
@@ -276,5 +306,46 @@ def main():
     print(f'[DepthParallax] Output: {args.output}')
 
 
+def selftest() -> int:
+    """The warp tears the moment the displacement field stops being one-to-one.
+
+    Both halves of that guarantee are checked here, because the shipped bug satisfied
+    neither: the speed map jumped 0.3 at two thresholds AND ran backwards in the middle
+    band, so nearer content moved slower than farther content.
+    """
+    d = np.linspace(0, 1, 1001).astype(np.float32).reshape(1, -1)
+    speed = build_speed_map(d).ravel()
+
+    # Nearer (lower depth) must never move slower than farther. Blur can only smooth a
+    # monotonic ramp, never reverse it.
+    assert np.all(np.diff(speed) <= 1e-4), 'speed map must not increase with depth'
+
+    # No step anywhere: the old map fell 0.600 -> 0.301 at depth 0.30.
+    biggest = float(np.abs(np.diff(speed)).max())
+    assert biggest < 0.01, f'speed map jumps by {biggest:.3f} between adjacent depths'
+
+    # The anchors the original docstring intended are still hit, so the tuned look holds.
+    for depth_at, want in ((0.0, 1.0), (0.3, 0.6), (0.7, 0.3), (1.0, 0.3)):
+        got = float(speed[int(depth_at * 1000)])
+        assert abs(got - want) < 0.12, f'depth {depth_at} -> {got:.2f}, wanted about {want}'
+
+    # The real test: a hard silhouette, which is what a learned depth map is full of.
+    # Unblurred this reached 29.4 px/px and tore; it must now stay under 1.
+    hard = np.full((240, 480), 0.85, np.float32)
+    hard[:, 160:320] = 0.15
+    slope = float(np.abs(np.diff(build_speed_map(hard), axis=1)).max() * DEPTH_PAN_AMP)
+    assert slope < 1.0, f'hard depth edge still folds the warp at {slope:.2f} px/px'
+
+    # And the blur must scale with the amplitude, or retuning DEPTH_PAN_AMP reopens this.
+    for amp in (30, 60, 120):
+        s = float(np.abs(np.diff(build_speed_map(hard, amp_px=amp), axis=1)).max() * amp)
+        assert s < 1.0, f'amp={amp} folds at {s:.2f} px/px'
+
+    print('selftest ok')
+    return 0
+
+
 if __name__ == '__main__':
+    if sys.argv[1:2] == ['--selftest']:
+        raise SystemExit(selftest())
     main()
