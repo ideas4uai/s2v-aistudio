@@ -1,5 +1,6 @@
 import { exec, spawn } from 'child_process';
 import { upscaleImage, upscaleEnabled } from './upscale.js';
+import { defocusImage, defocusEnabled } from './textDefocus.js';
 import { promisify } from 'util';
 import fs from 'fs';
 import os from 'os';
@@ -778,6 +779,20 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
   // more than 1.6x. So the pass earns its time on a final render and not on a draft,
   // which is also the shape of the workflow: iterate in draft, pay once at the end.
   const isPreview = project?.quality === 'draft' || project?.preview_mode || false;
+  //
+  // Defocus BEFORE the upscale, which is measured rather than assumed. Real-ESRGAN takes
+  // a text region from detail 43.7 to 735.2 — soft mush becomes hard-edged not-quite-
+  // letters — so blurring afterwards means paying seven minutes of GPU to sharpen
+  // lettering and then throwing that work away. Blurring first hands the upscaler a
+  // region with no glyph structure left to sharpen, and it spends its time on the rest
+  // of the frame instead. Ordering the other way round also has to blur harder to cover
+  // the same content, because by then the text occupies 4x the pixels.
+  if (defocusEnabled() && !isPreview) {
+    if (imagePath) imagePath = await defocusImage(imagePath);
+    if ((scene as any)?.background_path) {
+      (scene as any).background_path = await defocusImage((scene as any).background_path);
+    }
+  }
   if (upscaleEnabled() && !isPreview) {
     if (imagePath) imagePath = await upscaleImage(imagePath);
     if ((scene as any)?.background_path) {
