@@ -994,6 +994,18 @@ export async function runPipeline(project_id: string, options?: {
         // Stage 2 scenes (have a background — prompt or pre-supplied URL) spawn rembg + Metro engine —
         // running those concurrently starves CPU. Force sequential for any batch
         // that contains at least one Stage 2 scene.
+        //
+        // ensureBackgroundPrompt is what actually decides this, and it runs inside
+        // processSingleScene — i.e. AFTER this test. So a pipeline-created project,
+        // where every scene gets its background_prompt derived from the visual prompt,
+        // read as "no Stage 2 scenes here" and went down the parallel branch. Harmless
+        // until UPSCALE_IMAGES was switched on: three Real-ESRGAN processes then ran at
+        // once, each ~2.5GB, and every one of them blew past UPSCALE_TIMEOUT_MS. Measured
+        // on a 7-scene episode — 12 of 13 upscales lost to timeouts and ~62 minutes of a
+        // 76-minute render spent producing nothing, against 151.7s for the one that
+        // happened to run alone. Deriving it here first makes the test see the truth;
+        // the call in processSingleScene then finds the field set and returns false.
+        for (const s of batch) ensureBackgroundPrompt(s);
         const hasStage2 = batch.some(s => (s as any).background_prompt || (s as any).background_url);
         if (hasStage2) {
           console.log('[Orchestrator] Stage 2 batch — processing sequentially to avoid CPU starvation');

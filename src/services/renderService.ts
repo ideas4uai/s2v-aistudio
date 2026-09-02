@@ -173,6 +173,30 @@ export function isFreshOutput(output: string, ...sources: (string | undefined | 
   });
 }
 
+/**
+ * Runs one still-processing pass (defocus, upscale) over a scene's image and background,
+ * treating them as one file when they are one file.
+ *
+ * On every unified/NARRATOR scene the orchestrator adopts the background as the whole
+ * frame, so both fields hold the same path. Applying the pass to each field separately
+ * processed that still twice and kept only the first result — and since the unified
+ * branch animates `imagePath`, a pass that happened to succeed on the second call was
+ * written to disk and then dropped. Resolving once and mirroring removes both the wasted
+ * work and the coin-flip about whether the work survives.
+ */
+export async function applyStillPass(
+  imagePath: string | undefined,
+  backgroundPath: string | undefined,
+  pass: (p: string) => Promise<string>,
+): Promise<{ imagePath?: string; backgroundPath?: string }> {
+  const sharesStill = !!backgroundPath && backgroundPath === imagePath;
+  const nextImage = imagePath ? await pass(imagePath) : imagePath;
+  const nextBackground = sharesStill ? nextImage
+    : backgroundPath ? await pass(backgroundPath)
+    : backgroundPath;
+  return { imagePath: nextImage, backgroundPath: nextBackground };
+}
+
 /** 9:16 projects: explicit aspect setting, universe shorts, or story episodes. */
 export const isShortsProject = (project: any): boolean =>
   project?.settings?.aspectRatio === '9:16'
@@ -787,18 +811,23 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
   // region with no glyph structure left to sharpen, and it spends its time on the rest
   // of the frame instead. Ordering the other way round also has to blur harder to cover
   // the same content, because by then the text occupies 4x the pixels.
-  if (defocusEnabled() && !isPreview) {
-    if (imagePath) imagePath = await defocusImage(imagePath);
-    if ((scene as any)?.background_path) {
-      (scene as any).background_path = await defocusImage((scene as any).background_path);
-    }
-  }
-  if (upscaleEnabled() && !isPreview) {
-    if (imagePath) imagePath = await upscaleImage(imagePath);
-    if ((scene as any)?.background_path) {
-      (scene as any).background_path = await upscaleImage((scene as any).background_path);
-    }
-  }
+  //
+  // On every unified/NARRATOR scene imagePath and background_path are the SAME file:
+  // the orchestrator adopts the background as the whole frame. Running each pass over
+  // both fields therefore processed one still twice, and only the first result was
+  // kept — the second was assigned to background_path, which the unified branch below
+  // never reads (it animates imagePath). Measured on a 7-scene episode: the upscale
+  // happened to succeed on the imagePath call and reached the render, while the one
+  // defocus that fired succeeded on the background_path call, wrote its _df.png, and
+  // was silently dropped. Whether a pass landed came down to which of two identical
+  // calls won. Resolve once per distinct file, then mirror the answer to both fields.
+  const runPass = async (pass: (p: string) => Promise<string>) => {
+    const r = await applyStillPass(imagePath, (scene as any)?.background_path, pass);
+    imagePath = r.imagePath as string;
+    if (scene) (scene as any).background_path = r.backgroundPath;
+  };
+  if (defocusEnabled() && !isPreview) await runPass(defocusImage);
+  if (upscaleEnabled() && !isPreview) await runPass(upscaleImage);
 
   // Same staleness rule as the multi-frame path: a regenerated still must invalidate the
   // clip built from it, or an image edit never reaches the video. The motion lives in the
