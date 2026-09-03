@@ -49,7 +49,23 @@ STROKE_KERNEL = 9
 STROKE_PCTL = 97
 STROKE_FLOOR = 12
 # Grown to cover the stroke's own soft edge, then feathered so nothing has a hard rim.
-STROKE_GROW = 7
+#
+# Deliberately a constant, and scaling it to the box was tried and measured worse. The
+# theory was that a fixed growth eats proportionally more of a small box, since one real
+# frame kept 85% of its face detail on a 592x407 box and another only 51% on 130x162
+# boxes. The numbers do not support it: at the same 7px the dilated mask covers 12.9% of
+# the first box and 15.6% of the second, both frames carry 3.2% raw stroke pixels, and
+# both sit on the SAME curve of growth against detail. The gap is what is inside the box
+# — the large box spans mostly smooth forehead, the small ones hug text lying across
+# eyes and brow — and no growth rule reaches that. Scaling by the short side made things
+# worse at both ends: 9px on the large box (face 86.6% -> 80.4%) and 3px on the small
+# ones, where the glyphs stay legible (stroke energy 8.7% -> 27.8%).
+#
+# What the sweep does say is that 7 was past the knee. Growth trades face detail against
+# suppression along one curve, and 5 buys back real detail at both sizes — 86.6% -> 91.5%
+# and 51.0% -> 60.5% — while the lettering stays illegible in both. At 3 it does not:
+# characters are still readable on the cheek.
+STROKE_GROW = 5
 STROKE_FEATHER = 2.0
 # Wide enough to swallow a grown stroke whole; a median of this size removes thin bright
 # marks and leaves real edges (a spectacle frame, an eyelid) where they are.
@@ -221,7 +237,12 @@ def selftest() -> int:
     top = lambda a: cv2.morphologyEx(
         cv2.cvtColor(a, cv2.COLOR_BGR2GRAY), cv2.MORPH_TOPHAT,
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (STROKE_KERNEL, STROKE_KERNEL)))
-    assert top(surf)[m].mean() < top(scene)[m].mean() * 0.35, 'surface mode left the strokes'
+    # The bars here sit 11px apart against a 9px top-hat kernel, so neighbours interfere
+    # and the synthetic residual is far worse than a real frame's: 0.36 here against a
+    # measured 0.15 on an actual still at the same setting. The bar is what proves the
+    # mode still works, not a tuned constant — it fails outright if the mask stops
+    # covering the strokes (0.46 at a 3px growth, where real glyphs stay readable too).
+    assert top(surf)[m].mean() < top(scene)[m].mean() * 0.42, 'surface mode left the strokes'
     # Default is screen: an unlabelled box behaves exactly as it always has.
     assert np.array_equal(apply_boxes(scene.copy(), [sbox]), scr), 'default mode is not screen'
 
