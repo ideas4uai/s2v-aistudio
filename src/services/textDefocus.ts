@@ -29,12 +29,16 @@ import { isFreshOutput } from './renderService.js';
 export const defocusEnabled = (env: NodeJS.ProcessEnv = process.env): boolean =>
   env.DEFOCUS_FAKE_TEXT === 'true';
 
-/** Detection passes unioned per still. See detectTextRegions for why this is 2. */
-const PASSES = Number(process.env.DEFOCUS_PASSES || '2');
+/** Detection passes unioned per still. See detectTextRegions for why this is 4. */
+const PASSES = Number(process.env.DEFOCUS_PASSES || '4');
 
 /** Where the defocused copy of `src` lives. Kept beside it so one delete clears both. */
 export const defocusedPathFor = (src: string): string =>
   path.join(path.dirname(src), `${path.basename(src, path.extname(src))}_df.png`);
+
+/** Where the recorded verdict for `src` lives — written even when nothing was found. */
+export const detectionNotePath = (src: string): string =>
+  path.join(path.dirname(src), `${path.basename(src, path.extname(src))}_df.json`);
 
 /** A box as the detector reports it: normalised 0-1000, Gemini's own convention. */
 export interface TextBox { ymin: number; xmin: number; ymax: number; xmax: number }
@@ -72,30 +76,45 @@ export async function detectTextRegions(
   imagePath: string,
   size: { width: number; height: number },
   passes = PASSES,
-): Promise<{ boxes: number[][]; labels: string[]; seconds: number }> {
+): Promise<{ boxes: number[][]; labels: string[]; complete: boolean; seconds: number }> {
   const t0 = Date.now();
-  // Two passes, unioned. The strict legibility bar above is what keeps a rack of
+  // Four passes, unioned. The strict legibility bar above is what keeps a rack of
   // indicator LEDs from being read as rows of characters, and it holds across repeated
-  // passes -- but at that bar a single pass also misses real text about a quarter of the
-  // time, and measured over three passes each of those misses was sampling noise rather
-  // than a stable judgement. Seven more seconds against a 430s upscale is not a cost
-  // worth optimising, and boxes that overlap simply soften the same pixels twice.
+  // passes -- but at that bar one pass is far less repeatable than first estimated, so
+  // two of them were not enough. Head to head on a real failing still (fake code on a
+  // monitor, in the corners and dim), 8 trials each: 2 passes fired 3/8, 4 passes fired
+  // 6/8. That 2-pass number is exactly what shipped -- two calls on the same file inside
+  // one render, one clearing it and one catching it.
+  //
+  // Do not read the union as independent trials; it is not. Single passes measured 3/8
+  // on their own, which would predict 85% for four of them rather than the 75% observed.
+  //
+  // Four is also not a guess about cost. That render paid 2 calls x 2 passes per still
+  // because the caller processed each still twice; the call site now resolves a shared
+  // still once, so 1 call x 4 passes is the SAME vision spend as before, and it is paid
+  // once ever rather than once per render now the verdict is recorded. Going deeper is
+  // tempting -- false positives measured 0/8 on the server-rack LED plate at both depths
+  // -- but a hit is not free: the one box that did fire covered half the subject's face
+  // as well as the screen. So recall is bought only as far as the old budget pays for it.
+  // Boxes that overlap simply soften the same pixels twice. DEFOCUS_PASSES tunes it.
   const boxes: number[][] = [];
   const labels: string[] = [];
+  let complete = true;
   for (let i = 0; i < Math.max(1, passes); i++) {
     const found = await detectOnce(imagePath, size);
+    if (!found.ok) complete = false;
     boxes.push(...found.boxes);
     labels.push(...found.labels);
   }
-  return { boxes, labels, seconds: (Date.now() - t0) / 1000 };
+  return { boxes, labels, complete, seconds: (Date.now() - t0) / 1000 };
 }
 
 /** One detection call. Returns [] on any failure, which leaves the still as it is. */
 async function detectOnce(
   imagePath: string,
   size: { width: number; height: number },
-): Promise<{ boxes: number[][]; labels: string[] }> {
-  const empty = { boxes: [] as number[][], labels: [] as string[] };
+): Promise<{ boxes: number[][]; labels: string[]; ok: boolean }> {
+  const empty = { boxes: [] as number[][], labels: [] as string[], ok: false };
   try {
     const b64 = fs.readFileSync(imagePath).toString('base64');
     const raw = await AIService.analyzeImage(b64, DETECT_PROMPT, { json: true });
@@ -119,7 +138,7 @@ async function detectOnce(
       boxes.push(px);
       labels.push(String(r?.what ?? '').slice(0, 60));
     }
-    return { boxes, labels };
+    return { boxes, labels, ok: true };
   } catch (e: any) {
     console.warn('[Defocus] detection skipped:', String(e?.message).slice(0, 120));
     return empty;
@@ -138,28 +157,64 @@ export async function defocusImage(
   if (!defocusEnabled(env) || !src || !fs.existsSync(src)) return src;
 
   const out = defocusedPathFor(src);
-  // Same mtime rule as the upscale: the vision call is paid once per still, not once
-  // per render, and regenerating the image invalidates the copy.
+  // A softened copy that is newer than its source is the whole answer already.
   if (isFreshOutput(out, src)) return out;
 
   try {
-    const size = opts.size || (await imageSize(src));
-    if (!size) return src;
-    const { boxes, labels, seconds } = await detectTextRegions(src, size);
-    if (!boxes.length) {
-      console.log(`[Defocus] no text found in ${path.basename(src)} (${seconds.toFixed(1)}s)`);
-      return src;
+    // The verdict is decided once per still and written down, INCLUDING "nothing here".
+    // Before this, a still the detector cleared produced no file at all, so the mtime
+    // check below could never hit for it: every render paid the vision call again, and
+    // since a fresh verdict is not fully repeatable it could come back different each
+    // time. Recording it makes a given still answer the same way on every later render,
+    // and drops the repeat cost to a file read. Regenerating the still invalidates it,
+    // same mtime rule the upscale uses.
+    let found = readVerdict(src);
+    if (!found) {
+      const size = opts.size || (await imageSize(src));
+      if (!size) return src;
+      const { boxes, labels, complete, seconds } = await detectTextRegions(src, size);
+      found = { boxes, labels };
+      // Only a verdict every pass actually returned is worth remembering. A dropped
+      // connection makes detectOnce fail open with no boxes, which is the right call
+      // for this render — but recording it would freeze "nothing here" onto the still
+      // for good. Caught in testing: one ECONNRESET mid-run cached an empty verdict for
+      // a frame that plainly carries fake code.
+      if (complete) writeVerdict(src, found);
+      console.log(`[Defocus] ${boxes.length ? `found ${boxes.length} region(s)` : 'no text found'}`
+        + ` in ${path.basename(src)} (${seconds.toFixed(1)}s`
+        + `${complete ? '' : ', incomplete — not recorded'})`);
     }
-    const note = await runWorker(src, out, boxes);
+    if (!found.boxes.length) return src;
+
+    const note = await runWorker(src, out, found.boxes);
     if (note?.ok && fs.existsSync(out)) {
-      console.log(`[Defocus] softened ${boxes.length} region(s) in ${path.basename(src)}` +
-        ` (${seconds.toFixed(1)}s detect) — ${labels.join('; ').slice(0, 120)}`);
+      console.log(`[Defocus] softened ${found.boxes.length} region(s) in ${path.basename(src)}` +
+        ` — ${found.labels.join('; ').slice(0, 120)}`);
       return out;
     }
   } catch (e: any) {
     console.warn('[Defocus] skipped:', String(e?.message).slice(0, 120));
   }
   return src;
+}
+
+/** The recorded verdict for `src`, or null when there is none current for it. */
+export function readVerdict(src: string): { boxes: number[][]; labels: string[] } | null {
+  const note = detectionNotePath(src);
+  if (!isFreshOutput(note, src)) return null;
+  try {
+    const j = JSON.parse(fs.readFileSync(note, 'utf8'));
+    return Array.isArray(j?.boxes) ? { boxes: j.boxes, labels: j.labels ?? [] } : null;
+  } catch {
+    return null; // an unreadable note just means detecting again
+  }
+}
+
+/** Records a verdict beside the still. Never throws: this is a cache, not the answer. */
+function writeVerdict(src: string, v: { boxes: number[][]; labels: string[] }): void {
+  try {
+    fs.writeFileSync(detectionNotePath(src), JSON.stringify(v));
+  } catch { /* a render that cannot cache still renders */ }
 }
 
 /** Width and height of a PNG/JPEG, read via the worker so nothing new is imported. */

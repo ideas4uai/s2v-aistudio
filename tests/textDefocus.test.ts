@@ -3,7 +3,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
-import { defocusImage, defocusEnabled, defocusedPathFor } from '../src/services/textDefocus.js';
+import {
+  defocusImage, defocusEnabled, defocusedPathFor, detectionNotePath, readVerdict,
+} from '../src/services/textDefocus.js';
+import { applyStillPass } from '../src/services/renderService.js';
 
 let dir: string;
 beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'defocus-')); });
@@ -47,6 +50,116 @@ describe('when the defocus pass runs at all', () => {
     await expect(defocusImage(src, { env: { DEFOCUS_FAKE_TEXT: 'true' } as any })).resolves.toBe(out);
     // Untouched: the detection call is paid once per still, not once per render.
     expect(fs.statSync(out).mtimeMs).toBe(before);
+  });
+});
+
+describe('the recorded verdict', () => {
+  it('keeps the note beside the still, next to the softened copy', () => {
+    expect(detectionNotePath('/a/b/scene_3.png')).toBe(path.join('/a/b', 'scene_3_df.json'));
+  });
+
+  // The note is what makes a still answer the same way twice. Detection is only ~38%
+  // likely to fire per pass on a hard case, so before this the same file could be
+  // cleared by one call and caught by the next inside a single render.
+  it('answers from a current note instead of detecting again', async () => {
+    for (const boxes of [[], [[10, 10, 200, 120]]]) {
+      const src = still(`s${boxes.length}.png`);
+      const note = detectionNotePath(src);
+      fs.writeFileSync(note, JSON.stringify({ boxes, labels: ['recorded'] }));
+      const before = fs.statSync(note).mtimeMs;
+      await defocusImage(src, { env: { DEFOCUS_FAKE_TEXT: 'true' } as any });
+      // Detecting always rewrites the note, so an untouched note means it was believed.
+      expect(fs.statSync(note).mtimeMs).toBe(before);
+    }
+  });
+
+  it('ignores a note older than the still it describes', () => {
+    const src = still();
+    fs.writeFileSync(detectionNotePath(src), JSON.stringify({ boxes: [], labels: [] }));
+    expect(readVerdict(src)).toEqual({ boxes: [], labels: [] });
+    // Regenerating the image has to invalidate the verdict, or an image edit is
+    // judged on what the previous image contained.
+    const later = new Date(Date.now() + 60_000);
+    fs.utimesSync(src, later, later);
+    expect(readVerdict(src)).toBeNull();
+  });
+
+  it('treats an unreadable note as no note rather than failing the render', () => {
+    const src = still();
+    fs.writeFileSync(detectionNotePath(src), '{ not json');
+    expect(readVerdict(src)).toBeNull();
+  });
+
+  it('records nothing when a pass failed rather than freezing a degraded answer', () => {
+    const src = fs.readFileSync(path.join(process.cwd(), 'src/services/textDefocus.ts'), 'utf8');
+    // detectOnce fails open with no boxes, which is right for the render in front of it
+    // and wrong to remember: one ECONNRESET would clear a frame for good.
+    expect(src).toContain('if (complete) writeVerdict(src, found);');
+    expect(src).toMatch(/if \(!found\.ok\) complete = false;/);
+  });
+
+  it('unions enough passes to be worth trusting', () => {
+    const src = fs.readFileSync(path.join(process.cwd(), 'src/services/textDefocus.ts'), 'utf8');
+    // Measured head to head on a real failing still, 8 trials each: 2 passes fired
+    // 3/8, 4 passes fired 6/8 — same spend, once the caller stopped double-paying.
+    expect(src).toMatch(/DEFOCUS_PASSES \|\| '4'/);
+  });
+});
+
+describe('a still that is both the image and the background', () => {
+  const shout = async (p: string) => `${p}!`;
+
+  it('processes a shared still once and gives both fields the result', async () => {
+    const calls: string[] = [];
+    const pass = async (p: string) => { calls.push(p); return `${p}!`; };
+    const r = await applyStillPass('/t/a.png', '/t/a.png', pass);
+    // Two calls here is what let a successful pass be written and then discarded.
+    expect(calls).toEqual(['/t/a.png']);
+    expect(r.imagePath).toBe('/t/a.png!');
+    expect(r.backgroundPath).toBe('/t/a.png!');
+  });
+
+  it('still processes both when they are genuinely different files', async () => {
+    const calls: string[] = [];
+    const pass = async (p: string) => { calls.push(p); return `${p}!`; };
+    const r = await applyStillPass('/t/a.png', '/t/b.png', pass);
+    expect(calls).toEqual(['/t/a.png', '/t/b.png']);
+    expect(r.imagePath).toBe('/t/a.png!');
+    expect(r.backgroundPath).toBe('/t/b.png!');
+  });
+
+  it('handles a scene with only one of the two', async () => {
+    expect(await applyStillPass('/t/a.png', undefined, shout))
+      .toEqual({ imagePath: '/t/a.png!', backgroundPath: undefined });
+    expect(await applyStillPass(undefined, '/t/b.png', shout))
+      .toEqual({ imagePath: undefined, backgroundPath: '/t/b.png!' });
+  });
+});
+
+describe('when a scene batch runs in parallel', () => {
+  const orch = fs.readFileSync(
+    path.join(process.cwd(), 'src/pipeline/orchestrator.ts'), 'utf8');
+
+  it('derives the background prompt before deciding, not after', () => {
+    // The test for a Stage 2 batch reads background_prompt, which ensureBackgroundPrompt
+    // fills in — but that ran inside processSingleScene, after this decision. So every
+    // pipeline-created project took the parallel branch and ran three Real-ESRGAN
+    // processes at once, and all three blew past UPSCALE_TIMEOUT_MS.
+    const derive = orch.indexOf('for (const s of batch) ensureBackgroundPrompt(s);');
+    const decide = orch.indexOf('const hasStage2 = batch.some(');
+    expect(derive).toBeGreaterThan(-1);
+    expect(decide).toBeGreaterThan(-1);
+    expect(derive).toBeLessThan(decide);
+  });
+
+  it('agrees with what ensureBackgroundPrompt actually does', async () => {
+    const { ensureBackgroundPrompt } = await import('../src/pipeline/orchestrator.js');
+    const scene: any = { visuals: [{ prompt: 'a street at dusk' }] };
+    expect(scene.background_prompt || scene.background_url).toBeFalsy();
+    ensureBackgroundPrompt(scene);
+    // Which is the condition the batch guard tests — so this scene is a Stage 2 scene
+    // and its batch must not fan out.
+    expect(scene.background_prompt).toBeTruthy();
   });
 });
 
