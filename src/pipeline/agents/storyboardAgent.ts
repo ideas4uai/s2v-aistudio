@@ -7,6 +7,11 @@ import { secondsForWords, countWords } from '../../utils/targetLength.js';
 
 const SHOT_TYPES = ['wide shot', 'medium shot', 'close-up', 'detail shot', 'over-shoulder shot'];
 
+// Framing a script states for itself. Matched against the intended shot so an explicit
+// direction outranks the positional rotation, which knows nothing about the beat.
+export const SCRIPT_FRAMING =
+  /\b(face[ -]?cam|selfie|talking head|reaction shot|extreme close[ -]?up|close[ -]?up|wide shot|medium shot|detail shot|insert shot|two[ -]shot|over[ -](?:the[ -])?shoulder(?: shot)?|POV|point of view|first[ -]person|aerial|overhead|bird'?s[ -]eye|top[ -]down|macro)\b/i;
+
 // scene_type values the render engines actually understand. Anything else
 // ('hook', 'build', 'cta', legacy junk) falls back to 'default' — the same
 // particle/transition preset those values already resolved to.
@@ -145,17 +150,26 @@ export const StoryboardAgent = {
       : '';
 
     const expandedResults = await Promise.all(drafts.map(async (draft, idx) => {
-      const shotType = SHOT_TYPES[idx % SHOT_TYPES.length];
-
       // The Scriptwriter already described the shot it intended. Dropping it
       // meant a wordless beat (a reaction, a visual punchline) expanded from an
       // empty narration and lost whatever the story put on screen.
       const intendedShot = String(draft.visual ?? '').trim();
 
+      // The rotation is the fallback for a beat that says nothing about framing, not a
+      // quota to fill. Applied unconditionally it outranked the script: a real 11-scene
+      // episode asked for a "Face-cam reaction" on scene 10, index 9 landed on
+      // 'over-shoulder shot', and the prompt came back as the back of a head. On that
+      // episode the rotation dictated the opening words of all 11 prompts — every one
+      // of them opened with the shot type its index happened to name.
+      const scriptFraming = intendedShot.match(SCRIPT_FRAMING)?.[0];
+      const shotType = scriptFraming
+        ? `${scriptFraming} — the script fixes the framing, keep it`
+        : SHOT_TYPES[idx % SHOT_TYPES.length];
+
       const expansionPrompt = `You are a visual director creating image prompts for an AI image generator.
 
 TOPIC: ${project.topic}
-NARRATION (what is being spoken): "${draft.narration}"${intendedShot ? `\nINTENDED SHOT (from the script — this is what must be on screen): "${intendedShot}"` : ''}
+NARRATION (what is being spoken): "${draft.narration}"${intendedShot ? `\nINTENDED SHOT (from the script — the beat you must deliver, and the framing if it names one): "${intendedShot}"` : ''}
 SHOT TYPE FOR THIS SCENE: ${shotType}
 
 Your job: Write a single image generation prompt that shows EXACTLY what the narration and the intended shot describe.
@@ -171,6 +185,9 @@ RULES:
         : 'Do NOT mention any character names or story archetypes.'}
 7. NEVER include readable text, numbers, words, logos, charts with figures, or signage in the image — rendered text gets clipped by the vertical crop and fights the burned-in captions. Convey data visually (scale, glow, contrast) instead of with written figures.
 8. A screen is never the answer, and this does not depend on how abstract the narration is. Do NOT make a monitor, phone, dashboard, hologram, terminal or floating interface the subject of the shot, and never describe code, text or a UI on one. Those come back as panels of garbled lettering, which is the most obvious mark of a generated image. The rule binds hardest when the narration names software directly ("the stack trace", "the test suite", "the code", "the dashboard") — answer those with the person, the hand, the room, or a physical object that stands in for the idea. A device may sit in the frame as an object — dark, glare-washed, or well out of focus — but never as the thing being read.
+9. When the INTENDED SHOT names a screen, a report, a spec or a UI ("error screen", "test report with green checks", "AI reading the spec"), rule 8 still binds — but do not answer it with atmosphere. Keep the EVENT and stage it as its human or physical consequence, in the SAME place this episode has already established: the person's face at the moment the failure lands, the hand that stops moving, the machine the failure is happening to, the room going still. Three answers are always wrong here: an empty room lit red, a floating abstraction (glowing orbs, "data structures", sensor arrays, energy streams), and a prop borrowed from another world — a printed page in a sci-fi episode reads as a continuity error, not a report. An empty red room is not a bug being found; a person seeing one is.
+10. Name what is physically in the frame. Every noun must be something a camera could photograph. "Abstract data structures", "conceptual pathways", "a glowing entity", "dynamic algorithms materialising" are not subjects — they are a way of avoiding the beat, and they produce the same interchangeable blue haze for every scene in the video.
+11. Keep the people. If the narration or the INTENDED SHOT puts a person in the beat — "you at the laptop", "I gave it my job", a reaction — that person stays in the frame. Making a shot concrete never means replacing them with a machine: a robot arm is not a stand-in for the human whose job this is, and a story about a person handing work away has to show the person. When the beat is a result being delivered (a report, a verdict, a passing run), the shot is someone receiving it, not the document by itself.
 
 FEW-SHOT EXAMPLES:
 Narration: "Instagram has 2 billion daily users"
@@ -212,7 +229,7 @@ Return ONLY the image prompt. No explanation, no preamble, no quotes.`;
           const multiFramePrompt = `You are a visual director creating image prompts for an AI image generator.
 
 TOPIC: ${project.topic}
-NARRATION (what is being spoken): "${draft.narration}"${intendedShot ? `\nINTENDED SHOT (from the script — this is what must be on screen): "${intendedShot}"` : ''}
+NARRATION (what is being spoken): "${draft.narration}"${intendedShot ? `\nINTENDED SHOT (from the script — the beat you must deliver, and the framing if it names one): "${intendedShot}"` : ''}
 SHOT TYPE FOR THIS SCENE: ${shotType}
 ART STYLE (locked): ${artStyle}
 ${characterContext ? `\nCHARACTER VISUAL RULES (locked — never redesign):\n${characterContext}\n` : ''}
