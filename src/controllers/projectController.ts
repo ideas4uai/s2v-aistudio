@@ -286,7 +286,12 @@ export async function generateScenes(req: Request, res: Response) {
     ### Format Requirement:
     Output valid JSON with "scenes" array. Each scene needs:
     - narration: the exact words spoken
-    - visual: a descriptive cinematic prompt
+    - visual: what is on screen for this beat. If the script already says — a Visual
+      column in a table, a bracketed stage direction, a "Visual:" line — copy that
+      direction VERBATIM and add nothing. It is the author's shot, not a starting
+      point: paraphrasing "Face-cam reaction" into your own words is how an explicit
+      direction turns into a generic desk shot. Write your own description only for a
+      beat the script leaves silent.
     - duration: seconds (3-7 range)
     
     Example:
