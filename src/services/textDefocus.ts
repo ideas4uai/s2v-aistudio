@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
+import { killOnAbort } from './spawnAbort.js';
 import { AIService } from './aiService.js';
 import { isFreshOutput } from './renderService.js';
 
@@ -46,7 +47,7 @@ export interface TextBox { ymin: number; xmin: number; ymax: number; xmax: numbe
 const DETECT_PROMPT = `Find every region of this image where written characters are ACTUALLY LEGIBLE.
 
 Return ONLY JSON, no prose and no markdown fence:
-{"regions": [{"ymin": 0, "xmin": 0, "ymax": 0, "xmax": 0, "what": "short description"}]}
+{"regions": [{"ymin": 0, "xmin": 0, "ymax": 0, "xmax": 0, "what": "short description", "on": "screen"}]}
 
 Coordinates are normalised 0-1000 with the origin at the top-left.
 
@@ -64,6 +65,13 @@ they resemble rows of characters; keyboard key legends; blurred, distant or out-
 where you can tell something is written but cannot resolve the characters; any surface with no
 writing on it. A region you would describe as "probably text" does not qualify.
 
+Set "on" to what the characters are physically written on, which decides how the region is
+treated: "screen" when they sit on a display, panel, sign or printed page -- a surface whose
+whole job is to carry the lettering; "surface" when they are projected, reflected or overlaid
+onto something else, above all a person's face or body. Softening a screen costs nothing
+because the screen is only its content; softening a face costs the face. If you are unsure,
+answer "screen".
+
 Never bound individual characters. If nothing is legible anywhere, return {"regions": []}.`;
 
 /**
@@ -76,7 +84,7 @@ export async function detectTextRegions(
   imagePath: string,
   size: { width: number; height: number },
   passes = PASSES,
-): Promise<{ boxes: number[][]; labels: string[]; complete: boolean; seconds: number }> {
+): Promise<{ boxes: number[][]; labels: string[]; modes: string[]; complete: boolean; seconds: number }> {
   const t0 = Date.now();
   // Four passes, unioned. The strict legibility bar above is what keeps a rack of
   // indicator LEDs from being read as rows of characters, and it holds across repeated
@@ -99,22 +107,24 @@ export async function detectTextRegions(
   // Boxes that overlap simply soften the same pixels twice. DEFOCUS_PASSES tunes it.
   const boxes: number[][] = [];
   const labels: string[] = [];
+  const modes: string[] = [];
   let complete = true;
   for (let i = 0; i < Math.max(1, passes); i++) {
     const found = await detectOnce(imagePath, size);
     if (!found.ok) complete = false;
     boxes.push(...found.boxes);
     labels.push(...found.labels);
+    modes.push(...found.modes);
   }
-  return { boxes, labels, complete, seconds: (Date.now() - t0) / 1000 };
+  return { boxes, labels, modes, complete, seconds: (Date.now() - t0) / 1000 };
 }
 
 /** One detection call. Returns [] on any failure, which leaves the still as it is. */
 async function detectOnce(
   imagePath: string,
   size: { width: number; height: number },
-): Promise<{ boxes: number[][]; labels: string[]; ok: boolean }> {
-  const empty = { boxes: [] as number[][], labels: [] as string[], ok: false };
+): Promise<{ boxes: number[][]; labels: string[]; modes: string[]; ok: boolean }> {
+  const empty = { boxes: [] as number[][], labels: [] as string[], modes: [] as string[], ok: false };
   try {
     const b64 = fs.readFileSync(imagePath).toString('base64');
     const raw = await AIService.analyzeImage(b64, DETECT_PROMPT, { json: true });
@@ -122,6 +132,7 @@ async function detectOnce(
     const regions: any[] = Array.isArray(parsed?.regions) ? parsed.regions : [];
     const boxes: number[][] = [];
     const labels: string[] = [];
+    const modes: string[] = [];
     for (const r of regions) {
       const y0 = Number(r?.ymin), x0 = Number(r?.xmin), y1 = Number(r?.ymax), x1 = Number(r?.xmax);
       if (![y0, x0, y1, x1].every((n) => Number.isFinite(n))) continue;
@@ -137,8 +148,11 @@ async function detectOnce(
       if (px[2] - px[0] < 8 || px[3] - px[1] < 8 || area > 0.6) continue;
       boxes.push(px);
       labels.push(String(r?.what ?? '').slice(0, 60));
+      // Anything but an explicit 'surface' is treated as a screen, which is the
+      // unchanged behaviour and the safe direction.
+      modes.push(String(r?.on ?? '').toLowerCase() === 'surface' ? 'surface' : 'screen');
     }
-    return { boxes, labels, ok: true };
+    return { boxes, labels, modes, ok: true };
   } catch (e: any) {
     console.warn('[Defocus] detection skipped:', String(e?.message).slice(0, 120));
     return empty;
@@ -151,7 +165,7 @@ async function detectOnce(
  */
 export async function defocusImage(
   src: string,
-  opts: { env?: NodeJS.ProcessEnv; size?: { width: number; height: number } } = {},
+  opts: { env?: NodeJS.ProcessEnv; size?: { width: number; height: number }; signal?: AbortSignal } = {},
 ): Promise<string> {
   const env = opts.env || process.env;
   if (!defocusEnabled(env) || !src || !fs.existsSync(src)) return src;
@@ -170,10 +184,10 @@ export async function defocusImage(
     // same mtime rule the upscale uses.
     let found = readVerdict(src);
     if (!found) {
-      const size = opts.size || (await imageSize(src));
+      const size = opts.size || (await imageSize(src, opts.signal));
       if (!size) return src;
-      const { boxes, labels, complete, seconds } = await detectTextRegions(src, size);
-      found = { boxes, labels };
+      const { boxes, labels, modes, complete, seconds } = await detectTextRegions(src, size);
+      found = { boxes, labels, modes };
       // Only a verdict every pass actually returned is worth remembering. A dropped
       // connection makes detectOnce fail open with no boxes, which is the right call
       // for this render — but recording it would freeze "nothing here" onto the still
@@ -186,7 +200,7 @@ export async function defocusImage(
     }
     if (!found.boxes.length) return src;
 
-    const note = await runWorker(src, out, found.boxes);
+    const note = await runWorker(src, out, found.boxes, found.modes ?? [], opts.signal);
     if (note?.ok && fs.existsSync(out)) {
       console.log(`[Defocus] softened ${found.boxes.length} region(s) in ${path.basename(src)}` +
         ` — ${found.labels.join('; ').slice(0, 120)}`);
@@ -199,58 +213,64 @@ export async function defocusImage(
 }
 
 /** The recorded verdict for `src`, or null when there is none current for it. */
-export function readVerdict(src: string): { boxes: number[][]; labels: string[] } | null {
+export function readVerdict(src: string): { boxes: number[][]; labels: string[]; modes: string[] } | null {
   const note = detectionNotePath(src);
   if (!isFreshOutput(note, src)) return null;
   try {
     const j = JSON.parse(fs.readFileSync(note, 'utf8'));
-    return Array.isArray(j?.boxes) ? { boxes: j.boxes, labels: j.labels ?? [] } : null;
+    // A note written before modes existed reads as all-screen, which is the treatment
+    // it actually got, so an old cache stays consistent with the frame beside it.
+    return Array.isArray(j?.boxes) ? { boxes: j.boxes, labels: j.labels ?? [], modes: j.modes ?? [] } : null;
   } catch {
     return null; // an unreadable note just means detecting again
   }
 }
 
 /** Records a verdict beside the still. Never throws: this is a cache, not the answer. */
-function writeVerdict(src: string, v: { boxes: number[][]; labels: string[] }): void {
+function writeVerdict(src: string, v: { boxes: number[][]; labels: string[]; modes: string[] }): void {
   try {
     fs.writeFileSync(detectionNotePath(src), JSON.stringify(v));
   } catch { /* a render that cannot cache still renders */ }
 }
 
 /** Width and height of a PNG/JPEG, read via the worker so nothing new is imported. */
-async function imageSize(src: string): Promise<{ width: number; height: number } | null> {
+async function imageSize(src: string, signal?: AbortSignal): Promise<{ width: number; height: number } | null> {
   return new Promise((resolve) => {
     const proc = spawn('py', ['-c',
       `import cv2,json,sys;i=cv2.imread(sys.argv[1]);print(json.dumps({'width':i.shape[1],'height':i.shape[0]} if i is not None else {}))`,
       src]);
     let out = '';
     const timer = setTimeout(() => { proc.kill(); resolve(null); }, 20000);
+    const stopWatching = killOnAbort(proc, signal);
     proc.stdout.on('data', (d) => { out += d.toString(); });
     proc.on('close', () => {
       clearTimeout(timer);
+      stopWatching();
       try {
         const j = JSON.parse(out.trim());
         resolve(j?.width && j?.height ? j : null);
       } catch { resolve(null); }
     });
-    proc.on('error', () => { clearTimeout(timer); resolve(null); });
+    proc.on('error', () => { clearTimeout(timer); stopWatching(); resolve(null); });
   });
 }
 
-function runWorker(src: string, dst: string, boxes: number[][]): Promise<any> {
+function runWorker(src: string, dst: string, boxes: number[][], modes: string[], signal?: AbortSignal): Promise<any> {
   return new Promise((resolve) => {
     const script = path.join(process.cwd(), 'src/scripts/text_defocus.py');
-    const proc = spawn('py', [script, src, dst, '--boxes', JSON.stringify(boxes)]);
+    const proc = spawn('py', [script, src, dst, '--boxes', JSON.stringify(boxes), '--modes', JSON.stringify(modes)]);
     let out = '';
     let err = '';
     const timer = setTimeout(() => { proc.kill(); resolve(null); }, 60000);
+    const stopWatching = killOnAbort(proc, signal);
     proc.stdout.on('data', (d) => { out += d.toString(); });
     proc.stderr.on('data', (d) => { err += d.toString(); });
     proc.on('close', (code) => {
       clearTimeout(timer);
+      stopWatching();
       if (code !== 0 && err.trim()) console.warn('[Defocus] worker:', err.trim().slice(0, 200));
       try { resolve(JSON.parse(out.trim())); } catch { resolve(null); }
     });
-    proc.on('error', (e) => { clearTimeout(timer); console.warn('[Defocus] spawn:', e.message); resolve(null); });
+    proc.on('error', (e) => { clearTimeout(timer); stopWatching(); console.warn('[Defocus] spawn:', e.message); resolve(null); });
   });
 }
