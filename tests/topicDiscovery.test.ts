@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { storePath } from '../src/server/services/channelStore.js';
 import {
-  termsFromTitles, seedTerms, rankByVelocity, ageInDays, discoverTopics,
+  termsFromTitles, seedTerms, rankByVelocity, ageInDays, discoverTopics, decodeEntities,
   DISCOVERY_SCOPE, WINDOW_DAYS,
 } from '../src/server/services/topicDiscovery.js';
 
@@ -52,6 +52,52 @@ describe('seed terms describe the channel, not the language', () => {
 
   it('ignores bare numbers, which are years and model sizes, not subjects', () => {
     expect(termsFromTitles(['2026 2026 2026 kubernetes'])).toEqual(['kubernetes']);
+  });
+});
+
+/**
+ * Three defects found by running this against real channels rather than fixtures. All
+ * three produced a query that returned nothing, so the channel silently got no
+ * suggestions at all. The titles below are verbatim from the YouTube API.
+ */
+describe('what the real API actually returns', () => {
+  const REAL_TITLES = [
+    'Samsung&#39;s Official Anti-reflecting(AR) Film on S26 Ultra — Watch Till The End 👀 #Shorts',
+    'Samsung S26 Ultra Unboxing - A Power User&#39;s First look | BwithTech.',
+  ];
+
+  it('decodes the HTML escaping YouTube puts in titles', () => {
+    expect(decodeEntities('Samsung&#39;s &quot;best&quot; &amp; fastest')).toBe('Samsung\'s "best" & fastest');
+  });
+
+  it('does not turn an apostrophe into the seed "#39"', () => {
+    // &#39; tokenised to "#39", which went into the search verbatim.
+    const t = termsFromTitles(REAL_TITLES, 6, 'BwithTech');
+    expect(t).not.toContain('#39');
+    expect(t).not.toContain('39');
+    expect(t).toContain('samsung');
+  });
+
+  it('drops hashtags, which describe the upload rather than the subject', () => {
+    expect(termsFromTitles(REAL_TITLES, 6, 'BwithTech')).not.toContain('#shorts');
+    // A trailing # is a subject, not a hashtag, and must survive.
+    expect(termsFromTitles(['C# tutorial', 'C# generics', 'C# async'])).toContain('c#');
+  });
+
+  it('drops the channel own brand, which no other channel is about', () => {
+    // The measured failure: this one token took a six-term query from 10 results to 0,
+    // because searching for your own brand finds only you.
+    expect(termsFromTitles(REAL_TITLES, 6, 'BwithTech')).not.toContain('bwithtech');
+  });
+
+  it('drops only the compact brand, not ordinary words that appear in the name', () => {
+    // "Learn AI with B" must keep "ai" and "learn" — they are the subject, not the
+    // signature. Stripping every word of the channel title would cost both.
+    const t = termsFromTitles(
+      ['What is RAG? Stop AI Hallucinations!', '5 Free AI Tools | Learn AI with B'],
+      6, 'Learn AI with B');
+    expect(t).toContain('ai');
+    expect(t).toContain('learn');
   });
 });
 

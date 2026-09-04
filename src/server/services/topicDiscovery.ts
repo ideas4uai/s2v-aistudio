@@ -70,20 +70,54 @@ export interface DiscoveryResult {
   suggestions: TopicSuggestion[];
 }
 
+const ENTITIES: Record<string, string> = {
+  amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ', '39': "'", '34': '"',
+};
+
+/**
+ * YouTube returns titles HTML-escaped, and the escapes tokenise into garbage.
+ *
+ * Measured on a real channel: "Samsung&#39;s Official Anti-reflecting(AR) Film" produced
+ * the seed `#39`, and `&quot;` produces `quot`. Both went into the search query verbatim,
+ * and a query carrying them returned zero results — the channel got no suggestions at all
+ * because of an ampersand.
+ */
+export function decodeEntities(s: string): string {
+  return String(s || '').replace(/&#?(\w+);/g, (whole, name: string) => {
+    const key = String(name).toLowerCase();
+    if (ENTITIES[key]) return ENTITIES[key];
+    return /^\d+$/.test(key) ? String.fromCharCode(Number(key)) : whole;
+  });
+}
+
 /**
  * Subject words in a set of titles, most frequent first.
  *
  * Pure and exported so the scoping rule is testable without a network: the thing worth
  * asserting is that two different channels' histories produce two different niches.
  */
-export function termsFromTitles(titles: string[], limit = 6): string[] {
+export function termsFromTitles(titles: string[], limit = 6, brand = ''): string[] {
+  // The channel's own name, as one token: "BwithTech" -> "bwithtech". Channels sign their
+  // titles, so the brand is often the most frequent word in the history and goes straight
+  // into the search — where it matches nothing, because no OTHER channel is about this
+  // channel. Measured: dropping "bwithtech" from an otherwise identical six-term query
+  // took it from 0 results to 10.
+  //
+  // Matched as the compact form only, deliberately. Stripping every word of the title
+  // would cost "ai" and "learn" from a channel called "Learn AI with B", and those are
+  // the subject, not the signature.
+  const brandToken = brand.toLowerCase().replace(/[^a-z0-9]/g, '');
   const counts = new Map<string, number>();
   for (const t of titles) {
     // Split on anything that is not a word character, so "AI/ML" and "test-automation"
     // both break into their parts rather than becoming one unsearchable token.
-    const words = String(t || '').toLowerCase().match(/[a-z0-9+#]{2,}/g) || [];
+    const words = decodeEntities(String(t || '')).toLowerCase().match(/[a-z0-9+#]{2,}/g) || [];
     for (const w of words) {
       if (STOPWORDS.has(w) || /^\d+$/.test(w)) continue;
+      // A leading # is a hashtag — "#shorts" is metadata about the upload, not what it is
+      // about. Trailing # is kept, because "c#" and "f#" are subjects.
+      if (w.startsWith('#')) continue;
+      if (brandToken && w === brandToken) continue;
       counts.set(w, (counts.get(w) || 0) + 1);
     }
   }
@@ -104,12 +138,12 @@ export function termsFromTitles(titles: string[], limit = 6): string[] {
  * so a channel in that position states its subject explicitly instead.
  */
 export function seedTerms(
-  rec: Pick<ChannelRecord, 'topicKeywords'>,
+  rec: Pick<ChannelRecord, 'topicKeywords' | 'title'>,
   recentTitles: string[] = [],
 ): { seeds: string[]; seedSource: 'configured' | 'history' } {
   const configured = (rec.topicKeywords || []).map((s) => String(s).trim()).filter(Boolean);
   if (configured.length) return { seeds: configured, seedSource: 'configured' };
-  return { seeds: termsFromTitles(recentTitles), seedSource: 'history' };
+  return { seeds: termsFromTitles(recentTitles, 6, rec.title || ''), seedSource: 'history' };
 }
 
 /**
