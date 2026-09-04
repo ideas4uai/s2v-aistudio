@@ -40,6 +40,63 @@ KEEP_RES = 0.125
 FEATHER_FRAC = 0.10
 FEATHER_MIN = 6.0
 
+# --- Text written ON something that is not a screen -------------------------------
+# Kernel for the top-hat that isolates the glyph strokes: structures thinner than this
+# and brighter than what surrounds them.
+STROKE_KERNEL = 9
+# Only the brightest few percent of the top-hat response are strokes. Measured on the
+# proving frame the strokes are 3.2% of the box, so a 97th percentile cut lands on them.
+STROKE_PCTL = 97
+STROKE_FLOOR = 12
+# Grown to cover the stroke's own soft edge, then feathered so nothing has a hard rim.
+STROKE_GROW = 7
+STROKE_FEATHER = 2.0
+# Wide enough to swallow a grown stroke whole; a median of this size removes thin bright
+# marks and leaves real edges (a spectacle frame, an eyelid) where they are.
+STROKE_MEDIAN = 15
+
+
+def stroke_mask(img: np.ndarray, box: tuple) -> np.ndarray:
+    """A float mask over just the glyph strokes inside `box`, feathered at their edges."""
+    h, w = img.shape[:2]
+    x0, y0, x1, y1 = (max(0, box[0]), max(0, box[1]), min(w, box[2]), min(h, box[3]))
+    m = np.zeros((h, w), np.float32)
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return m
+    g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    top = cv2.morphologyEx(
+        g, cv2.MORPH_TOPHAT,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (STROKE_KERNEL, STROKE_KERNEL)))
+    inbox = np.zeros((h, w), bool)
+    inbox[y0:y1, x0:x1] = True
+    thr = max(STROKE_FLOOR, int(np.percentile(top[inbox], STROKE_PCTL)))
+    hit = ((top >= thr) & inbox).astype(np.uint8)
+    hit = cv2.dilate(hit, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (STROKE_GROW, STROKE_GROW)))
+    hit[~inbox] = 0
+    return np.clip(cv2.GaussianBlur(hit.astype(np.float32), (0, 0), STROKE_FEATHER), 0.0, 1.0)
+
+
+def soften_strokes(img: np.ndarray, box: tuple) -> np.ndarray:
+    """Remove the lettering inside `box` without flattening what it is written on.
+
+    For text sitting ON something -- projected across a face, reflected on a wall -- the
+    whole-box treatment is the wrong trade. Measured on the frame that proved it: the
+    strokes are 3.2% of the box and the face is 86%, so softening the box to hide the
+    text cost 89% of the face's detail (162.2 -> 13.9) and still left the lettering
+    faintly legible. Shrinking the box does not escape it, it just trades linearly --
+    covering half the text keeps only 45% of the face.
+
+    So blend a median only where the strokes are. The median is chosen over a blur or an
+    inpaint on measurement: inpainting scored better on both metrics and looked worse,
+    tearing a hole in the spectacle frame where strokes crossed it.
+    """
+    m = stroke_mask(img, box)
+    if not m.any():
+        return img
+    med = cv2.medianBlur(img, STROKE_MEDIAN)
+    m3 = m[..., None]
+    return (img * (1.0 - m3) + med * m3).astype(img.dtype)
+
 
 def defocus_region(img: np.ndarray, box: tuple, keep_res: float = KEEP_RES) -> np.ndarray:
     """Return `img` with the pixels inside `box` (x0, y0, x1, y1) resolution-reduced.
@@ -83,9 +140,18 @@ def defocus_region(img: np.ndarray, box: tuple, keep_res: float = KEEP_RES) -> n
     return out
 
 
-def apply_boxes(img: np.ndarray, boxes: list) -> np.ndarray:
-    for b in boxes:
-        img = defocus_region(img, tuple(int(v) for v in b))
+def apply_boxes(img: np.ndarray, boxes: list, modes: list | None = None) -> np.ndarray:
+    """Soften each box, by the treatment its surface calls for.
+
+    `modes[i]` is 'surface' for lettering written onto something that matters in its own
+    right, anything else (including missing) for a screen. Screen is the default because
+    it is the safe direction: it is what this has always done, and on a real panel the
+    stroke-only treatment leaves the code plainly readable.
+    """
+    for i, b in enumerate(boxes):
+        box = tuple(int(v) for v in b)
+        mode = (modes[i] if modes and i < len(modes) else 'screen')
+        img = soften_strokes(img, box) if mode == 'surface' else defocus_region(img, box)
     return img
 
 
@@ -126,6 +192,39 @@ def selftest() -> int:
     # A degenerate box is a no-op, not a crash.
     assert np.array_equal(img, apply_boxes(img.copy(), [(10, 10, 12, 12)]))
 
+    # --- surface mode: kill the strokes, keep what they are written on -------------
+    # A textured field standing in for a face, with thin bright strokes laid over it.
+    face = rng.integers(90, 170, (180, 240, 3), dtype=np.uint8)
+    scene = np.full((400, 600, 3), 30, np.uint8)
+    scene[100:280, 200:440] = face
+    for row in range(110, 270, 11):
+        scene[row:row + 2, 210:430] = 240
+
+    sbox = (200, 100, 440, 280)
+    surf = apply_boxes(scene.copy(), [sbox], ['surface'])
+    scr = apply_boxes(scene.copy(), [sbox], ['screen'])
+
+    m = stroke_mask(scene, sbox) > 0.5
+    keep = np.zeros(scene.shape[:2], bool)
+    keep[100:280, 200:440] = True
+    keep &= ~m
+
+    def var_on(a, sel):
+        g = cv2.cvtColor(a, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        return float(cv2.Laplacian(g, cv2.CV_32F)[sel].var())
+
+    base = var_on(scene, keep)
+    # The surface itself survives; the whole-box treatment is what flattens it.
+    assert var_on(surf, keep) > base * 0.5, 'surface mode flattened what the text sat on'
+    assert var_on(scr, keep) < base * 0.5, 'screen mode unexpectedly preserved the surface'
+    # And the lettering still goes: stroke contrast has to drop hard.
+    top = lambda a: cv2.morphologyEx(
+        cv2.cvtColor(a, cv2.COLOR_BGR2GRAY), cv2.MORPH_TOPHAT,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (STROKE_KERNEL, STROKE_KERNEL)))
+    assert top(surf)[m].mean() < top(scene)[m].mean() * 0.35, 'surface mode left the strokes'
+    # Default is screen: an unlabelled box behaves exactly as it always has.
+    assert np.array_equal(apply_boxes(scene.copy(), [sbox]), scr), 'default mode is not screen'
+
     print('selftest ok')
     return 0
 
@@ -135,6 +234,7 @@ def main() -> int:
     ap.add_argument('src', nargs='?')
     ap.add_argument('dst', nargs='?')
     ap.add_argument('--boxes', help='JSON list of [x0,y0,x1,y1] in pixels')
+    ap.add_argument('--modes', help='JSON list of "screen"/"surface", one per box')
     ap.add_argument('--selftest', action='store_true')
     a = ap.parse_args()
     if a.selftest:
@@ -145,6 +245,7 @@ def main() -> int:
     # Nothing to do is decided before the image is touched: the caller should not have
     # to have a readable file on hand to be told there is no work.
     boxes = json.loads(a.boxes or '[]')
+    modes = json.loads(a.modes or '[]')
     if not boxes:
         print(json.dumps({'ok': True, 'boxes': 0, 'changed': False}))
         return 0
@@ -155,10 +256,11 @@ def main() -> int:
         return 1
 
     before = detail(img)
-    out = apply_boxes(img, boxes)
+    out = apply_boxes(img, boxes, modes)
     cv2.imwrite(a.dst, out)
     print(json.dumps({
         'ok': True, 'boxes': len(boxes), 'changed': True,
+        'surface_boxes': sum(1 for m in modes if m == 'surface'),
         'detail_before': round(before, 1), 'detail_after': round(detail(out), 1),
     }))
     return 0

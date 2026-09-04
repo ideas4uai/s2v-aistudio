@@ -76,7 +76,7 @@ describe('the recorded verdict', () => {
   it('ignores a note older than the still it describes', () => {
     const src = still();
     fs.writeFileSync(detectionNotePath(src), JSON.stringify({ boxes: [], labels: [] }));
-    expect(readVerdict(src)).toEqual({ boxes: [], labels: [] });
+    expect(readVerdict(src)).toEqual({ boxes: [], labels: [], modes: [] });
     // Regenerating the image has to invalidate the verdict, or an image edit is
     // judged on what the previous image contained.
     const later = new Date(Date.now() + 60_000);
@@ -103,6 +103,42 @@ describe('the recorded verdict', () => {
     // Measured head to head on a real failing still, 8 trials each: 2 passes fired
     // 3/8, 4 passes fired 6/8 — same spend, once the caller stopped double-paying.
     expect(src).toMatch(/DEFOCUS_PASSES \|\| '4'/);
+  });
+});
+
+describe('text written on something that is not a screen', () => {
+  const worker = fs.readFileSync(path.join(process.cwd(), 'src/scripts/text_defocus.py'), 'utf8');
+  const service = fs.readFileSync(path.join(process.cwd(), 'src/services/textDefocus.ts'), 'utf8');
+
+  it('asks the detector what the characters are written on', () => {
+    // Nothing local separates the two cases: stroke coverage inside the box is 16.5% on
+    // the frame with code projected across a face and 11.4-24.2% on real code panels, and
+    // OpenCV's frontal cascade finds no face at all on a stylised 3D one. The detector
+    // already knows — it described the region as "Projected code on man's face" — so the
+    // classification is asked for rather than reconstructed.
+    expect(service).toContain('"on": "screen"');
+    expect(service).toContain('If you are unsure');
+  });
+
+  it('treats anything but an explicit surface as a screen', () => {
+    // The safe direction: screen is the unchanged whole-box treatment, and on a real
+    // panel the stroke-only remedy leaves the code plainly readable.
+    expect(service).toContain("=== 'surface' ? 'surface' : 'screen'");
+    expect(worker).toContain("mode = (modes[i] if modes and i < len(modes) else 'screen')");
+  });
+
+  it('carries the mode to the worker, and remembers it in the verdict', () => {
+    expect(service).toContain("'--modes', JSON.stringify(modes)");
+    expect(service).toContain('modes: j.modes ?? []');
+  });
+
+  it('softens only the strokes on a surface, not the whole box', () => {
+    // Measured on the frame that proved the problem: the strokes are 3.2% of the box and
+    // the face 86%, so the whole-box treatment spent 89% of the face's detail
+    // (162.2 -> 13.9) to hide 3.2% of it — and still left the lettering faintly legible.
+    expect(worker).toContain('def stroke_mask(');
+    expect(worker).toContain('def soften_strokes(');
+    expect(worker).toMatch(/soften_strokes\(img, box\) if mode == 'surface' else defocus_region\(img, box\)/);
   });
 });
 

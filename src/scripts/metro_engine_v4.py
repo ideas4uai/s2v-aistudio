@@ -911,7 +911,15 @@ class TransitionFX:
             # A filled circle grows from the centre until it owns the frame. Terminal
             # state is the solid colour, same contract as above.
             out = frame.copy()
-            r = int(ease_in_out(p) * math.hypot(self.w, self.h) * 0.55)
+            # ease_in, not ease_in_out. Both curves reach full coverage only at p=1, so
+            # the terminal frame is identical either way and the concat cut stays
+            # invisible — but ease_in_out is nearly flat at BOTH ends, so the frame sat
+            # fully covered for the last several frames as well as opening slowly on the
+            # other side. Measured on a real episode: 10 frames of solid accent, 7 of
+            # them consecutive (0.29s) on one boundary, which reads as a colour card
+            # rather than a wipe. ease_in spends its time moving and lands on the
+            # terminal at the end.
+            r = int(ease_in(p) * math.hypot(self.w, self.h) * 0.55)
             if r > 0:
                 cv2.circle(out, (self.w // 2, self.h // 2), r,
                            tuple(int(c) for c in TRANSITION_COLOR), -1, cv2.LINE_AA)
@@ -978,7 +986,9 @@ class TransitionFX:
         if kind == 'shape_wipe':
             # The circle shrinks away, revealing the new scene through it.
             out = np.full_like(frame, TRANSITION_COLOR, dtype=np.uint8)
-            r = int(ease_in_out(p) * math.hypot(self.w, self.h) * 0.55)
+            # ease_out opens the iris immediately after the shared terminal frame at
+            # p=0, where ease_in_out held it shut for a fifth of the transition.
+            r = int(ease_out(p) * math.hypot(self.w, self.h) * 0.55)
             if r > 0:
                 mask = np.zeros((self.h, self.w), dtype=np.uint8)
                 cv2.circle(mask, (self.w // 2, self.h // 2), r, 255, -1, cv2.LINE_AA)

@@ -826,8 +826,12 @@ export const renderVisualClip = async (visual: any, project: any, signal?: Abort
     imagePath = r.imagePath as string;
     if (scene) (scene as any).background_path = r.backgroundPath;
   };
-  if (defocusEnabled() && !isPreview) await runPass(defocusImage);
-  if (upscaleEnabled() && !isPreview) await runPass(upscaleImage);
+  // Both passes get this render's own abort signal. Without it a cancel flipped the
+  // project's status and left the worker running — a Real-ESRGAN process holding
+  // 2519MB was still alive 28s after POST /cancel reported success. The signal is
+  // per-project, so this kills only this render's child and never a concurrent one's.
+  if (defocusEnabled() && !isPreview) await runPass((p) => defocusImage(p, { signal }));
+  if (upscaleEnabled() && !isPreview) await runPass((p) => upscaleImage(p, { signal }));
 
   // Same staleness rule as the multi-frame path: a regenerated still must invalidate the
   // clip built from it, or an image edit never reaches the video. The motion lives in the

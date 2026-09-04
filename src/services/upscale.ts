@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { isFreshOutput } from './renderService.js';
+import { killOnAbort } from './spawnAbort.js';
 
 /**
  * Runs a generated still through Real-ESRGAN before the render magnifies it.
@@ -44,7 +45,7 @@ export const upscaledPathFor = (src: string): string =>
  */
 export async function upscaleImage(
   src: string,
-  opts: { env?: NodeJS.ProcessEnv } = {},
+  opts: { env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {},
 ): Promise<string> {
   const env = opts.env || process.env;
   if (!upscaleEnabled(env) || !src || !fs.existsSync(src)) return src;
@@ -62,18 +63,19 @@ export async function upscaleImage(
 
   const args = [path.join(process.cwd(), 'src/scripts/upscale_worker.py'), src, out, '--scale', '2'];
 
-  const ok = await run(python, args, Number(env.UPSCALE_TIMEOUT_MS || 15 * 60 * 1000));
+  const ok = await run(python, args, Number(env.UPSCALE_TIMEOUT_MS || 15 * 60 * 1000), opts.signal);
   if (ok && fs.existsSync(out) && fs.statSync(out).size > 1024) return out;
 
   try { fs.unlinkSync(out); } catch { /* nothing half-written to clear */ }
   return src;
 }
 
-function run(python: string, args: string[], timeoutMs: number): Promise<boolean> {
+function run(python: string, args: string[], timeoutMs: number, signal?: AbortSignal): Promise<boolean> {
   return new Promise((resolve) => {
     const proc = spawn(python, args);
     let tail = '';
     const timer = setTimeout(() => { proc.kill(); resolve(false); }, timeoutMs);
+    const stopWatching = killOnAbort(proc, signal);
     // The worker prints a per-tile progress line; only the final JSON is worth keeping.
     proc.stdout.on('data', (d) => { tail = (tail + d.toString()).slice(-400); });
     proc.stderr.on('data', (d) => { tail = (tail + d.toString()).slice(-400); });
@@ -84,6 +86,6 @@ function run(python: string, args: string[], timeoutMs: number): Promise<boolean
       else console.warn('[Upscale] failed, using the original still:', line.slice(0, 200));
       resolve(code === 0);
     });
-    proc.on('error', (e) => { clearTimeout(timer); console.warn('[Upscale] spawn:', e.message); resolve(false); });
+    proc.on('error', (e) => { clearTimeout(timer); stopWatching(); console.warn('[Upscale] spawn:', e.message); resolve(false); });
   });
 }
