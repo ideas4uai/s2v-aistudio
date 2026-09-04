@@ -15,6 +15,9 @@ export function CreateProject() {
   const [universes, setUniverses] = useState<any[]>([]);
   const [channels, setChannels] = useState<any[]>([]);
   const [channelId, setChannelId] = useState<string>('');
+  const [topics, setTopics] = useState<any>(null);
+  const [topicsLoading, setTopicsLoading] = useState(false);
+  const [topicsError, setTopicsError] = useState('');
   const [episodeData, setEpisodeData] = useState({
     universeId: '',
     episodeNumber: 1,
@@ -121,6 +124,27 @@ export function CreateProject() {
       })
       .catch(() => setChannels([]));
   }, []);
+
+  // Suggestions belong to the channel they were found for. Leaving them on screen after
+  // the operator switches channel would offer one channel's niche for another's project.
+  useEffect(() => { setTopics(null); setTopicsError(''); }, [channelId]);
+
+  const loadTopics = async () => {
+    if (!channelId) return;
+    setTopicsLoading(true);
+    setTopicsError('');
+    try {
+      const r = await authenticatedFetch(`/api/youtube/channels/${channelId}/topics`);
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body?.error || `Topic search failed (${r.status})`);
+      setTopics(body);
+    } catch (err: any) {
+      setTopicsError(err?.message || 'Topic search failed');
+      setTopics(null);
+    } finally {
+      setTopicsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -377,6 +401,73 @@ export function CreateProject() {
                 <p className="mt-2 text-xs text-amber-700">
                   No channel selected — this project will have no watermark, and you will have to pick a channel when you publish.
                 </p>
+              )}
+
+              {/* Trending in this channel's own subject. Behind a button rather than
+                  loaded with the channel: search.list costs 100 quota units of a daily
+                  10,000, so this is asked for, never polled. */}
+              {channelId && (
+                <div className="mt-4 border-t border-neutral-200 pt-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-neutral-700">Trending in this channel&apos;s niche</p>
+                      <p className="text-xs text-neutral-500">
+                        Ranked by views per day since publishing, over the last {topics?.windowDays ?? 30} days.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={loadTopics}
+                      disabled={topicsLoading}
+                      className="shrink-0 px-3 py-2 text-sm rounded-lg border border-neutral-300 hover:bg-neutral-50 disabled:opacity-50"
+                    >
+                      {topicsLoading ? 'Searching…' : topics ? 'Refresh' : 'Find topics'}
+                    </button>
+                  </div>
+
+                  {topicsError && <p className="mt-2 text-xs text-red-600">{topicsError}</p>}
+
+                  {topics && (
+                    <p className="mt-2 text-xs text-neutral-500">
+                      Scoped to{' '}
+                      <span className="font-medium text-neutral-700">{topics.seeds.join(', ') || '—'}</span>{' '}
+                      ({topics.seedSource === 'configured'
+                        ? 'set for this channel'
+                        : 'from this channel’s recent uploads'})
+                    </p>
+                  )}
+
+                  {topics && topics.suggestions.length === 0 && !topicsError && (
+                    <p className="mt-2 text-xs text-neutral-500">
+                      Nothing found for this scope. Set keywords for this channel to search a different subject.
+                    </p>
+                  )}
+
+                  {topics && topics.suggestions.length > 0 && (
+                    <ul className="mt-3 space-y-2 max-h-72 overflow-y-auto">
+                      {topics.suggestions.slice(0, 10).map((s: any) => (
+                        <li key={s.videoId}>
+                          <button
+                            type="button"
+                            // Fills the title, which becomes the project topic and is what
+                            // the Script Agent briefs on. Not a paste of the video title as
+                            // gospel — it lands in an editable field on purpose.
+                            onClick={() => setFormData((f) => ({ ...f, title: s.title }))}
+                            className="w-full text-left p-3 rounded-lg border border-neutral-200 hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors"
+                          >
+                            <span className="block text-sm text-neutral-800">{s.title}</span>
+                            <span className="mt-1 block text-xs text-neutral-500 tabular-nums">
+                              {Number(s.velocity).toLocaleString()} views/day
+                              {' · '}{Number(s.views).toLocaleString()} views
+                              {' · '}{Math.round(s.ageDays)}d old
+                              {s.channelTitle ? ` · ${s.channelTitle}` : ''}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
             </div>
           )}
