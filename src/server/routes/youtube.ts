@@ -7,6 +7,7 @@ import {
   YouTubeNotConfiguredError, missingConfig,
 } from '../services/youtubeService.js';
 import { getChannel, listChannels, logoDir, setLastUsed, updateChannel } from '../services/channelStore.js';
+import { discoverTopics } from '../services/topicDiscovery.js';
 import { logEvent } from '../../services/logService.js';
 
 export const youtubeRouter = Router();
@@ -182,6 +183,43 @@ youtubeRouter.post('/channels/:channelId/last-used', (req, res) => {
   if (!getChannel(req.params.channelId)) return res.status(404).json({ error: 'Channel not connected' });
   setLastUsed(req.params.channelId);
   res.json({ ok: true, lastUsedChannelId: req.params.channelId });
+});
+
+/**
+ * Trending topics in this channel's own subject, for the New Project screen.
+ *
+ * Read-only and idempotent, but expensive in quota terms: search.list is 100 units a
+ * call against a 10,000/day allowance, so this is a click, never a poll. The UI asks
+ * once per channel selection and shows what came back.
+ */
+youtubeRouter.get('/channels/:channelId/topics', async (req, res) => {
+  const { channelId } = req.params;
+  if (!getChannel(channelId)) return res.status(404).json({ error: 'Channel not connected' });
+  try {
+    res.json(await discoverTopics(channelId));
+  } catch (e: any) {
+    if (e instanceof YouTubeNotConfiguredError) {
+      return res.status(503).json({ error: 'YouTube is not configured', missing: missingConfig() });
+    }
+    console.error(`[Topics] discovery failed for ${channelId}:`, e?.message || e);
+    res.status(502).json({ error: e?.message || 'Topic discovery failed' });
+  }
+});
+
+/**
+ * Set (or clear) the subject terms discovery searches on for one channel.
+ *
+ * An empty array clears back to history-derived seeds rather than storing emptiness, so
+ * there is one way to mean "work it out from my uploads".
+ */
+youtubeRouter.put('/channels/:channelId/topic-keywords', (req, res) => {
+  const { channelId } = req.params;
+  if (!getChannel(channelId)) return res.status(404).json({ error: 'Channel not connected' });
+  const raw = req.body?.keywords;
+  if (!Array.isArray(raw)) return res.status(400).json({ error: 'keywords must be an array of strings' });
+  const keywords = raw.map((k: unknown) => String(k).trim()).filter(Boolean).slice(0, 12);
+  updateChannel(channelId, (c) => { c.topicKeywords = keywords.length ? keywords : undefined; });
+  res.json({ ok: true, channelId, topicKeywords: keywords });
 });
 
 /**

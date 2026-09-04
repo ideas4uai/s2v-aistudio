@@ -48,6 +48,18 @@ export type ChannelRecord = {
    * become a placeholder burned into a video.
    */
   logoPath?: string;
+  /**
+   * Subject terms trending-topic discovery searches on for this channel.
+   *
+   * Optional, and unset is the normal case: discovery falls back to reading the channel's
+   * own recent uploads, which describes its niche without anyone configuring anything.
+   *
+   * Setting it explicitly is for the case that fallback gets wrong — a channel adding a
+   * content type its back catalogue does not represent. There, history-derived seeds keep
+   * steering discovery back to the old format, so the new subject is stated instead. See
+   * seedTerms in topicDiscovery.ts.
+   */
+  topicKeywords?: string[];
   connectedAt: string;
   updatedAt: string;
 };
