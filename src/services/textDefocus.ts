@@ -41,6 +41,27 @@ export const defocusedPathFor = (src: string): string =>
 export const detectionNotePath = (src: string): string =>
   path.join(path.dirname(src), `${path.basename(src, path.extname(src))}_df.json`);
 
+/**
+ * Labels the detector must not act on, however confidently it reports them.
+ *
+ * The prompt has always forbidden keyboard key legends, and a real render came back with
+ * ten in one still ("Keyboard key: Alt", "Shift key label", "Caps Lock key label") and
+ * softened every one. A prompt is a request; this is the guarantee. Deliberately narrow:
+ * it matches a named physical control key, not the word "key" on its own, so "readable
+ * code on monitor" and "API key visible in the editor" are untouched.
+ */
+const KEY_LEGEND = new RegExp(
+  String.raw`\b(?:keyboard|keycap)\b|`
+  + String.raw`\b(?:ctrl|control|alt|shift|caps\s*lock|tab|enter|return|esc(?:ape)?|`
+  + String.raw`backspace|space(?:bar)?|delete|del|fn|command|cmd|option|win(?:dows)?)`
+  + String.raw`\s*(?:key|keycap)s?\b|`
+  + String.raw`\bkey\s*(?:legend|label|cap)s?\b`,
+  'i',
+);
+
+/** True when this label names a physical control's own markings rather than fake text. */
+export const isKeyLegend = (label: string): boolean => KEY_LEGEND.test(String(label || ''));
+
 /** A box as the detector reports it: normalised 0-1000, Gemini's own convention. */
 export interface TextBox { ymin: number; xmin: number; ymax: number; xmax: number }
 
@@ -61,9 +82,15 @@ the ENTIRE screen -- sidebars, toolbars, tabs and status strips included, edge t
 those strips carry the same lettering and stay readable when only the middle is softened.
 
 DO NOT report: rows of indicator lights or LEDs on server racks and equipment, however much
-they resemble rows of characters; keyboard key legends; blurred, distant or out-of-focus areas
-where you can tell something is written but cannot resolve the characters; any surface with no
-writing on it. A region you would describe as "probably text" does not qualify.
+they resemble rows of characters; blurred, distant or out-of-focus areas where you can tell
+something is written but cannot resolve the characters; any surface with no writing on it. A
+region you would describe as "probably text" does not qualify.
+
+DO NOT report the legends printed on keyboard keys -- Ctrl, Alt, Shift, Tab, Enter, Esc,
+Caps Lock, Backspace, the letter, number and function keys. They are real manufactured
+lettering on a real object, not invented text, and softening them damages the keyboard for
+nothing. This holds however sharp and readable they are. The same goes for the moulded or
+printed markings on any other physical control: a mouse, a remote, a keypad, a device badge.
 
 Set "on" to what the characters are physically written on, which decides how the region is
 treated: "screen" when they sit on a display, panel, sign or printed page -- a surface whose
@@ -146,8 +173,11 @@ async function detectOnce(
       // localising, and acting on it would defocus the entire still.
       const area = ((px[2] - px[0]) * (px[3] - px[1])) / (size.width * size.height);
       if (px[2] - px[0] < 8 || px[3] - px[1] < 8 || area > 0.6) continue;
+      const what = String(r?.what ?? '').slice(0, 60);
+      // The prompt forbids these; this is what makes it stick.
+      if (isKeyLegend(what)) continue;
       boxes.push(px);
-      labels.push(String(r?.what ?? '').slice(0, 60));
+      labels.push(what);
       // Anything but an explicit 'surface' is treated as a screen, which is the
       // unchanged behaviour and the safe direction.
       modes.push(String(r?.on ?? '').toLowerCase() === 'surface' ? 'surface' : 'screen');
