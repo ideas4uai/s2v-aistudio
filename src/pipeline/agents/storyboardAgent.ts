@@ -166,11 +166,45 @@ export const StoryboardAgent = {
         ? `${scriptFraming} — the script fixes the framing, keep it`
         : SHOT_TYPES[idx % SHOT_TYPES.length];
 
+      // The closing beat, named explicitly, and handed the nouns it lacks.
+      //
+      // Measured across four content types — education, software, AI explainer and kids —
+      // every closing scene came back as filler, independent of topic. That is a pipeline
+      // shape, not a content signal: a CTA or conclusion names no concrete thing, so
+      // rule 1 ("a LITERAL representation of the narration") has nothing to grip and the
+      // model falls back on atmosphere or a bare reaction face. The weakest frame in the
+      // video lands on the beat where retention pays out.
+      //
+      // Naming the failure was not enough on its own. Told only what a closing shot IS,
+      // the model took the "person" half and produced a face with no object in frame —
+      // one A/B case came back worse than before the rule. What was actually missing is
+      // the gap this pipeline has everywhere: the stage cannot see what the previous
+      // stage established. So the closing prompt now carries the earlier beats' own
+      // shots and must reuse one.
+      const earlierSubjects = drafts
+        .slice(0, -1)
+        // `||`, not `??`: a draft that named no shot carries visual === '', and ??
+        // only falls back on null/undefined, so the beat contributed nothing at all.
+        .map((d: any) => String(d.visual || d.narration || '').trim())
+        .filter(Boolean);
+
+      const closingRule = idx === drafts.length - 1 && drafts.length > 1 && earlierSubjects.length
+        ? `
+
+CLOSING BEAT — READ THIS BEFORE RULE 1. This is the last scene. Its narration is a conclusion or a call to action, so unlike every other beat it names nothing you can draw and rule 1 has nothing to grip.
+WHAT THIS VIDEO HAS ALREADY SHOWN:
+${earlierSubjects.map((v: string, i: number) => `  ${i + 1}. ${v}`).join('\n')}
+The closing shot MUST put at least one concrete object from that list, or an object named in the TOPIC, physically in the frame. Show it resolved — the thing that was broken now working, the question now answered — or show a person from this video using it.
+A face on its own is NOT a closing shot. "A person looking thoughtful", "an expression of understanding", "eyes showing realisation", any of these against a blurred background, are the same filler as a sunrise: they would fit any video on any subject. If a person is in the shot they must be holding, touching or working with a specific object you can name.
+Banned outright: sunrise, sunset, horizon, skyline, abstract shapes, glowing particles, nebulae, empty landscapes, a lone figure walking away, a closing door, a blurred background with nothing identifiable in it.
+Someone who saw only this frame should be able to say what the video was about.`
+        : '';
+
       const expansionPrompt = `You are a visual director creating image prompts for an AI image generator.
 
 TOPIC: ${project.topic}
 NARRATION (what is being spoken): "${draft.narration}"${intendedShot ? `\nINTENDED SHOT (from the script — the beat you must deliver, and the framing if it names one): "${intendedShot}"` : ''}
-SHOT TYPE FOR THIS SCENE: ${shotType}
+SHOT TYPE FOR THIS SCENE: ${shotType}${closingRule}
 
 Your job: Write a single image generation prompt that shows EXACTLY what the narration and the intended shot describe.
 
