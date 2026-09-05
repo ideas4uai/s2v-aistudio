@@ -115,6 +115,17 @@ export function isSensitiveSubject(...parts: (string | undefined)[]): boolean {
 }
 
 /**
+ * The material this brief was actually GIVEN about its subject.
+ *
+ * knowledge and notes only. The story spine is deliberately excluded: those beats were
+ * generated upstream from the same empty starting point, so counting them as a source
+ * would let the pipeline cite itself.
+ */
+export function briefSourceMaterial(brief: ScriptBrief): string {
+  return [brief.knowledge, brief.notes?.join(' ')].filter(Boolean).join(' ').trim();
+}
+
+/**
  * The four sections, separately, so tests can assert each one responds to the
  * brief rather than eyeballing one concatenated blob.
  */
@@ -262,6 +273,25 @@ export function buildScriptSections(brief: ScriptBrief): ScriptSections {
       `This subject involves real people who were killed, displaced or harmed. Drop the entertainment grammar: no curiosity-gap hook, no reveal held back for effect, no metaphor that makes suffering into an image — "independence arrived like a painful, necessary surgery" turns a million deaths into a figure of speech. Be plain, specific and measured. Where the material gives a casualty or displacement figure, say who estimates it and that estimates differ; where it gives none, say the scale is disputed rather than choosing a number. Never state a death toll as a flat fact. Under-claiming here costs nothing; over-claiming is the whole risk.`,
     );
   }
+  // A comparison with nothing to compare from.
+  //
+  // The failure this prevents, measured on a real script: asked for a three-phone speed
+  // test with no benchmark supplied, the agent wrote "the iPhone 17 Pro opened apps
+  // slower", "fluid 4K rendering on one, jerky buffering on another" and "the
+  // performance gap is undeniable" — a test report for a test nobody ran. Every existing
+  // detector passed it, because it cites no numbers at all.
+  //
+  // Telling it not to invent results is only half the instruction: a model with a
+  // comparison format and no content will narrate tension instead, which is the same
+  // hole with better prose. So this says what to write INSTEAD.
+  if (isComparisonTopic(brief.topic) && !briefSourceMaterial(brief)) {
+    constraints.push(
+      `This is a comparison and you have been given no benchmark, test, review or source for it. You therefore do not know the result, and you must not write one. Inventing a winner is the obvious version of this mistake; narrating one is the version that slips through — "one surges ahead, another lags", "smooth on one, jerky on another", "the gap is undeniable" all report a finding nobody made, and a viewer cannot tell them from a finding that exists.`,
+      `Write the useful thing you actually have instead: name the specific dimension that decides this comparison, say what would have to be measured to settle it, and explain why that measurement is the one that matters rather than the spec everyone quotes. "Sustained performance after fifteen minutes is what separates these, because every one of them wins a thirty-second benchmark" is honest, concrete and more useful than a fabricated verdict. Name the trade-off, never the winner.`,
+      `Your first line makes a promise and this script must keep it within its own runtime. If the hook says something lost, the body says what and why; if you cannot say that, the hook must be about the question rather than about an answer you do not have. Decide the payoff first and write the hook last so the hook promises exactly what the body delivers — a hook that outruns its script is the single most common way short-form content loses the viewer it just won.`,
+    );
+  }
+
   if (clean(brief.brand?.toneRules)) {
     constraints.push(`Tone is locked by this series and is not yours to adjust: ${clean(brief.brand!.toneRules)}`);
   }
@@ -498,6 +528,111 @@ export function extendedMetaphor(script: string, topic = ''): string[] {
  */
 const CASUALTY_FIGURE = /\b(?:\d[\d,.]*|one|two|three|several|many|millions?|thousands?|hundreds?|countless)\s+(?:\w+\s+){0,2}(?:people\s+)?(?:died|killed|dead|deaths|murdered|massacred|displaced|refugees|casualties|victims|perished|slaughtered)\b/i;
 const SOURCED = /\b(?:estimat\w+|approximat\w+|roughly|around|between|historians|scholars|sources|disputed|contested|varies|vary|range[sd]?|according to|thought to|believed to|as many as|at least|some say|no agreed|unknown)\b/i;
+
+/**
+ * Words that turn a sentence into a reported measurement.
+ *
+ * Comparatives only — "faster", not "fast". A script may call a phone fast without
+ * claiming to have timed it; saying one is FASTER than another is a result.
+ *
+ * Wider than the COMPARATIVE list MULTIPLIER_RE uses: that one only has to survive a
+ * number in front of it ("three times faster"), while this one has to catch a bare
+ * sensory claim like "snappier" or "crisper" standing on its own.
+ */
+const RESULT_COMPARATIVE = 'slower|faster|quicker|smoother|better|worse|higher|lower|longer|shorter|hotter|cooler|brighter|dimmer|louder|sharper|crisper|snappier|laggier|heavier|lighter';
+
+/**
+ * Sentence shapes that state a comparative outcome as observed.
+ *
+ * Each one is lifted from the script this detector was written for. They are not
+ * decorative language — every one of them tells the viewer a test happened and reports
+ * what it found.
+ */
+const UNSOURCED_RESULT_PATTERNS: Array<{ re: RegExp; kind: string }> = [
+  // "the iPhone 17 Pro opened apps slower" -- a verb and then a comparative.
+  { re: new RegExp(String.raw`\b\w+(?:ed|s)\b(?:\s+\w+){0,3}\s+\b(?:${COMPARATIVE})\b`, 'gi'), kind: 'measured outcome' },
+  // "faster than", the explicit form.
+  { re: new RegExp(String.raw`\b(?:${COMPARATIVE})\s+than\b`, 'gi'), kind: 'measured outcome' },
+  // "Fluid 4K rendering on one, jerky buffering on another."
+  { re: /\bon one\b[^.!?]*\bon (?:another|the other)\b/gi, kind: 'split result' },
+  // "Some cores fire seamlessly; others grapple with friction."
+  { re: /\bsome\b[^.!?]{0,60}?\bothers\b/gi, kind: 'split result' },
+  // "One line surges ahead, another lags."
+  { re: /\bone\b[^.!?]{0,60}?\banother\b[^.!?]{0,40}?\b(?:lags?|trails?|stumbles?|falters?|struggles?)\b/gi, kind: 'split result' },
+  // "The most expensive phone just lost." / "innovation wins"
+  { re: /\b(?:just\s+)?(?:lost|won|wins|beat|beats|outperforms?|outperformed|edges?\s+out|takes?\s+the\s+(?:win|crown|lead|top\s+spot))\b/gi, kind: 'verdict' },
+  // "The performance gap is undeniable." / "the winner is"
+  { re: /\bthe\s+(?:\w+\s+){0,2}gap\s+is\b/gi, kind: 'verdict' },
+  { re: /\bthe\s+(?:winner|loser|champion|verdict)\s+(?:is|was)\b/gi, kind: 'verdict' },
+];
+
+/** Comparison-format topics: "A vs B", "A or B", a speed test, a showdown. */
+export function isComparisonTopic(topic = ''): boolean {
+  return /\bvs\.?\b|\bversus\b|\bcompared? (?:to|with)\b|\bshowdown\b|\bspeed test\b|\bhead[- ]to[- ]head\b|\bwhich (?:is|one)\b/i.test(topic);
+}
+
+/**
+ * Confident narration of a test result nobody ran.
+ *
+ * ── Why this is not flagUnverifiedClaims ──────────────────────────────────────
+ * That detector catches figures: percentages, multipliers, "according to", "a recent
+ * study". Run against the script this one was written for it returns NOTHING, because
+ * the script cites no numbers at all. It says "the iPhone 17 Pro opened apps slower",
+ * "fluid 4K rendering on one, jerky buffering on another", "the performance gap is
+ * undeniable" — a benchmark reported in prose. A viewer cannot tell that from a
+ * benchmark that happened, which is exactly what makes it worse than a made-up number:
+ * a number invites checking and this does not.
+ *
+ * ── Why it is not flagCraftIssues either ──────────────────────────────────────
+ * Craft issues are about writing that is bad on its face — stacked adjectives, a
+ * metaphor doing the explaining, a close that fits any video. These sentences are well
+ * written. The defect is not the prose, it is that the prose asserts a finding.
+ *
+ * ── The mechanism ─────────────────────────────────────────────────────────────
+ * Two conditions, and BOTH are required, which is what keeps legitimate comparison
+ * content untouched:
+ *
+ *   1. the sentence states a comparative outcome (the patterns above), and
+ *   2. the material handed to the writer does not contain it.
+ *
+ * `supplied` is the brief's own source material — the knowledge block, the caller's
+ * notes, the approved story beats — NOT the whole prompt. Passing the prompt would
+ * mean the constraints that name these very words count as a source for them.
+ *
+ * A script given real test data quotes it, so the phrase appears in `supplied` and
+ * nothing is flagged. A script given nothing invents the result, and there is nowhere
+ * for the phrase to have come from.
+ */
+export function flagUnsourcedResults(script: string, supplied = ''): string[] {
+  const haystack = supplied.toLowerCase();
+  // A source that says nothing cannot support anything; the empty string must not
+  // become a substring match that clears every claim.
+  const sourced = (phrase: string) => haystack.length > 0 && haystack.includes(phrase.toLowerCase());
+
+  const sentences = (script.match(/[^.!?]+[.!?]*/g) ?? []).map((s) => s.trim()).filter(Boolean);
+  const found: string[] = [];
+  const seen = new Set<string>();
+
+  for (const sentence of sentences) {
+    // A question does not assert a finding. "Does innovation win over marketing?" is
+    // the script wondering aloud; "innovation wins" is the script reporting. Only the
+    // second is the defect, and without this the closing question of almost every
+    // comparison script flags.
+    if (sentence.endsWith('?')) continue;
+    for (const { re, kind } of UNSOURCED_RESULT_PATTERNS) {
+      re.lastIndex = 0;
+      const hit = re.exec(sentence);
+      if (!hit) continue;
+      if (sourced(hit[0]) || sourced(sentence)) continue;
+      const label = sentence.length > 70 ? `${sentence.slice(0, 67)}…` : sentence;
+      if (seen.has(label)) continue;
+      seen.add(label);
+      found.push(`${kind}: "${label}"`);
+      break;
+    }
+  }
+  return found;
+}
 
 /**
  * A spoken opening line longer than the hook budget.
