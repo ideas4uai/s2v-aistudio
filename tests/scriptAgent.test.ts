@@ -102,7 +102,12 @@ describe('script prompt — universe present vs absent', () => {
 });
 
 describe('script prompt — target duration drives the brief', () => {
-  const budget = (secs: number) => buildScriptSections({ ...generic, targetSeconds: secs }).constraints[0];
+  // Found by content, not by position: the constraint list is ordered by importance and
+  // gains entries (the language rule went in at the front), so an index is not a stable
+  // way to name one.
+  const constraint = (secs: number, match: RegExp) =>
+    buildScriptSections({ ...generic, targetSeconds: secs }).constraints.find((c) => match.test(c))!;
+  const budget = (secs: number) => constraint(secs, /Total spoken words/);
 
   it('asks for a word count proportional to the target, not a fixed one', () => {
     const thirty = budget(30);
@@ -126,7 +131,7 @@ describe('script prompt — target duration drives the brief', () => {
     // The old prompt demanded 20+ words per scene at every target. At 30s/75
     // words that alone overshoots, which is how a 35s script became a 56s video.
     const perScene = (secs: number) => {
-      const m = /under (\d+) words/.exec(buildScriptSections({ ...generic, targetSeconds: secs }).constraints[1]);
+      const m = /under (\d+) words/.exec(constraint(secs, /under \d+ words/));
       return Number(m![1]);
     };
     expect(perScene(30)).toBeLessThan(perScene(180));

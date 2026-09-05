@@ -177,6 +177,7 @@ Your job: Write a single image generation prompt that shows EXACTLY what the nar
 RULES:
 1. The image must be a LITERAL representation of the narration and intended shot. If narration says "Instagram", show a phone with Instagram. If it says "students learning", show students in a classroom. When the narration is empty, the intended shot IS the scene — render it faithfully.
 2. Never generate landscapes, nature, or abstract art unless the narration explicitly mentions them.
+2a. Write the image prompt itself in ENGLISH, always, whatever language the narration above is in. The narration is what a viewer hears; this prompt is an instruction to an image model that only reads English. Describe what the non-English narration MEANS — never transliterate it, never pass its words through.
 3. Always specify: subject, action, environment, lighting.
 4. Always end with: "${styleTail}"
 5. Max 50 words total.

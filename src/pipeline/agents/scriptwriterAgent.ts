@@ -5,6 +5,7 @@ import { StoryArc } from './storyAgent.js';
 import { targetLengthSeconds, targetWordCount, TARGET_TOLERANCE } from '../../utils/targetLength.js';
 import { buildKnowledgeContext, normalizeUniverse } from '../../content-studio/knowledgeContext.js';
 import type { KnowledgeDocument } from '../../content-studio/domain/types.js';
+import { languageName, LANGUAGES, DEFAULT_LANGUAGE } from '../../utils/language.js';
 import {
   buildScriptPrompt, buildScriptSections, flagUnverifiedClaims, flagCraftIssues, flagSensitiveClaims, flagHookLength, type ScriptBrief,
 } from './scriptPrompt.js';
@@ -53,6 +54,10 @@ function briefFor(
 
   return {
     topic: project.topic,
+    // The operator's language choice, as a name the prompt can use. Without this the
+    // scriptwriter writes English for every project and the voice router synthesises it
+    // through whichever language's phonemes were selected.
+    language: languageName(project.settings?.language) || LANGUAGES[DEFAULT_LANGUAGE],
     targetSeconds: targetLengthSeconds(project.settings?.targetLength),
     hookStrategy: project.hook_strategy,
     mode: project.mode,

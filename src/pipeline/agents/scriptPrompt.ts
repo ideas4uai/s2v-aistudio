@@ -32,6 +32,16 @@ export interface ScriptCastMember {
 /** Everything the script prompt is allowed to know. Nothing is required but the topic. */
 export interface ScriptBrief {
   topic: string;
+  /**
+   * Display name of the language the narration must be spoken in ('Telugu'), from
+   * languageName(). Absent means English.
+   *
+   * This field is the fix for a silent failure: the voice router picked the correct
+   * Telugu model and this prompt then handed it English text, which Piper reads through
+   * Telugu phonetics. Nothing downstream catches it — the WAV is valid and not silent,
+   * so the quality gate passes and an unintelligible video ships as a success.
+   */
+  language?: string;
   /** Runtime the finished narration must fill. Already clamped by targetLengthSeconds. */
   targetSeconds: number;
   /** Project's hook_strategy — 'question', 'statement', 'story', or a literal hook line. */
@@ -209,7 +219,14 @@ export function buildScriptSections(brief: ScriptBrief): ScriptSections {
   }
 
   // ── CONSTRAINTS: what must not happen. Budget first, then honesty, then format.
+  const language = clean(brief.language) || 'English';
   const constraints = [
+    // First, ahead of every craft rule: those rules are about how a sentence is built,
+    // and this is about which language it is built in. A model that gets this wrong
+    // produces output no downstream check can detect as wrong.
+    language === 'English'
+      ? `Write every spoken word in English.`
+      : `Write every spoken word in ${language}, using ${language}'s own script. Not English. Not ${language} transliterated into the Latin alphabet — the speech engine reads the characters you write, so Latin letters are pronounced as ${language} letters and the result is unintelligible. Product names, company names and technical terms with no ${language} equivalent stay in their original form; everything around them is ${language}.`,
     `Total spoken words across ALL scenes: between ${wordLo} and ${wordHi}. Count them before answering. Under is better than over.`,
     `No scene's narration may be under ${perSceneFloor} words${cast.length ? ', except at most one wordless reaction beat' : ''}.`,
     `No statistics, percentages, benchmark figures, dates, study citations or named research unless they appear verbatim in the material above. If you want to reach for a number, use a concrete example instead. An invented figure is worse than no figure.`,

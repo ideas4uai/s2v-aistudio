@@ -5,6 +5,7 @@ import { authenticatedFetch } from '../utils/api';
 import { TargetLengthField } from '../components/TargetLengthField';
 import { targetLengthSeconds, targetWordCount } from '../utils/targetLength';
 import { VoicePicker } from '../components/VoicePicker';
+import { LANGUAGE_OPTIONS } from '../utils/language';
 
 export function CreateProject() {
   const navigate = useNavigate();
@@ -578,9 +579,11 @@ export function CreateProject() {
                     setFormData({ ...formData, settings: { ...formData.settings, language: e.target.value } })
                   }
                 >
-                  <option value="en">English</option>
-                  <option value="hi">Hindi (हिन्दी)</option>
-                  <option value="te">Telugu (తెలుగు)</option>
+                  {LANGUAGE_OPTIONS.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.code === 'en' ? l.name : `${l.name} (${l.native})`}
+                    </option>
+                  ))}
                 </select>
               </div>
 
