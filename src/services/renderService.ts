@@ -15,6 +15,7 @@ import { planSfxCues, renderSfxBed, sfxHeadroom, resolveSfxVolume } from './sfx.
 import { arcPosition, NO_ARC } from './colourArc.js';
 import { progressBus, ProgressStage } from '../server/progressBus.js';
 import { getChannel as getChannelSync } from '../server/services/channelStore.js';
+import { captionsSupported } from '../utils/language.js';
 
 const execAsync = promisify(exec);
 
@@ -1440,7 +1441,13 @@ export const assembleSceneSegment = async (scene: any, audioPath: any, cacheKey:
   const outputPath = path.join(tmpDir, `${scene.scene_id}_segment.mp4`);
   // Captions are burned in the same pass, so a captioned scene lands straight here.
   const captionedPath = path.join(tmpDir, `${scene.scene_id}_captioned.mp4`);
-  const hasCaptions = Boolean(scene.caption_text);
+  // Captions are burned by libass using the default font, which carries no Indic
+  // glyphs: Telugu and Devanagari narration came out as rows of '?????'. Skipping is
+  // the deliberate choice rather than shipping that, and it is recorded on the project
+  // so the UI can say so -- a video that quietly has no captions and no explanation is
+  // the outcome this avoids. Shipping captions for these languages needs a font with
+  // the coverage, which is separate work.
+  const hasCaptions = Boolean(scene.caption_text) && captionsSupported(project?.settings?.language);
   const finalPath = hasCaptions ? captionedPath : outputPath;
 
   const visualPath = (scene.visuals?.[0] as any)?.rendered_path;

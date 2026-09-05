@@ -8,6 +8,7 @@ import {
 import { authenticatedFetch } from '../utils/api';
 import { projectVideoFileName } from '../utils/filename';
 import { TargetLengthField } from '../components/TargetLengthField';
+import { normalizeLanguage, LANGUAGE_OPTIONS, DEFAULT_LANGUAGE, hasLatinScript } from '../utils/language';
 
 /** Stage names the user sees, keyed by the server's stage ids. */
 const STAGE_LABELS: Record<string, string> = {
@@ -105,6 +106,8 @@ interface Project {
     objects: { name: string; description: string; prompt: string }[];
   };
   settings: ProjectSettings;
+  /** Set by the render when captions were deliberately left off, with the reason. */
+  captions_unavailable?: { language: string; reason: string };
   scenes: Scene[];
   seo_metadata?: SeoMetadata;
   music_track?: string;
@@ -1146,15 +1149,25 @@ export function ProjectEditor() {
 
                   <div className="pt-2">
                     <label className="block text-sm font-bold text-neutral-700 mb-2">Language</label>
+                    {/* normalizeLanguage reads the display names older projects stored, so an
+                        existing record selects correctly and is saved back as a code. */}
                     <select 
-                      value={settings.language || 'English'}
+                      value={normalizeLanguage(settings.language) || DEFAULT_LANGUAGE}
                       onChange={(e) => saveSettings({ ...settings, language: e.target.value })}
                       className="w-full p-3 rounded-xl border border-neutral-300 outline-none focus:ring-2 focus:ring-indigo-500"
                     >
-                      <option value="English">English</option>
-                      <option value="Telugu">Telugu (తెలుగు)</option>
-                      <option value="Hindi">Hindi (हिन्दी)</option>
+                      {LANGUAGE_OPTIONS.map((l) => (
+                        <option key={l.code} value={l.code}>
+                          {l.code === 'en' ? l.name : `${l.name} (${l.native})`}
+                        </option>
+                      ))}
                     </select>
+                    {!hasLatinScript(settings.language) && (
+                      <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                        {project?.captions_unavailable?.reason
+                          ?? 'Captions are not available in this language yet — the caption font cannot draw its script. The video will be narrated without on-screen captions.'}
+                      </p>
+                    )}
                   </div>
 
                   <div className="pt-2">

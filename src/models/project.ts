@@ -137,6 +137,14 @@ export interface Project {
     failures: string[];
     checkedAt: string;
   };
+  /**
+   * Set when captions were deliberately left off, with the reason to show the user.
+   *
+   * Only non-Latin scripts today: the caption font has no Indic glyphs, so burning them
+   * produces '?????'. Recorded rather than inferred so the UI can explain the absence
+   * instead of the user finding a caption-less video and wondering what broke.
+   */
+  captions_unavailable?: { language: string; reason: string };
   tier?: string;
   export_preset?: string;
   export_resolution?: string;

@@ -1,6 +1,7 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
 import { getKeyForTask, getGeminiKey, type KeyTask } from '../utils/geminiAuth.js';
 import { loadImageAsBase64 } from '../utils/imageRef.js';
+import { logTextUsage } from './logService.js';
 
 const isAdcMode = !!process.env.GOOGLE_CLOUD_PROJECT;
 const gcpProject = process.env.GOOGLE_CLOUD_PROJECT || '';
@@ -437,6 +438,12 @@ export const AIService = {
         });
         const text = response.text || '';
         console.log(`[AIService] Text generation successful. Length: ${text.length}`);
+        // Observer, never a gate: logTextUsage cannot throw, and a failure to record
+        // what a call consumed must not fail the call.
+        logTextUsage({
+          task, model: currentModel, promptChars: prompt.length, responseChars: text.length,
+          usage: (response as any)?.usageMetadata ?? null,
+        });
         return text;
       } catch (error: any) {
         const is429 = error?.status === 'RESOURCE_EXHAUSTED' || error?.message?.includes('429');

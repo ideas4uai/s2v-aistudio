@@ -5,6 +5,7 @@ import { authenticatedFetch } from '../utils/api';
 import { TargetLengthField } from '../components/TargetLengthField';
 import { targetLengthSeconds, targetWordCount } from '../utils/targetLength';
 import { VoicePicker } from '../components/VoicePicker';
+import { LANGUAGE_OPTIONS, hasLatinScript } from '../utils/language';
 
 export function CreateProject() {
   const navigate = useNavigate();
@@ -578,10 +579,19 @@ export function CreateProject() {
                     setFormData({ ...formData, settings: { ...formData.settings, language: e.target.value } })
                   }
                 >
-                  <option value="en">English</option>
-                  <option value="hi">Hindi (हिन्दी)</option>
-                  <option value="te">Telugu (తెలుగు)</option>
+                  {LANGUAGE_OPTIONS.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.code === 'en' ? l.name : `${l.name} (${l.native})`}
+                    </option>
+                  ))}
                 </select>
+                {/* Said here, at the moment of the choice, rather than after a render. */}
+                {!hasLatinScript(formData.settings.language) && (
+                  <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    Captions are not available in this language yet — the caption font cannot draw
+                    its script. The video will be narrated without on-screen captions.
+                  </p>
+                )}
               </div>
 
               <div>

@@ -7,6 +7,7 @@ import ffmpegStatic from 'ffmpeg-static';
 import { generateAudioHash } from '../../utils/hash.js';
 import { sidecarRequest } from './ttsSidecar.js';
 import { getVoiceForUser, recordUse } from './voiceRegistry.js';
+import { languageName, DEFAULT_LANGUAGE } from '../../utils/language.js';
 
 const execAsync = promisify(exec);
 
@@ -484,13 +485,16 @@ export async function generateNarration(
   const silenceDuration = estimateDurationSec(text, durationSec);
   const textFilePath = path.join(projectAudioDir, `text-${sceneId}.txt`);
 
-  // Normalise short language codes to full names used throughout the routing
-  const langRaw = (settings?.language || 'en').toLowerCase();
-  const lang = langRaw === 'te' ? 'telugu'
-             : langRaw === 'hi' ? 'hindi'
-             : langRaw === 'es' ? 'spanish'
-             : langRaw === 'en' ? 'english'
-             : langRaw; // pass-through if already a full name
+  // Normalise to the lowercase full names the voice routing below is keyed on.
+  // Sourced from the canonical table rather than a ternary chain, so a language added
+  // there cannot be one this router silently fails to recognise.
+  //
+  // Unsupported values pass through UNCHANGED rather than defaulting to English:
+  // resolveVoiceModel must still throw for 'spanish' and 'french'. An unoffered
+  // language failing loudly is the whole point — quietly substituting English is how
+  // a video ships in the wrong language.
+  const langRaw = (settings?.language || DEFAULT_LANGUAGE).toLowerCase();
+  const lang = languageName(langRaw).toLowerCase() || langRaw;
 
   const profile = resolveVoiceProfile(settings?.character, settings?.voiceStyle);
 

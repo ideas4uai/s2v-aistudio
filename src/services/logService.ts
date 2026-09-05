@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -74,6 +75,119 @@ export function readEvents(file: string = getAnalyticsPath()): AnalyticsEvent[] 
     }
   }
   return events;
+}
+
+/**
+ * Which project the work happening right now belongs to.
+ *
+ * Text generation happens four call levels below the orchestrator, inside agents that
+ * take a brief rather than a project. Threading a projectId through every agent
+ * signature to satisfy an observer would put analytics plumbing in the middle of the
+ * craft code; an async-scoped value keeps it at the two ends that actually care.
+ */
+const projectScope = new AsyncLocalStorage<string>();
+
+/** Runs `fn` with every nested usage record attributed to this project. */
+export function withProjectScope<T>(projectId: string, fn: () => T): T {
+  return projectScope.run(projectId, fn);
+}
+
+export function currentProjectId(): string | undefined {
+  return projectScope.getStore();
+}
+
+/**
+ * One text-generation call.
+ *
+ * Tokens when the provider reports them, characters always. Gemini returns
+ * usageMetadata on a normal response but not on every error path, and a proxy that is
+ * always present beats a precise number that is sometimes missing -- the question this
+ * answers is "what did this render consume", and a gap in the series breaks it.
+ *
+ * Cost is deliberately NOT estimated here. Text runs on the free tier in this setup, so
+ * a dollar figure would be invented rather than measured. Set ANALYTICS_TEXT_USD_PER_MTOK
+ * when that changes and estimateTextCostUsd starts returning real numbers.
+ */
+export function logTextUsage(data: {
+  task?: string;
+  model?: string;
+  promptChars: number;
+  responseChars: number;
+  usage?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | null;
+}): void {
+  const u = data.usage || {};
+  logEvent('ai_text', currentProjectId(), {
+    task: data.task || 'general',
+    model: data.model,
+    promptChars: data.promptChars,
+    responseChars: data.responseChars,
+    promptTokens: u.promptTokenCount ?? null,
+    responseTokens: u.candidatesTokenCount ?? null,
+    totalTokens: u.totalTokenCount ?? null,
+  });
+}
+
+/** Per-million-token rate. Zero by default because text is on the free tier here. */
+export const TEXT_USD_PER_MTOK = Number(process.env.ANALYTICS_TEXT_USD_PER_MTOK ?? 0);
+
+export function estimateTextCostUsd(totalTokens: number): number {
+  return Number(((Math.max(0, totalTokens) / 1_000_000) * TEXT_USD_PER_MTOK).toFixed(6));
+}
+
+export type ProjectUsage = {
+  projectId: string;
+  renders: number;
+  lastRenderAt: string | null;
+  durationSec: number;
+  imagesGenerated: number;
+  audioClips: number;
+  textCalls: number;
+  totalTokens: number | null;
+  /** Null when no call reported tokens, so a zero cannot be read as "free". */
+  promptChars: number;
+  estimatedUsd: { images: number; text: number; total: number };
+  note: string;
+};
+
+/**
+ * What one project actually consumed.
+ *
+ * The summary answers "what has this installation spent"; this answers "what did THIS
+ * video cost", which is the question a price has to be built on.
+ */
+export function projectUsage(projectId: string, file: string = getAnalyticsPath()): ProjectUsage {
+  const events = readEvents(file).filter((e) => e.projectId === projectId);
+  const completed = events.filter((e) => e.type === 'render_completed');
+  const text = events.filter((e) => e.type === 'ai_text');
+
+  const sum = (list: AnalyticsEvent[], field: string) =>
+    list.reduce((acc, e) => acc + (num(e[field]) ?? 0), 0);
+
+  const reported = text.filter((e) => num(e.totalTokens) !== null);
+  const totalTokens = reported.length ? sum(reported, 'totalTokens') : null;
+  const images = sum(completed, 'imagesGenerated');
+  const imageUsd = estimateCostUsd(images);
+  const textUsd = estimateTextCostUsd(totalTokens ?? 0);
+
+  return {
+    projectId,
+    renders: completed.length,
+    lastRenderAt: completed.length ? String(completed[completed.length - 1].at) : null,
+    durationSec: Number(sum(completed, 'durationSec').toFixed(1)),
+    imagesGenerated: images,
+    audioClips: events.filter((e) => e.type === 'tts_generated').length,
+    textCalls: text.length,
+    totalTokens,
+    promptChars: sum(text, 'promptChars'),
+    estimatedUsd: {
+      images: imageUsd,
+      text: textUsd,
+      total: Number((imageUsd + textUsd).toFixed(6)),
+    },
+    note: TEXT_USD_PER_MTOK === 0
+      ? 'Text cost is 0 because this install runs Gemini on the free tier and TTS locally. Tokens are still counted. Set ANALYTICS_TEXT_USD_PER_MTOK to price them.'
+      : 'Estimate from recorded image counts and reported token counts.',
+  };
 }
 
 export type EventQuery = {
