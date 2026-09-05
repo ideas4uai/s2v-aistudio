@@ -1,22 +1,42 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
-import { getKeyForTask, getGeminiKey, type KeyTask } from '../utils/geminiAuth.js';
+import {
+  getKeyForTask, getGeminiKey, markKeyExhausted, hasAnyKey, keyPoolSummary, type KeyTask,
+} from '../utils/geminiAuth.js';
 import { loadImageAsBase64 } from '../utils/imageRef.js';
 import { logTextUsage } from './logService.js';
 
-const isAdcMode = !!process.env.GOOGLE_CLOUD_PROJECT;
 const gcpProject = process.env.GOOGLE_CLOUD_PROJECT || '';
 const gcpLocation = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
 
+/**
+ * Vertex is the LAST resort now, not the first.
+ *
+ * This was `!!process.env.GOOGLE_CLOUD_PROJECT`, so setting a cloud project routed every
+ * call to Vertex -- billed at standard rates -- while four real AI Studio keys with a
+ * genuine free tier sat unused in .env. The precedence is reversed: ADC is active only
+ * when there is no key to use anywhere.
+ *
+ * A function, not a constant: keys are added through Settings at runtime, and a value
+ * captured at module load would keep paying until the next restart.
+ */
+const adcConfigured = !!gcpProject;
+const adcActive = (): boolean => adcConfigured && !hasAnyKey();
+
+/** Per call: an empty key from getKeyForTask is the signal that ADC is all that is left. */
+const viaAdc = (apiKey: string): boolean => adcConfigured && !apiKey;
+
 console.log(
-  isAdcMode
-    ? `[STARTUP] Auth mode: ADC (Vertex AI) project: ${gcpProject}`
-    : '[STARTUP] Auth mode: API Keys'
+  hasAnyKey()
+    ? `[STARTUP] Auth mode: AI Studio API keys (${keyPoolSummary()})`
+    : adcConfigured
+      ? `[STARTUP] Auth mode: ADC (Vertex AI) project: ${gcpProject} — no API keys configured, calls are BILLED`
+      : '[STARTUP] Auth mode: none configured'
 );
 
 const aiInstances: Record<string, GoogleGenAI> = {};
 
 const getAI = (apiKey: string) => {
-  if (isAdcMode) {
+  if (viaAdc(apiKey)) {
     if (!aiInstances['adc']) {
       aiInstances['adc'] = new GoogleGenAI(
         { vertexai: true, project: gcpProject, location: gcpLocation } as any
@@ -122,6 +142,16 @@ const dbgOk = (provider: string, model: string, base64: string) => {
 // rung after the first one. In-memory only by design — a restart retries, since
 // credits may have been topped up. 429/5xx never trip it (those recover).
 const deadProviders = new Set<string>();
+
+/**
+ * Is this error the endpoint saying "not on this key, not right now"?
+ *
+ * Covers the daily/minute quota shapes AI Studio returns, including `limit: 0`, which
+ * is what a model with no free-tier allowance at all reports.
+ */
+const isRateLimited = (e: any): boolean =>
+  e?.status === 429 || e?.status === 'RESOURCE_EXHAUSTED'
+  || /(?:^|[^0-9])429(?:[^0-9]|$)|RESOURCE_EXHAUSTED|exceeded your current quota/i.test(String(e?.message ?? ''));
 
 const providerDead = (provider: string): boolean => {
   if (!deadProviders.has(provider)) return false;
@@ -329,10 +359,10 @@ async function generateImageWithGeminiNative(
   try {
     let geminiKey = '';
     try { geminiKey = getKeyForTask('image'); } catch { return null; }
-    if (!geminiKey && !isAdcMode) return null;
+    if (!geminiKey && !adcActive()) return null;
 
     const { GoogleGenAI: GGenAI } = await import('@google/genai');
-    const ai = isAdcMode
+    const ai = adcActive()
       ? new GGenAI({ vertexai: true, project: gcpProject, location: gcpLocation } as any)
       : new GGenAI({ apiKey: geminiKey });
 
@@ -419,7 +449,10 @@ export const AIService = {
       const taskKey = (TASK_KEY_MAP[task] ?? 'script') as KeyTask;
       const apiKey = getKeyForTask(taskKey);
       const ai = getAI(apiKey);
-      console.log(`[AIService] Task: ${task || 'general'}, model: ${currentModel}, key: ...${apiKey.slice(-4)}`);
+      console.log(
+        `[AIService] Task: ${task || 'general'}, model: ${currentModel}, `
+        + `via: ${viaAdc(apiKey) ? 'ADC/Vertex (BILLED)' : `AI Studio key ...${apiKey.slice(-4)}`}`,
+      );
 
       try {
         const isJsonTask = task === 'script' || task === 'planning' || task === 'scenes' || task === 'segmentation' || task === 'world';
@@ -449,6 +482,10 @@ export const AIService = {
         const is429 = error?.status === 'RESOURCE_EXHAUSTED' || error?.message?.includes('429');
         const is503 = error?.status === 503 || error?.message?.includes('503') ||
                       error?.message?.includes('UNAVAILABLE') || error?.message?.includes('high demand');
+
+        // Rest the key that just refused so the retry rotates onto another one in the
+        // same pool instead of asking the exhausted key again.
+        if (is429 && apiKey) markKeyExhausted(apiKey, task);
 
         if ((is429 || is503) && retryCount < maxRetries) {
           retryCount++;
@@ -547,9 +584,9 @@ export const AIService = {
     }
     if (DEBUG_IMAGEGEN) {
       console.log(`[ImageGen:DEBUG] ── ENTRY ${JSON.stringify({
-        authMode: isAdcMode ? 'ADC/Vertex' : 'API-key/AI-Studio',
+        authMode: adcActive() ? 'ADC/Vertex' : 'API-key/AI-Studio',
         gcpProject: gcpProject ? `${gcpProject.slice(0, 6)}…` : null,
-        region: isAdcMode ? gcpLocation : 'n/a',
+        region: adcActive() ? gcpLocation : 'n/a',
         aspectRatio,
         hasLora: !!options?.loraModelUrl,
         hasReferenceImage: !!options?.referenceImageUrl,
@@ -584,7 +621,7 @@ export const AIService = {
     // Skipped when a character reference image is in play: Imagen generate takes no
     // reference input, so identity would drift. The Gemini multimodal image path
     // below owns that case.
-    if (isAdcMode && !referenceImage && !providerDead('1:VertexImagen')) {
+    if (adcActive() && !referenceImage && !providerDead('1:VertexImagen')) {
       console.log('[ImageGen] Trying Vertex Imagen...');
       const imagenResult = await generateImageWithVertexImagen(styledPrompt, aspectRatio);
       if (imagenResult) return imagenResult;
@@ -594,7 +631,7 @@ export const AIService = {
     // path that can consume a character reference image for identity consistency.
     let imagenApiKey = '';
     try { imagenApiKey = getKeyForTask('image'); } catch { /* falls through to next provider */ }
-    if ((imagenApiKey || isAdcMode) && !providerDead('1.5:GeminiImage')) {
+    if ((imagenApiKey || adcActive()) && !providerDead('1.5:GeminiImage')) {
       try {
         console.log('[ImageGen] Trying Gemini Flash Image...');
         const { GoogleGenAI } = await import('@google/genai');
@@ -606,10 +643,10 @@ export const AIService = {
         imgParts.push({ text: styledPrompt });
 
         dbgCall('1.5:GeminiImage', {
-          provider: isAdcMode ? 'vertex-ai' : 'gemini-api',
+          provider: adcActive() ? 'vertex-ai' : 'gemini-api',
           sdkCall: 'models.generateContent',
           model: GEMINI_IMAGE_MODEL,
-          region: isAdcMode ? gcpLocation : 'n/a',
+          region: adcActive() ? gcpLocation : 'n/a',
           isImagenModel: false,
           payload: {
             contents: [{ role: 'user', parts: imgParts.map((p: any) => p.inlineData
@@ -627,8 +664,8 @@ export const AIService = {
         // image. Only used in ADC mode — an API key has no region to move to.
         let geminiImgResponse: any;
         let lastRegionError: any;
-        for (const region of (isAdcMode ? imageRegions() : ['n/a'])) {
-          const geminiImageAI = isAdcMode
+        for (const region of (adcActive() ? imageRegions() : ['n/a'])) {
+          const geminiImageAI = adcActive()
             ? new GoogleGenAI({ vertexai: true, project: gcpProject, location: region } as any)
             : new GoogleGenAI({ apiKey: imagenApiKey });
           try {
@@ -667,6 +704,9 @@ export const AIService = {
         return base64;
       } catch (e: any) {
         console.warn('[ImageGen] Gemini Flash Image failed:', e.message, 'status:', e.status);
+        // Rest the key so an image pool of several rotates instead of re-asking the
+        // one that just refused. Text does the same in generateText's catch.
+        if (imagenApiKey && isRateLimited(e)) markKeyExhausted(imagenApiKey, 'image');
         noteFail('1.5:GeminiImage', e, options?.referenceImageUrl ? '1.75:GeminiNative' : '2:Fal');
         tripBreakerIfDead('1.5:GeminiImage', e);
       }
@@ -675,10 +715,10 @@ export const AIService = {
     // Provider 1.75: Gemini 2.0 Flash Native (reference-image-aware, better character identity)
     if (options?.referenceImageUrl && !providerDead('1.75:GeminiNative')) {
       dbgCall('1.75:GeminiNative', {
-        provider: isAdcMode ? 'vertex-ai' : 'gemini-api',
+        provider: adcActive() ? 'vertex-ai' : 'gemini-api',
         sdkCall: 'models.generateContent',
         model: GEMINI_IMAGE_MODEL,
-        region: isAdcMode ? gcpLocation : 'n/a',
+        region: adcActive() ? gcpLocation : 'n/a',
         isImagenModel: false,
         payload: { parts: ['<reference inlineData>', `<prompt ${styledPrompt.length} chars>`], config: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { aspectRatio } } },
       });
@@ -779,15 +819,15 @@ export const AIService = {
     // Provider 4: Gemini 2.5 flash image (when quota available)
     let geminiImageKey = '';
     try { geminiImageKey = getKeyForTask('image'); } catch { /* no key configured */ }
-    if ((geminiImageKey || isAdcMode) && !providerDead('4:Gemini2.5')) {
+    if ((geminiImageKey || adcActive()) && !providerDead('4:Gemini2.5')) {
       try {
         console.log('[ImageGen] Trying Gemini 2.5 flash image...');
         const ai = getAI(geminiImageKey);
         dbgCall('4:Gemini2.5', {
-          provider: isAdcMode ? 'vertex-ai' : 'gemini-api',
+          provider: adcActive() ? 'vertex-ai' : 'gemini-api',
           sdkCall: 'models.generateContent',
           model: 'gemini-2.5-flash-image',
-          region: isAdcMode ? gcpLocation : 'n/a',
+          region: adcActive() ? gcpLocation : 'n/a',
           isImagenModel: false,
           payload: { parts: [`<prompt ${finalPrompt.length} chars>`], config: { responseModalities: ['TEXT', 'IMAGE'] } },
         });
@@ -804,6 +844,7 @@ export const AIService = {
         return imagePart.inlineData.data as string;
       } catch (e: any) {
         console.warn('[ImageGen] Gemini failed:', e.message);
+        if (geminiImageKey && isRateLimited(e)) markKeyExhausted(geminiImageKey, 'image');
         noteFail('4:Gemini2.5', e, '5:PicsumThrow');
         tripBreakerIfDead('4:Gemini2.5', e);
       }
