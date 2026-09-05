@@ -3,6 +3,7 @@ import * as path from 'path';
 import { Project } from '../models/project.js';
 import { isSilentWav } from '../server/services/ttsService.js';
 import { validateAssetConsistency } from './characterAssetService.js';
+import { normalizeLanguage, languageName } from '../utils/language.js';
 
 /**
  * Pre-publish quality gate.
@@ -150,6 +151,139 @@ function checkVisualPresent(project: Project): GateCheck {
 }
 
 /**
+ * How far a caption may sit from the speech it belongs to before the gate fails.
+ *
+ * Not the +/-100ms the caption-sync work established -- that tolerance is for two
+ * measurements of the SAME instant agreeing. Captions whose per-word times come from
+ * even division rather than forced alignment are legitimately up to ~0.47s out on a
+ * clean scene, and failing those would fail correct renders.
+ *
+ * What this catches is the failure that actually shipped: captions laid out across
+ * duration_actual instead of the speech span, so every cue after the first drifts
+ * progressively later -- measured at 2.85s behind on a 6.58s scene. Half a second sits
+ * above the honest even-division error and far below a real desync.
+ */
+export const CAPTION_DRIFT_TOLERANCE_SEC = Number(process.env.CAPTION_DRIFT_TOLERANCE_SEC ?? 0.5);
+
+/**
+ * Do the captions line up with the speech?
+ *
+ * Compares two numbers the render already measured -- the caption cue envelope against
+ * detectSpeechSpan's speech_start/speech_end -- rather than re-deriving anything with
+ * ffmpeg. The gate runs after every render and must stay cheap.
+ *
+ * Scenes without a measured span report nothing rather than passing: an older record
+ * that predates the measurement is unchecked, not correct.
+ */
+export function checkCaptionSync(project: Project): GateCheck {
+  const id = 'caption_sync', label = 'Captions match the speech';
+  const scenes = project.scenes || [];
+
+  // caption_chunks is what a rendered project actually persists -- `captions` is the
+  // per-word array, populated in memory during the render and empty on every record on
+  // disk. Reading only `captions` made this check skip every real project while passing
+  // its fixtures, which is the same stage-gap failure the check exists to catch.
+  const cuesOf = (s: any): Array<{ start: number; end: number }> => {
+    const raw = (s.captions?.length ? s.captions : s.caption_chunks) || [];
+    return raw
+      .map((c: any) => ({ start: Number(c.start), end: Number(c.end) }))
+      .filter((c: any) => Number.isFinite(c.start) && Number.isFinite(c.end));
+  };
+
+  const measurable = scenes.filter((s: any) =>
+    cuesOf(s).length > 0 && Number(s.speech_end) > Number(s.speech_start));
+  if (!measurable.length) {
+    return skip(id, label, 'No scene carries both caption cues and a measured speech span.');
+  }
+
+  let worst = { drift: 0, sceneId: '', where: '' };
+  const offenders: string[] = [];
+  for (const s of measurable as any[]) {
+    const cues = cuesOf(s);
+    const firstCue = Math.min(...cues.map((c) => c.start));
+    const lastCue = Math.max(...cues.map((c) => c.end));
+    const startDrift = Math.abs(firstCue - Number(s.speech_start));
+    const endDrift = Math.abs(lastCue - Number(s.speech_end));
+
+    for (const [drift, where] of [[startDrift, 'start'], [endDrift, 'end']] as const) {
+      if (drift > worst.drift) worst = { drift, sceneId: s.scene_id, where };
+    }
+    if (Math.max(startDrift, endDrift) > CAPTION_DRIFT_TOLERANCE_SEC) {
+      offenders.push(`${sceneLabel(project, s.scene_id)} (${Math.max(startDrift, endDrift).toFixed(2)}s)`);
+    }
+  }
+
+  if (offenders.length) {
+    return fail(id, label,
+      `Captions drift from the speech by more than ${CAPTION_DRIFT_TOLERANCE_SEC}s in `
+      + `${offenders.length} scene(s): ${offenders.join(', ')}.`);
+  }
+  return pass(id, label,
+    `Worst drift ${worst.drift.toFixed(2)}s across ${measurable.length} scene(s), `
+    + `within ${CAPTION_DRIFT_TOLERANCE_SEC}s.`);
+}
+
+/** Share of a string's letters that belong to one Unicode script. */
+function scriptShare(text: string, pattern: RegExp): number {
+  const letters = (text.match(/\p{L}/gu) || []).length;
+  if (!letters) return 0;
+  return (text.match(pattern) || []).length / letters;
+}
+
+/** The scripts each supported language is actually written in. */
+const LANGUAGE_SCRIPT: Record<string, RegExp> = {
+  en: /[A-Za-z]/g,
+  te: /[\u0C00-\u0C7F]/g,
+  hi: /[\u0900-\u097F]/g,
+};
+
+/**
+ * Minimum share of letters that must be in the expected script.
+ *
+ * Not 1.0, and not close to it: a correct Telugu script legitimately keeps product and
+ * company names in Latin -- a real generated one measured 793 Telugu characters to 8
+ * Latin ("AI"). Half is far above what borrowed nouns produce and far below what a
+ * script written in the wrong language entirely would score.
+ */
+export const LANGUAGE_MATCH_THRESHOLD = 0.5;
+
+/**
+ * Is the narration in the language that was asked for?
+ *
+ * This is the check that would have caught the bug it was written for. The scriptwriter
+ * had no language field, so a Telugu project got an English script, and Piper read
+ * English words through Telugu phonemes. Every existing check passed: the WAV was valid
+ * and not silent, so audio was "present" and the render "completed". The video was
+ * unintelligible and shipped as a success.
+ *
+ * Script share, not a language-detection model: the failure being caught is an entire
+ * script in the wrong writing system, which is unambiguous from the characters alone
+ * and needs no dependency to see.
+ */
+export function checkLanguageMatch(project: Project): GateCheck {
+  const id = 'language_match', label = 'Narration is in the selected language';
+  const code = normalizeLanguage((project as any).settings?.language);
+  const scenes = project.scenes || [];
+
+  if (!code) return skip(id, label, 'No language selected for this project.');
+  const pattern = LANGUAGE_SCRIPT[code];
+  if (!pattern) return skip(id, label, `No script rule for "${code}".`);
+
+  const spoken = scenes.map((s: any) => String(s.narration_text || '')).join(' ').trim();
+  if (!spoken) return skip(id, label, 'No narration to check.');
+
+  const share = scriptShare(spoken, pattern);
+  const name = languageName(code);
+  if (share < LANGUAGE_MATCH_THRESHOLD) {
+    return fail(id, label,
+      `Project is set to ${name}, but only ${Math.round(share * 100)}% of the narration is `
+      + `written in ${name}'s script. The voice model will read it phonetically and the `
+      + `result will not be intelligible.`);
+  }
+  return pass(id, label, `${Math.round(share * 100)}% of the narration is in ${name}'s script.`);
+}
+
+/**
  * Character appearance drift, using the existing LAB skin-tone validator.
  *
  * Only meaningful where a scene depicts a named character AND that character has a
@@ -219,6 +353,10 @@ export async function runQualityGate(project?: Project): Promise<QualityGateResu
     await checkAudioPresent(project),
     checkVisualPresent(project),
     checkCharacterConsistency(project),
+    // The two silent-pass cases: a video in the wrong language and captions against
+    // the wrong window both used to complete as successes.
+    checkLanguageMatch(project),
+    checkCaptionSync(project),
   ];
 
   const failures = checks.filter((c) => c.status === 'fail').map((c) => c.detail);
