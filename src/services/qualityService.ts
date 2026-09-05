@@ -223,11 +223,18 @@ export function checkCaptionSync(project: Project): GateCheck {
     + `within ${CAPTION_DRIFT_TOLERANCE_SEC}s.`);
 }
 
-/** Share of a string's letters that belong to one Unicode script. */
+/**
+ * Share of a string's letters that belong to one Unicode script.
+ *
+ * Denominator counts marks as well as letters. Telugu and Devanagari write vowels and
+ * the virama as combining marks, which are \p{M} and not \p{L} but ARE inside the
+ * script's block -- so a letters-only denominator is smaller than the numerator and a
+ * real Telugu script measured 169%.
+ */
 function scriptShare(text: string, pattern: RegExp): number {
-  const letters = (text.match(/\p{L}/gu) || []).length;
-  if (!letters) return 0;
-  return (text.match(pattern) || []).length / letters;
+  const glyphs = (text.match(/[\p{L}\p{M}]/gu) || []).length;
+  if (!glyphs) return 0;
+  return Math.min(1, (text.match(pattern) || []).length / glyphs);
 }
 
 /** The scripts each supported language is actually written in. */

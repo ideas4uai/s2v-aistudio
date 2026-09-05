@@ -54,6 +54,16 @@ describe('language mismatch fails the gate', () => {
     expect(LANGUAGE_MATCH_THRESHOLD).toBeLessThan(0.9);
   });
 
+  it('never reports more than 100%', () => {
+    // Telugu and Devanagari write vowels as combining marks, which are \p{M} and not
+    // \p{L} but sit inside the script block. A letters-only denominator made a real
+    // Telugu script measure 169%.
+    const p = project({ settings: { language: 'te' }, scenes: [scene({ narration_text: TELUGU })] });
+    const pct = Number(/(\d+)%/.exec(checkLanguageMatch(p).detail)![1]);
+    expect(pct).toBeGreaterThan(50);
+    expect(pct).toBeLessThanOrEqual(100);
+  });
+
   it('fails an English project that came out in Telugu', () => {
     const p = project({ scenes: [scene({ narration_text: TELUGU })] });
     expect(checkLanguageMatch(p).status).toBe('fail');
