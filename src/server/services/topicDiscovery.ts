@@ -157,6 +157,25 @@ export function rankByVelocity(items: TopicSuggestion[]): TopicSuggestion[] {
   return [...items].sort((a, b) => b.velocity - a.velocity);
 }
 
+/**
+ * Whether a video is spoken in English.
+ *
+ * `relevanceLanguage: 'en'` on search.list is a ranking hint, not a filter. Measured on a
+ * real channel, 9 of 25 suggestions came back in Hindi, Telugu or Tamil. The field that
+ * says what is actually spoken is snippet.defaultAudioLanguage, and it arrives free in the
+ * videos.list response already fetched for view counts -- no extra quota.
+ *
+ * NOT defaultLanguage, which describes the title and description rather than the audio:
+ * every Telugu and Hindi video in that measured set declared defaultLanguage 'en'.
+ *
+ * Absent means keep. Roughly one video in 25 never sets the field, and discarding a video
+ * for having incomplete metadata would drop English results to enforce an English filter.
+ */
+export function isEnglishAudio(defaultAudioLanguage?: string): boolean {
+  const lang = String(defaultAudioLanguage || '').trim().toLowerCase();
+  return !lang || lang === 'en' || lang.startsWith('en-');
+}
+
 /** Age in days, floored so a video published minutes ago cannot produce an infinite rate. */
 export function ageInDays(publishedAt: string, now = Date.now()): number {
   const ms = now - new Date(publishedAt).getTime();
@@ -226,21 +245,24 @@ export async function discoverTopics(
     part: 'snippet,statistics', id: ids.join(','), maxResults: String(MAX_RESULTS),
   }, token);
 
-  const suggestions: TopicSuggestion[] = (stats.items || []).map((v: any) => {
-    const publishedAt = String(v?.snippet?.publishedAt || new Date(now).toISOString());
-    const views = Number(v?.statistics?.viewCount || 0);
-    const ageDays = ageInDays(publishedAt, now);
-    return {
-      videoId: String(v?.id || ''),
-      title: String(v?.snippet?.title || ''),
-      channelTitle: String(v?.snippet?.channelTitle || ''),
-      publishedAt,
-      views,
-      ageDays: Number(ageDays.toFixed(2)),
-      velocity: Math.round(views / ageDays),
-      url: `https://www.youtube.com/watch?v=${v?.id}`,
-    };
-  }).filter((s: TopicSuggestion) => s.videoId && s.title);
+  const suggestions: TopicSuggestion[] = (stats.items || [])
+    .filter((v: any) => isEnglishAudio(v?.snippet?.defaultAudioLanguage))
+    .map((v: any) => {
+      const publishedAt = String(v?.snippet?.publishedAt || new Date(now).toISOString());
+      const views = Number(v?.statistics?.viewCount || 0);
+      const ageDays = ageInDays(publishedAt, now);
+      return {
+        videoId: String(v?.id || ''),
+        title: String(v?.snippet?.title || ''),
+        channelTitle: String(v?.snippet?.channelTitle || ''),
+        publishedAt,
+        views,
+        ageDays: Number(ageDays.toFixed(2)),
+        velocity: Math.round(views / ageDays),
+        url: `https://www.youtube.com/watch?v=${v?.id}`,
+      };
+    })
+    .filter((s: TopicSuggestion) => s.videoId && s.title);
 
   return { channelId, seeds, seedSource, windowDays: WINDOW_DAYS, suggestions: rankByVelocity(suggestions) };
 }

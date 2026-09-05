@@ -4,7 +4,7 @@ import * as path from 'path';
 import { storePath } from '../src/server/services/channelStore.js';
 import {
   termsFromTitles, seedTerms, rankByVelocity, ageInDays, discoverTopics, decodeEntities,
-  DISCOVERY_SCOPE, WINDOW_DAYS,
+  isEnglishAudio, DISCOVERY_SCOPE, WINDOW_DAYS,
 } from '../src/server/services/topicDiscovery.js';
 
 /**
@@ -146,9 +146,11 @@ const readable = (url: string) => decodeURIComponent(url).replace(/\+/g, ' ');
 
 /** Minimal stand-ins for the two API shapes discoverTopics reads. */
 const searchPage = (ids: string[]) => ({ items: ids.map((id) => ({ id: { videoId: id } })) });
-const videoPage = (rows: Array<[string, string, number, string]>) => ({
-  items: rows.map(([id, title, views, publishedAt]) => ({
-    id, snippet: { title, publishedAt, channelTitle: 'Someone' }, statistics: { viewCount: String(views) },
+const videoPage = (rows: Array<[string, string, number, string, string?]>) => ({
+  items: rows.map(([id, title, views, publishedAt, defaultAudioLanguage]) => ({
+    id,
+    snippet: { title, publishedAt, channelTitle: 'Someone', defaultAudioLanguage },
+    statistics: { viewCount: String(views) },
   })),
 });
 
@@ -238,6 +240,22 @@ describe('discoverTopics against a stubbed YouTube', () => {
     } finally { restore(); }
   });
 
+  it('excludes non-English videos from discovery output', async () => {
+    const restore = connect(['rag']);
+    try {
+      stubYouTube([], searchPage(['en1', 'hi1', 'te1', 'none1']), videoPage([
+        ['en1', 'RAG explained', 100, '2026-09-01T00:00:00Z', 'en-US'],
+        // Hindi audio under an English title and defaultLanguage 'en' -- the real shape
+        // of the highest-velocity result this filter removes.
+        ['hi1', 'Generative AI Full Course', 900, '2026-09-01T00:00:00Z', 'hi'],
+        ['te1', 'RAG in Telugu', 800, '2026-09-01T00:00:00Z', 'te'],
+        ['none1', 'AI Basics', 50, '2026-09-01T00:00:00Z', undefined],
+      ]));
+      const out = await discoverTopics(CH, { now: Date.parse('2026-09-04T00:00:00Z') });
+      expect(out.suggestions.map((s) => s.videoId)).toEqual(['en1', 'none1']);
+    } finally { restore(); }
+  });
+
   it('returns nothing rather than searching for the empty string', async () => {
     const restore = connect();
     try {
@@ -248,6 +266,27 @@ describe('discoverTopics against a stubbed YouTube', () => {
       // that returns global noise, which is the failure mode this feature exists to avoid.
       expect(calls.some((c) => c.includes('order=viewCount'))).toBe(false);
     } finally { restore(); }
+  });
+});
+
+describe('English-only results', () => {
+  // relevanceLanguage on search.list only nudges the ranking, so the language filter has
+  // to happen here. These are the exact tags seen on real results.
+  it('keeps English and its regional variants', () => {
+    for (const tag of ['en', 'en-US', 'en-GB', 'en-IN', 'EN']) {
+      expect(isEnglishAudio(tag)).toBe(true);
+    }
+  });
+
+  it('drops the languages that were actually leaking in', () => {
+    for (const tag of ['hi', 'te', 'ta']) expect(isEnglishAudio(tag)).toBe(false);
+  });
+
+  it('keeps a video that declares no audio language at all', () => {
+    // About one in 25 leaves the field unset. Dropping those would remove English
+    // results in the name of an English filter.
+    expect(isEnglishAudio(undefined)).toBe(true);
+    expect(isEnglishAudio('')).toBe(true);
   });
 });
 
