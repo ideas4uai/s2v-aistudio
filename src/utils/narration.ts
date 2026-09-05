@@ -79,3 +79,44 @@ export function hookStrategyBrief(strategy: unknown): string {
   if (!key || key === 'default') return '';
   return HOOK_BRIEFS[key] || `Open on a hook that works by being ${key}, without using that word.`;
 }
+
+/**
+ * A scene that is deliberately silent — an image held for its own beat, with no words.
+ *
+ * ── Why this needs a name ──────────────────────────────────────────────────────
+ * The script prompt has always permitted one: "No scene's narration may be under N
+ * words, except at most one wordless reaction beat." The render pipeline did not. The
+ * content-integrity check treated any empty narration_text as an unsalvageable scene and
+ * halted the whole render, so the pipeline refused the exact thing its own writing
+ * instructions asked for.
+ *
+ * The check itself is right to exist — it stops the renderer quietly rewriting an
+ * approved script — and the two cases genuinely look identical field-by-field:
+ *
+ *   deliberate  a beat of held image, chosen by the writer
+ *   accidental  narration that went missing upstream (a failed expansion retry returned
+ *               fourteen scenes with `narration: undefined` and was accepted)
+ *
+ * So they are told apart by SHAPE rather than by the field, which is what the prompt's
+ * own rule already implies: a silent beat is a punctuation mark inside a script that
+ * speaks. One wordless scene among six is a craft choice. Twelve of fourteen is a
+ * script that failed to generate, and halting on that is still correct.
+ */
+export function isSilentBeat(scene: any): boolean {
+  return !String(scene?.narration_text ?? '').trim()
+    && !!String(scene?.visuals?.[0]?.prompt ?? '').trim();
+}
+
+/**
+ * Whether a set of scenes uses silence as punctuation rather than having lost its words.
+ *
+ * At least one scene must speak, and the silent ones must be the minority. Both halves
+ * matter: an all-silent project is a generation failure, and so is one where most beats
+ * came back empty.
+ */
+export function silenceIsDeliberate(scenes: any[]): boolean {
+  const list = scenes ?? [];
+  const silent = list.filter(isSilentBeat).length;
+  const speaking = list.length - silent;
+  return silent > 0 && speaking > 0 && silent < speaking;
+}

@@ -4,6 +4,7 @@ import { Project } from '../models/project.js';
 import { isSilentWav } from '../server/services/ttsService.js';
 import { validateAssetConsistency } from './characterAssetService.js';
 import { normalizeLanguage, languageName, captionsSupported } from '../utils/language.js';
+import { isSilentBeat, silenceIsDeliberate } from '../utils/narration.js';
 
 /**
  * Pre-publish quality gate.
@@ -112,9 +113,15 @@ export async function checkAudioPresent(project: Project): Promise<GateCheck> {
   if (scenes.length === 0) return fail(id, label, 'Project has no scenes.');
 
   const problems: string[] = [];
+  const silentAllowed = silenceIsDeliberate(scenes);
+  let silentBeats = 0;
   for (const scene of scenes) {
     const p = (scene as any).narration_path;
     const where = sceneLabel(project, scene.scene_id);
+
+    // A deliberately wordless beat has no narration by design. Counting it as missing
+    // audio would fail the gate on the one thing the script prompt explicitly allows.
+    if (silentAllowed && isSilentBeat(scene)) { silentBeats++; continue; }
 
     if (!realFile(p, 1000)) {
       problems.push(`${where} has no narration audio`);
@@ -130,7 +137,9 @@ export async function checkAudioPresent(project: Project): Promise<GateCheck> {
   }
 
   if (problems.length) return fail(id, label, problems.join('; ') + '.');
-  return pass(id, label, `All ${scenes.length} scenes have audible narration.`);
+  return pass(id, label, silentBeats
+    ? `All ${scenes.length - silentBeats} speaking scenes have audible narration (${silentBeats} silent beat${silentBeats > 1 ? 's' : ''}).`
+    : `All ${scenes.length} scenes have audible narration.`);
 }
 
 function checkVisualPresent(project: Project): GateCheck {

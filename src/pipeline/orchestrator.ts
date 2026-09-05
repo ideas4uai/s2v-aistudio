@@ -29,7 +29,7 @@ import { logUserEvent, logEvent, estimateCostUsd } from '../services/logService.
 import { buildSceneTimeline } from '../utils/timeline.js';
 import { targetLengthSeconds, planScenePadding, MAX_PAD_FACTOR, secondsForWords, countWords } from '../utils/targetLength.js';
 import { beatShares } from '../utils/beats.js';
-import { stripSpeakerPrefix } from '../utils/narration.js';
+import { isSilentBeat, silenceIsDeliberate, stripSpeakerPrefix } from '../utils/narration.js';
 import { projectVideoFileName } from '../utils/filename.js';
 import { QuotaService } from '../server/services/quotaService.js';
 import { AIService } from '../services/aiService.js';
@@ -852,9 +852,19 @@ async function runPipelineScoped(project_id: string, options?: RunPipelineOption
       const repaired = repairSceneVisuals(project.scenes);
       if (repaired) console.log(`[Orchestrator] Backfilled a visual prompt on ${repaired} scene(s) from their own background/legacy fields`);
 
+      // A scene with no words is not automatically a broken scene. The script prompt
+      // permits "at most one wordless reaction beat", and this check used to halt on
+      // exactly that — the pipeline refusing what its own writing instructions asked
+      // for. See isSilentBeat: a silent beat still needs its visual, and silence is
+      // read as punctuation only while most of the script still speaks. A project whose
+      // narration went missing upstream still halts, which is what this check is for.
+      const silentIsFine = silenceIsDeliberate(project.scenes);
       const broken = project.scenes
         .map((scene: any, index: number) => ({ scene, where: `scene ${(scene.order ?? index) + 1}` }))
-        .filter(({ scene }: any) => !String(scene.narration_text || '').trim() || !String(scene.visuals?.[0]?.prompt || '').trim());
+        .filter(({ scene }: any) => {
+          if (!String(scene.visuals?.[0]?.prompt || '').trim()) return true;
+          return !String(scene.narration_text || '').trim() && !(silentIsFine && isSilentBeat(scene));
+        });
 
       if (broken.length) {
         // Halt rather than regenerate. Rewriting the user's script is not a repair —
@@ -1412,6 +1422,15 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
   scene.audio_hash = audioHash;
 
   const audioPromise = (async () => {
+     // A deliberately silent beat has nothing to say, so nothing is synthesised. Handing
+     // an empty string to the engine loads the model and returns pure silence, which
+     // SilentSynthesisError then — correctly — refuses to ship. The scene is not broken;
+     // it just has no words, and the segment runs on its own duration_target.
+     if (isSilentBeat(scene)) {
+        emitScene(project, scene, 'tts', 'Silent beat — no narration to record', true);
+        scene.narration_path = undefined;
+        return;
+     }
      emitScene(project, scene, 'tts',
        audioFresh ? 'Narration already recorded' : 'Recording narration', audioFresh);
      if (!audioFresh) {
@@ -1788,7 +1807,15 @@ export async function processSingleScene(scene: Scene, project: Project, voicePr
 
   // 3. Assembly
   scene.stage = 'render';
-  if (scene.narration_path) {
+  // A deliberately silent beat still needs a segment. Gating assembly on
+  // narration_path alone skipped it entirely: the image rendered, the clip existed, and
+  // the scene finished with no segment_path — so the stitch dropped it and the project
+  // came back `degraded` with the beat missing from the video.
+  //
+  // assembleSceneSegment already handles this: prepareSceneAudio falls back to
+  // anullsrc for its duration_target when there is no audio file, which is exactly a
+  // held image with silence under it.
+  if (scene.narration_path || isSilentBeat(scene)) {
      const localAudio = scene.narration_path; // always local — pipeline no longer uploads intermediates
 
      const visual = scene.visuals?.[0] as any;
