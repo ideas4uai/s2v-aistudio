@@ -3,6 +3,7 @@ import { progressBus, ProgressStage } from '../server/progressBus.js';
 import { StyleProfile } from '../models/types.js';
 import { Scene, Visual, VisualFrame } from '../models/scene.js';
 import { runQualityGate } from '../services/qualityService.js';
+import { withProjectScope } from '../services/logService.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import os from 'os';
@@ -531,7 +532,11 @@ function applyDriftCorrection(scene: Scene): void {
 // PIPELINE ORCHESTRATOR
 // ============================================================================
 
-export async function runScenePipeline(project_id: string, scene_id: string, options?: { mode?: 'test' | 'production' }): Promise<void> {
+export function runScenePipeline(project_id: string, scene_id: string, options?: { mode?: 'test' | 'production' }): Promise<void> {
+  return withProjectScope(project_id, () => runScenePipelineScoped(project_id, scene_id, options));
+}
+
+async function runScenePipelineScoped(project_id: string, scene_id: string, options?: { mode?: 'test' | 'production' }): Promise<void> {
   const pipelineKey = `scene-${scene_id}`;
   if (runningPipelines.has(pipelineKey)) {
     console.log(`[Orchestrator] A pipeline is already running for scene ${scene_id}. Skipping.`);
@@ -624,7 +629,7 @@ async function guardedSaveProjectState(project: Project, signal?: AbortSignal) {
 // Global map to track running pipelines per project
 const runningPipelines = new Set<string>();
 
-export async function runPipeline(project_id: string, options?: {
+export type RunPipelineOptions = {
   preview?: boolean,
   mode?: 'test' | 'production',
   /**
@@ -633,7 +638,20 @@ export async function runPipeline(project_id: string, options?: {
    * byte-for-byte the render it was before this existed.
    */
   beforeStitch?: (project: Project) => Promise<string[]>,
-}): Promise<void> {
+};
+
+/**
+ * Every AI call made anywhere below this point is attributed to this project.
+ *
+ * A wrapper rather than a parameter threaded through the agents: text generation happens
+ * four levels down, inside agents that take a brief and have no business knowing about
+ * analytics. See withProjectScope.
+ */
+export function runPipeline(project_id: string, options?: RunPipelineOptions): Promise<void> {
+  return withProjectScope(project_id, () => runPipelineScoped(project_id, options));
+}
+
+async function runPipelineScoped(project_id: string, options?: RunPipelineOptions): Promise<void> {
   const characterAnchors = new Map<string, string>();
   console.log('[Orchestrator] runPipeline called for:', project_id);
   if (runningPipelines.has(project_id)) {

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { queryEvents, summarise, logEvent } from '../../services/logService.js';
+import { queryEvents, summarise, logEvent, projectUsage } from '../../services/logService.js';
 
 /**
  * Read access to the event log.
@@ -17,6 +17,22 @@ analyticsRouter.get('/summary', (_req, res) => {
     res.json(summarise());
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to summarise analytics' });
+  }
+});
+
+/**
+ * What one project consumed: renders, duration, images, audio clips, text tokens and
+ * the cost estimate built from them.
+ *
+ * Separate from /summary because they answer different questions. The summary is "what
+ * has this installation spent"; this is "what did THIS video cost", which is the one a
+ * price has to be built on.
+ */
+analyticsRouter.get('/projects/:projectId', (req, res) => {
+  try {
+    res.json(projectUsage(req.params.projectId));
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to read project usage' });
   }
 });
 
