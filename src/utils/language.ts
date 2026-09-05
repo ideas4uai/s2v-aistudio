@@ -75,3 +75,16 @@ export const LANGUAGE_OPTIONS: Array<{ code: LanguageCode; name: string; native:
 export function hasLatinScript(value?: string | null): boolean {
   return normalizeLanguage(value) === 'en';
 }
+
+/**
+ * Whether captions should be burned for this project's language.
+ *
+ * Same question as hasLatinScript with one deliberate difference: an UNSET language
+ * means the default, not "unsupported". Most projects on disk never set the field, and
+ * reading that as "no captions" silently stripped captions from every one of them --
+ * caught by the segment-reuse tests, which is exactly the kind of quiet removal this
+ * whole area is supposed to prevent.
+ */
+export function captionsSupported(value?: string | null): boolean {
+  return hasLatinScript(normalizeLanguage(value) ?? DEFAULT_LANGUAGE);
+}

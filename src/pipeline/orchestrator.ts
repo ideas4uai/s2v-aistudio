@@ -4,6 +4,7 @@ import { StyleProfile } from '../models/types.js';
 import { Scene, Visual, VisualFrame } from '../models/scene.js';
 import { runQualityGate } from '../services/qualityService.js';
 import { withProjectScope } from '../services/logService.js';
+import { hasLatinScript, languageName } from '../utils/language.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import os from 'os';
@@ -934,6 +935,23 @@ async function runPipelineScoped(project_id: string, options?: RunPipelineOption
       project.scenes = scenes;
       project.status = 'generating_assets';
       await guardedSaveProjectState(project, signal);
+    }
+
+    // Whether this render will carry captions, decided once and recorded on the project.
+    //
+    // The caption font has no Indic glyphs, so Telugu and Devanagari burn as '?????'.
+    // Skipping is deliberate; saying so is the point. Without this the user gets a video
+    // with no captions and nothing anywhere explaining why.
+    {
+      const langName = languageName(project.settings?.language);
+      const unsupported = langName && !hasLatinScript(project.settings?.language);
+      const next = unsupported
+        ? { language: langName, reason: `Captions are not available for ${langName} yet — the caption font cannot draw its script, and burning them anyway produces unreadable text.` }
+        : undefined;
+      if (JSON.stringify(project.captions_unavailable) !== JSON.stringify(next)) {
+        project.captions_unavailable = next;
+        if (next) logEvent('captions_skipped', project.project_id, { language: langName });
+      }
     }
 
     if (project.status === 'generating_assets') {

@@ -8,7 +8,7 @@ import {
 import { authenticatedFetch } from '../utils/api';
 import { projectVideoFileName } from '../utils/filename';
 import { TargetLengthField } from '../components/TargetLengthField';
-import { normalizeLanguage, LANGUAGE_OPTIONS, DEFAULT_LANGUAGE } from '../utils/language';
+import { normalizeLanguage, LANGUAGE_OPTIONS, DEFAULT_LANGUAGE, hasLatinScript } from '../utils/language';
 
 /** Stage names the user sees, keyed by the server's stage ids. */
 const STAGE_LABELS: Record<string, string> = {
@@ -106,6 +106,8 @@ interface Project {
     objects: { name: string; description: string; prompt: string }[];
   };
   settings: ProjectSettings;
+  /** Set by the render when captions were deliberately left off, with the reason. */
+  captions_unavailable?: { language: string; reason: string };
   scenes: Scene[];
   seo_metadata?: SeoMetadata;
   music_track?: string;
@@ -1160,6 +1162,12 @@ export function ProjectEditor() {
                         </option>
                       ))}
                     </select>
+                    {!hasLatinScript(settings.language) && (
+                      <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                        {project?.captions_unavailable?.reason
+                          ?? 'Captions are not available in this language yet — the caption font cannot draw its script. The video will be narrated without on-screen captions.'}
+                      </p>
+                    )}
                   </div>
 
                   <div className="pt-2">

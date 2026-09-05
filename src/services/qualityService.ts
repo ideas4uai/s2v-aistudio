@@ -3,7 +3,7 @@ import * as path from 'path';
 import { Project } from '../models/project.js';
 import { isSilentWav } from '../server/services/ttsService.js';
 import { validateAssetConsistency } from './characterAssetService.js';
-import { normalizeLanguage, languageName } from '../utils/language.js';
+import { normalizeLanguage, languageName, captionsSupported } from '../utils/language.js';
 
 /**
  * Pre-publish quality gate.
@@ -193,6 +193,13 @@ export function checkCaptionSync(project: Project): GateCheck {
   const measurable = scenes.filter((s: any) =>
     cuesOf(s).length > 0 && Number(s.speech_end) > Number(s.speech_start));
   if (!measurable.length) {
+    // Distinguish "captions were deliberately left off" from "something went wrong".
+    // The first is a decision the operator was told about; the second needs looking at.
+    const unavailable = (project as any).captions_unavailable;
+    if (unavailable) return skip(id, label, unavailable.reason);
+    if (!captionsSupported((project as any).settings?.language)) {
+      return skip(id, label, 'Captions are not rendered for this language — nothing to sync.');
+    }
     return skip(id, label, 'No scene carries both caption cues and a measured speech span.');
   }
 
