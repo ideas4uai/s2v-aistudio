@@ -23,6 +23,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { verifyIdToken } from './src/server/utils/auth.js';
 import { fdb, FirestoreService } from './src/server/db/firestore.js';
 import { requestContext } from './src/server/utils/context.js';
+import { requireAuthInProduction, rateLimit, allowedOrigins } from './src/server/utils/apiGuard.js';
 
 console.log('[STARTUP] USE_METRO_V4:', process.env.USE_METRO_V4 ?? 'not set');
 
@@ -79,7 +80,9 @@ async function startServer() {
   // API together on 3000.
   const PORT = Number(process.env.PORT) || 3000;
 
-  app.use(cors());
+  // Scoped to the frontend origin. cors() with no argument reflects whatever Origin
+  // arrives, so any page the operator visits in a browser could call this API as them.
+  app.use(cors({ origin: allowedOrigins(), credentials: true }));
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -192,6 +195,12 @@ async function startServer() {
       next();
     });
   });
+
+  // The identity above is stamped, never enforced -- these two do the enforcing.
+  // Order matters: reject first, then count, so a rejected request cannot spend a
+  // rate-limit slot belonging to whoever the caller was pretending to be.
+  app.use('/api', requireAuthInProduction);
+  app.use('/api', rateLimit);
 
   app.use((req, res, next) => {
     if (req.path !== '/api/health') {
