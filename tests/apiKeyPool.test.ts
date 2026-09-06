@@ -5,6 +5,7 @@ import * as path from 'path';
 import {
   listKeys, addKey, updateKey, removeKey, keysForCategory, publicView, maskKey,
   migrateEnvKeys, keyStorePath, isKeyCategory, KEY_CATEGORIES,
+  getImageProvider, setImageProvider, isImageProvider, IMAGE_PROVIDERS,
 } from '../src/server/services/apiKeyStore.js';
 import {
   getKeyForTask, markKeyExhausted, clearCooldowns, getPoolStatus, categoryForTask, hasAnyKey,
@@ -222,5 +223,61 @@ describe('precedence: keys before Vertex', () => {
 
   it('throws with somewhere to go when there is nothing configured at all', () => {
     expect(() => getKeyForTask('script')).toThrow(/aistudio\.google\.com\/apikey/);
+  });
+});
+
+describe('the image provider toggle', () => {
+  it('defaults to Vertex, because that is what serves an image today', () => {
+    // AI Studio returns limit: 0 for every image model until billing is on the key's
+    // project. Defaulting there would break image generation for anyone who has not
+    // opened Settings yet.
+    expect(getImageProvider()).toBe('vertex');
+  });
+
+  it('remembers the choice', () => {
+    expect(setImageProvider('aistudio')).toBe('aistudio');
+    expect(getImageProvider()).toBe('aistudio');
+    expect(setImageProvider('vertex')).toBe('vertex');
+    expect(getImageProvider()).toBe('vertex');
+  });
+
+  it('only accepts the two real providers', () => {
+    expect(IMAGE_PROVIDERS).toEqual(['aistudio', 'vertex']);
+    expect(isImageProvider('aistudio')).toBe(true);
+    expect(isImageProvider('cheapest')).toBe(false);
+    expect(() => setImageProvider('cheapest' as any)).toThrow(/provider/i);
+  });
+
+  it('does not disturb the keys when it changes', () => {
+    addKey({ key: IMG_KEY, category: 'image' });
+    setImageProvider('aistudio');
+    expect(keysForCategory('image').map((k) => k.key)).toEqual([IMG_KEY]);
+    // Rotation is unaffected by which provider is selected — the toggle decides where a
+    // call goes, the pool decides which key it goes out on.
+    expect(getKeyForTask('image')).toBe(IMG_KEY);
+  });
+
+  it('is never written by the pipeline — the switch is the user, not the quota', async () => {
+    // The one rule the toggle exists to enforce: exhausting AI Studio must not quietly
+    // start billing Vertex, and vice versa. So nothing outside the settings route may
+    // call setImageProvider.
+    const { readFileSync } = await import('fs');
+    for (const f of ['src/services/aiService.ts', 'src/utils/geminiAuth.ts']) {
+      expect(readFileSync(f, 'utf8')).not.toContain('setImageProvider');
+    }
+    // And the route that does write it is a PUT — no GET or side-effecting read.
+    const route = readFileSync('src/server/routes/apiKeys.ts', 'utf8');
+    expect(route).toMatch(/put\('\/settings'/);
+  });
+
+  it('routes image calls on the toggle, not on whether keys happen to exist', async () => {
+    const { readFileSync } = await import('fs');
+    const src = readFileSync('src/services/aiService.ts', 'utf8');
+    expect(src).toContain("getImageProvider() === 'vertex'");
+    // adcActive() means "no keys anywhere". Deciding an image route on it would make
+    // adding a text key silently move image generation, so every image call site reads
+    // imageViaVertex() instead; the one survivor is a debug field reporting auth mode.
+    expect(src.match(/adcActive\(\)/g) ?? []).toHaveLength(1);
+    expect(src).toMatch(/authMode: adcActive\(\)/);
   });
 });

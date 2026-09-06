@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Key, Plus, Trash2, ExternalLink, AlertTriangle, Check, Pause, Play } from 'lucide-react';
+import { Key, Plus, Trash2, ExternalLink, AlertTriangle, Check, Pause, Play, Image as ImageIcon } from 'lucide-react';
 
 /**
  * Settings → API Keys.
@@ -27,6 +27,22 @@ type Pool = { total: number; available: number; exhausted: string[] };
 
 const AI_STUDIO_KEYS_URL = 'https://aistudio.google.com/apikey';
 
+/**
+ * Both options bill. Neither is free — AI Studio reports `limit: 0` for every image
+ * model on the free tier — so the page says so instead of implying one is the safe
+ * choice. Switching is manual on purpose: nothing in the pipeline writes this.
+ */
+const IMAGE_PROVIDER_INFO: Record<string, { label: string; help: string }> = {
+  vertex: {
+    label: 'Vertex AI',
+    help: 'Uses your Google Cloud project credentials. Working today. Billed to that project.',
+  },
+  aistudio: {
+    label: 'AI Studio keys',
+    help: 'Uses the image keys below. Needs billing enabled on the key’s project — the free tier allows 0 images.',
+  },
+};
+
 export function Settings() {
   const [keys, setKeys] = useState<KeyRow[]>([]);
   const [pools, setPools] = useState<Record<string, Pool>>({});
@@ -35,20 +51,26 @@ export function Settings() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const [imageProvider, setImageProviderState] = useState('');
+  const [providerOptions, setProviderOptions] = useState<string[]>([]);
+
   const [newKey, setNewKey] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [newCategory, setNewCategory] = useState('text');
 
   const load = async () => {
     try {
-      const [k, c] = await Promise.all([
+      const [k, c, s] = await Promise.all([
         fetch('/api/api-keys').then((r) => r.json()),
         fetch('/api/api-keys/categories').then((r) => r.json()),
+        fetch('/api/api-keys/settings').then((r) => r.json()),
       ]);
       if (k?.error) throw new Error(k.error);
       setKeys(k.keys ?? []);
       setPools(k.pools ?? {});
       setCategories(Array.isArray(c) ? c : []);
+      setImageProviderState(s?.imageProvider ?? '');
+      setProviderOptions(Array.isArray(s?.options) ? s.options : []);
       setError('');
     } catch (err: any) {
       setError(err?.message || 'Could not load API keys');
@@ -106,7 +128,23 @@ export function Settings() {
     } finally { setBusy(false); }
   };
 
-  const catLabel = (id: string) => categories.find((c) => c.id === id)?.label ?? id;
+  const chooseProvider = async (provider: string) => {
+    if (provider === imageProvider) return;
+    setBusy(true);
+    try {
+      const res = await fetch('/api/api-keys/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageProvider: provider }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error || 'Could not switch image provider');
+      setImageProviderState(body.imageProvider);
+      setError('');
+    } catch (err: any) {
+      setError(err?.message || 'Could not switch image provider');
+    } finally { setBusy(false); }
+  };
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -114,6 +152,50 @@ export function Settings() {
         <h1 className="text-3xl font-bold text-neutral-900">Settings</h1>
         <p className="text-neutral-500 mt-1">API keys used to generate scripts and images.</p>
       </div>
+
+      <section className="bg-white rounded-2xl border border-neutral-200 p-6 mb-6">
+        <div className="flex items-center gap-2 mb-1">
+          <ImageIcon className="w-5 h-5 text-indigo-600" />
+          <h2 className="text-xl font-bold text-neutral-900">Image generation</h2>
+        </div>
+        <p className="text-sm text-neutral-600 mb-4">
+          Which credential renders scene images. Both options are billed — Google AI Studio
+          allows 0 images per day on the free tier — so this never switches on its own. If the
+          provider you pick cannot serve, image generation fails and tells you, rather than
+          quietly spending on the other one.
+        </p>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          {providerOptions.map((id) => {
+            const active = imageProvider === id;
+            const info = IMAGE_PROVIDER_INFO[id] ?? { label: id, help: '' };
+            return (
+              <button
+                key={id}
+                type="button"
+                disabled={busy}
+                aria-pressed={active}
+                onClick={() => chooseProvider(id)}
+                className={`text-left rounded-xl border p-3 transition disabled:opacity-50 ${
+                  active
+                    ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500'
+                    : 'border-neutral-200 bg-white hover:border-neutral-300'
+                }`}
+              >
+                <span className="flex items-center justify-between text-sm font-bold text-neutral-800">
+                  {info.label}
+                  {active && (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-indigo-700">
+                      <Check className="w-3 h-3" /> In use
+                    </span>
+                  )}
+                </span>
+                <span className="block text-xs text-neutral-600 mt-1">{info.help}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       <section className="bg-white rounded-2xl border border-neutral-200 p-6">
         <div className="flex items-center gap-2 mb-1">

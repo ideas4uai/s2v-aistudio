@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   listKeys, addKey, updateKey, removeKey, publicView,
   KEY_CATEGORIES, CATEGORY_INFO, isKeyCategory,
+  getImageProvider, setImageProvider, isImageProvider, IMAGE_PROVIDERS,
 } from '../services/apiKeyStore.js';
 import { getPoolStatus } from '../../utils/geminiAuth.js';
 import { logEvent } from '../../services/logService.js';
@@ -16,6 +17,28 @@ import { logEvent } from '../../services/logService.js';
  * at the source, which takes seconds at aistudio.google.com/apikey.
  */
 export const apiKeysRouter = Router();
+
+/**
+ * Which provider image generation uses, and switching it.
+ *
+ * PUT only — there is no automatic path that writes this. AI Studio has no free tier
+ * for images (limit: 0 on every model), so both options bill; moving between them
+ * without someone choosing would mean spending on an endpoint nobody picked.
+ */
+apiKeysRouter.get('/settings', (_req, res) => {
+  res.json({ imageProvider: getImageProvider(), options: IMAGE_PROVIDERS });
+});
+
+apiKeysRouter.put('/settings', (req, res) => {
+  const { imageProvider } = req.body ?? {};
+  if (!isImageProvider(imageProvider)) {
+    return res.status(400).json({ error: `imageProvider must be one of: ${IMAGE_PROVIDERS.join(', ')}` });
+  }
+  setImageProvider(imageProvider);
+  logEvent('image_provider_changed', undefined, { imageProvider });
+  console.log(`[Settings] Image generation switched to ${imageProvider}`);
+  res.json({ imageProvider });
+});
 
 /** The category vocabulary, so the UI does not restate a list the server owns. */
 apiKeysRouter.get('/categories', (_req, res) => {

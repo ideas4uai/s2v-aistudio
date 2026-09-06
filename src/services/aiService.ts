@@ -2,6 +2,7 @@ import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
 import {
   getKeyForTask, getGeminiKey, markKeyExhausted, hasAnyKey, keyPoolSummary, type KeyTask,
 } from '../utils/geminiAuth.js';
+import { getImageProvider } from '../server/services/apiKeyStore.js';
 import { loadImageAsBase64 } from '../utils/imageRef.js';
 import { logTextUsage } from './logService.js';
 
@@ -152,6 +153,21 @@ const deadProviders = new Set<string>();
 const isRateLimited = (e: any): boolean =>
   e?.status === 429 || e?.status === 'RESOURCE_EXHAUSTED'
   || /(?:^|[^0-9])429(?:[^0-9]|$)|RESOURCE_EXHAUSTED|exceeded your current quota/i.test(String(e?.message ?? ''));
+
+/**
+ * Which credential image generation uses, and it is a CHOICE, not a fallback.
+ *
+ * AI Studio's free tier is limit: 0 for every image model, so on AI Studio images are
+ * billed ($0.039/image on gemini-2.5-flash-image) and need billing enabled on the key's
+ * project. Vertex bills too. Because both cost money, moving between them automatically
+ * would mean spending on an endpoint nobody picked -- so when the selected provider
+ * cannot serve, image generation fails and says so.
+ */
+const imageViaVertex = (): boolean => getImageProvider() === 'vertex' && adcConfigured;
+
+/** Says which path an image call took, the same way text names its key. */
+const logImageRoute = (provider: string, detail: string) =>
+  console.log(`[ImageGen] route: ${provider} (${detail}) — set under Settings → API Keys`);
 
 const providerDead = (provider: string): boolean => {
   if (!deadProviders.has(provider)) return false;
@@ -357,12 +373,15 @@ async function generateImageWithGeminiNative(
   aspectRatio?: string
 ): Promise<string | null> {
   try {
+    // The reference-image path is image generation too, so it follows the same toggle.
     let geminiKey = '';
-    try { geminiKey = getKeyForTask('image'); } catch { return null; }
-    if (!geminiKey && !adcActive()) return null;
+    if (!imageViaVertex()) {
+      try { geminiKey = getKeyForTask('image'); } catch { return null; }
+    }
+    if (!geminiKey && !imageViaVertex()) return null;
 
     const { GoogleGenAI: GGenAI } = await import('@google/genai');
-    const ai = adcActive()
+    const ai = imageViaVertex()
       ? new GGenAI({ vertexai: true, project: gcpProject, location: gcpLocation } as any)
       : new GGenAI({ apiKey: geminiKey });
 
@@ -586,7 +605,7 @@ export const AIService = {
       console.log(`[ImageGen:DEBUG] ── ENTRY ${JSON.stringify({
         authMode: adcActive() ? 'ADC/Vertex' : 'API-key/AI-Studio',
         gcpProject: gcpProject ? `${gcpProject.slice(0, 6)}…` : null,
-        region: adcActive() ? gcpLocation : 'n/a',
+        region: imageViaVertex() ? gcpLocation : 'n/a',
         aspectRatio,
         hasLora: !!options?.loraModelUrl,
         hasReferenceImage: !!options?.referenceImageUrl,
@@ -621,7 +640,7 @@ export const AIService = {
     // Skipped when a character reference image is in play: Imagen generate takes no
     // reference input, so identity would drift. The Gemini multimodal image path
     // below owns that case.
-    if (adcActive() && !referenceImage && !providerDead('1:VertexImagen')) {
+    if (imageViaVertex() && !referenceImage && !providerDead('1:VertexImagen')) {
       console.log('[ImageGen] Trying Vertex Imagen...');
       const imagenResult = await generateImageWithVertexImagen(styledPrompt, aspectRatio);
       if (imagenResult) return imagenResult;
@@ -629,9 +648,15 @@ export const AIService = {
 
     // Provider 1.5: Gemini image via generateContent — multimodal, so this is the
     // path that can consume a character reference image for identity consistency.
+    // On Vertex the key is deliberately not fetched: the toggle, not key availability,
+    // decides the path.
     let imagenApiKey = '';
-    try { imagenApiKey = getKeyForTask('image'); } catch { /* falls through to next provider */ }
-    if ((imagenApiKey || adcActive()) && !providerDead('1.5:GeminiImage')) {
+    if (!imageViaVertex()) {
+      try { imagenApiKey = getKeyForTask('image'); } catch { /* falls through to next provider */ }
+    }
+    if ((imagenApiKey || imageViaVertex()) && !providerDead('1.5:GeminiImage')) {
+      logImageRoute(imageViaVertex() ? 'Vertex AI' : 'AI Studio',
+        imageViaVertex() ? `project ${gcpProject}` : `key ...${imagenApiKey.slice(-4)}`);
       try {
         console.log('[ImageGen] Trying Gemini Flash Image...');
         const { GoogleGenAI } = await import('@google/genai');
@@ -643,10 +668,10 @@ export const AIService = {
         imgParts.push({ text: styledPrompt });
 
         dbgCall('1.5:GeminiImage', {
-          provider: adcActive() ? 'vertex-ai' : 'gemini-api',
+          provider: imageViaVertex() ? 'vertex-ai' : 'gemini-api',
           sdkCall: 'models.generateContent',
           model: GEMINI_IMAGE_MODEL,
-          region: adcActive() ? gcpLocation : 'n/a',
+          region: imageViaVertex() ? gcpLocation : 'n/a',
           isImagenModel: false,
           payload: {
             contents: [{ role: 'user', parts: imgParts.map((p: any) => p.inlineData
@@ -664,8 +689,8 @@ export const AIService = {
         // image. Only used in ADC mode — an API key has no region to move to.
         let geminiImgResponse: any;
         let lastRegionError: any;
-        for (const region of (adcActive() ? imageRegions() : ['n/a'])) {
-          const geminiImageAI = adcActive()
+        for (const region of (imageViaVertex() ? imageRegions() : ['n/a'])) {
+          const geminiImageAI = imageViaVertex()
             ? new GoogleGenAI({ vertexai: true, project: gcpProject, location: region } as any)
             : new GoogleGenAI({ apiKey: imagenApiKey });
           try {
@@ -715,10 +740,10 @@ export const AIService = {
     // Provider 1.75: Gemini 2.0 Flash Native (reference-image-aware, better character identity)
     if (options?.referenceImageUrl && !providerDead('1.75:GeminiNative')) {
       dbgCall('1.75:GeminiNative', {
-        provider: adcActive() ? 'vertex-ai' : 'gemini-api',
+        provider: imageViaVertex() ? 'vertex-ai' : 'gemini-api',
         sdkCall: 'models.generateContent',
         model: GEMINI_IMAGE_MODEL,
-        region: adcActive() ? gcpLocation : 'n/a',
+        region: imageViaVertex() ? gcpLocation : 'n/a',
         isImagenModel: false,
         payload: { parts: ['<reference inlineData>', `<prompt ${styledPrompt.length} chars>`], config: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { aspectRatio } } },
       });
@@ -818,16 +843,18 @@ export const AIService = {
 
     // Provider 4: Gemini 2.5 flash image (when quota available)
     let geminiImageKey = '';
-    try { geminiImageKey = getKeyForTask('image'); } catch { /* no key configured */ }
-    if ((geminiImageKey || adcActive()) && !providerDead('4:Gemini2.5')) {
+    if (!imageViaVertex()) {
+      try { geminiImageKey = getKeyForTask('image'); } catch { /* no key configured */ }
+    }
+    if ((geminiImageKey || imageViaVertex()) && !providerDead('4:Gemini2.5')) {
       try {
         console.log('[ImageGen] Trying Gemini 2.5 flash image...');
         const ai = getAI(geminiImageKey);
         dbgCall('4:Gemini2.5', {
-          provider: adcActive() ? 'vertex-ai' : 'gemini-api',
+          provider: imageViaVertex() ? 'vertex-ai' : 'gemini-api',
           sdkCall: 'models.generateContent',
           model: 'gemini-2.5-flash-image',
-          region: adcActive() ? gcpLocation : 'n/a',
+          region: imageViaVertex() ? gcpLocation : 'n/a',
           isImagenModel: false,
           payload: { parts: [`<prompt ${finalPrompt.length} chars>`], config: { responseModalities: ['TEXT', 'IMAGE'] } },
         });

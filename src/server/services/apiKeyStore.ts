@@ -66,13 +66,44 @@ export type ApiKeyRecord = {
   lastUsedAt?: string;
 };
 
-export type ApiKeyStore = { version: 1; keys: ApiKeyRecord[] };
+/**
+ * Which credential image generation uses.
+ *
+ * A manual switch, never automatic. AI Studio's free tier is limit: 0 for every image
+ * model — confirmed against the live API and Google's own pricing page, which lists
+ * "Free tier: Not available" for all of them — so on AI Studio images are billed at
+ * $0.039/image (gemini-2.5-flash-image) and need billing enabled on the key's project.
+ *
+ * Automatic failover between the two was explicitly rejected: quietly moving to the
+ * other billed endpoint when one runs out is how you end up paying somewhere you did
+ * not choose. When the selected provider cannot serve, image generation fails loudly.
+ */
+export const IMAGE_PROVIDERS = ['aistudio', 'vertex'] as const;
+export type ImageProvider = (typeof IMAGE_PROVIDERS)[number];
+
+export function isImageProvider(v: unknown): v is ImageProvider {
+  return typeof v === 'string' && (IMAGE_PROVIDERS as readonly string[]).includes(v);
+}
+
+export type StoreSettings = { imageProvider: ImageProvider };
+
+/**
+ * Vertex by default, and only because it is what works today with no action from
+ * anyone: a live call to Vertex gemini-2.5-flash-image returns an image right now,
+ * while the same model on AI Studio returns limit: 0 until billing is enabled.
+ *
+ * This is not a recommendation to stay on Vertex. It is the default that does not
+ * silently break image generation for an operator who has not yet chosen.
+ */
+export const DEFAULT_SETTINGS: StoreSettings = { imageProvider: 'vertex' };
+
+export type ApiKeyStore = { version: 1; keys: ApiKeyRecord[]; settings?: StoreSettings };
 
 export function keyStorePath(): string {
   return process.env.AI_KEY_STORE_PATH || path.join(process.cwd(), 'config', 'ai-keys.json');
 }
 
-const empty = (): ApiKeyStore => ({ version: 1, keys: [] });
+const empty = (): ApiKeyStore => ({ version: 1, keys: [], settings: { ...DEFAULT_SETTINGS } });
 
 /** Last 4 characters only, which is enough to tell two keys apart and no use to anyone. */
 export function maskKey(key: string): string {
@@ -220,4 +251,18 @@ export function touchKey(id: string): void {
   try {
     updateKey(id, (k) => { k.lastUsedAt = new Date().toISOString(); });
   } catch { /* recording use must never fail a request */ }
+}
+
+/** Which provider image generation is pointed at. Never inferred from quota. */
+export function getImageProvider(): ImageProvider {
+  const stored = readKeyStore().settings?.imageProvider;
+  return isImageProvider(stored) ? stored : DEFAULT_SETTINGS.imageProvider;
+}
+
+export function setImageProvider(provider: ImageProvider): ImageProvider {
+  if (!isImageProvider(provider)) throw new Error(`Unknown image provider "${provider}".`);
+  const store = migrateEnvKeys().store;
+  store.settings = { ...DEFAULT_SETTINGS, ...store.settings, imageProvider: provider };
+  writeKeyStore(store);
+  return provider;
 }
