@@ -7,7 +7,8 @@ import { buildKnowledgeContext, normalizeUniverse } from '../../content-studio/k
 import type { KnowledgeDocument } from '../../content-studio/domain/types.js';
 import { languageName, LANGUAGES, DEFAULT_LANGUAGE } from '../../utils/language.js';
 import {
-  buildScriptPrompt, buildScriptSections, flagUnverifiedClaims, flagCraftIssues, flagSensitiveClaims, flagHookLength, type ScriptBrief,
+  buildScriptPrompt, buildScriptSections, flagUnverifiedClaims, flagCraftIssues, flagSensitiveClaims, flagHookLength,
+  flagUnsourcedResults, briefSourceMaterial, type ScriptBrief,
 } from './scriptPrompt.js';
 
 /**
@@ -147,6 +148,10 @@ export const ScriptwriterAgent = {
       const spoken = scenes.map((s) => s.narration || '').join(' ');
       const issues = [
         ...flagUnverifiedClaims(spoken, prompt).map((c) => `unsourced: ${c}`),
+        // Deliberately given the brief's own source material, NOT the prompt: the
+        // constraints above name these very phrases as things not to write, and passing
+        // the prompt would let them count as a source for themselves.
+        ...flagUnsourcedResults(spoken, briefSourceMaterial(brief)).map((c) => `unearned result — ${c}`),
         ...flagCraftIssues(spoken, project.topic),
         ...flagSensitiveClaims(spoken),
         // Warning only, and only here: see flagHookLength for why the story-stage gate
@@ -220,7 +225,26 @@ Return ONLY a valid JSON array of scenes in the same shape, no markdown.`,
     if (start === -1 || end === -1) return scenes;
     const expanded = JSON.parse(text.substring(start, end + 1));
     if (!Array.isArray(expanded) || !expanded.length) return scenes;
-    console.log(`[ScriptAgent] Expanded to ${countWords(expanded)} words`);
+
+    // An expansion has to actually expand. The shape check above passes an array whose
+    // scenes carry no narration at all, and that has happened: a real run came back with
+    // fourteen objects, twelve of them with `narration: undefined`, and replaced a good
+    // 122-word script with 18 words. Those scenes then reach the render as an image with
+    // no speech, so a failed retry turned into a broken video several stages later.
+    //
+    // Two conditions, both cheap: no speaking scene may fall silent, and the total may
+    // not shrink. A wordless beat that was ALREADY wordless is fine — it is counted the
+    // same way on both sides.
+    const speaking = (list: any[]) => list.filter((s: any) => String(s?.narration ?? '').trim()).length;
+    const words = countWords(expanded);
+    if (speaking(expanded) < speaking(scenes) || words < have) {
+      console.warn(
+        `[ScriptAgent] Expansion rejected — ${speaking(expanded)}/${speaking(scenes)} scenes still speak, `
+        + `${words} words vs ${have}. Keeping the original.`,
+      );
+      return scenes;
+    }
+    console.log(`[ScriptAgent] Expanded to ${words} words`);
     return expanded;
   } catch (err) {
     console.warn('[ScriptAgent] Expansion call failed, using original:', err);
