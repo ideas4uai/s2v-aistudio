@@ -92,6 +92,10 @@ audit_output/merged_file.md
 # someone's channel — this must never be committed.
 config/youtube-tokens.json
 
+# Google AI Studio API keys. Plain secrets that bill (or exhaust a free tier) if
+# leaked — same posture as the YouTube tokens above: never committed.
+config/ai-keys.json
+
 # Local analytics event log.
 analytics/
 

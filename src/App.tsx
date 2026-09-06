@@ -16,6 +16,7 @@ import { ContentStudioDashboard } from './content-studio/ui/ContentStudioDashboa
 import { ContentDirectorPage } from './content-studio/ui/ContentDirectorPage';
 import { KnowledgeBasePage } from './content-studio/ui/KnowledgeBasePage';
 import { EpisodesPage } from './content-studio/ui/EpisodesPage';
+import { Settings } from './pages/Settings';
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
                   <Route path="knowledge" element={<KnowledgeBasePage />} />
                   <Route path="episodes" element={<EpisodesPage />} />
                 </Route>
+                <Route path="/settings" element={<Settings />} />
                 <Route path="/projects/new" element={<CreateProject />} />
                 <Route path="/projects/:id" element={<ProjectDetail />} />
                 <Route path="/projects/:id/edit" element={<ProjectEditor />} />

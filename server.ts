@@ -24,6 +24,7 @@ import { verifyIdToken } from './src/server/utils/auth.js';
 import { fdb, FirestoreService } from './src/server/db/firestore.js';
 import { requestContext } from './src/server/utils/context.js';
 import { requireAuthInProduction, rateLimit, allowedOrigins } from './src/server/utils/apiGuard.js';
+import { apiKeysRouter } from './src/server/routes/apiKeys.js';
 
 console.log('[STARTUP] USE_METRO_V4:', process.env.USE_METRO_V4 ?? 'not set');
 
@@ -726,6 +727,7 @@ async function startServer() {
   app.use('/api/templates', templatesRouter);
   app.use('/api/feedback', feedbackRouter);
   app.use('/api/quota', quotaRouter);
+  app.use('/api/api-keys', apiKeysRouter);
   app.use('/api/voices', voicesRouter);
 
   // Serve rendered videos
